@@ -59,6 +59,27 @@ if(Slicer_BUILD_CLI_SUPPORT)
   set(ModuleDescriptionParser_USE_PYTHON OFF)
 endif()
 
+set(MRML_APPLICATION_NAME "${Slicer_MAIN_PROJECT_APPLICATION_NAME}")
+
+# Convert version to 0xXXYYZZ format where XX=major, YY=minor, ZZ=patch version in hexadecimal.
+# Add a leading 1 (256*256*256*1) to force having a leading 0 for major version (e.g., 04 instead of just 4)
+math(EXPR MRML_VERSION_HEX "256*256*256*1 + 256*256*${Slicer_MAIN_PROJECT_VERSION_MAJOR}
+  + 256*${Slicer_MAIN_PROJECT_VERSION_MINOR} + ${Slicer_MAIN_PROJECT_VERSION_PATCH}" OUTPUT_FORMAT HEXADECIMAL)
+# Remove leading 1
+string(SUBSTRING "${MRML_VERSION_HEX}" 3 6 MRML_VERSION_HEX)
+set(MRML_VERSION "0x${MRML_VERSION_HEX}")
+
+set(MRML_REVISION "${Slicer_MAIN_PROJECT_REVISION}")
+
+# MRML supports Slicer3 and Slicer4 scenes
+set(MRML_SUPPORT_VERSION "0x030000")
+
+message(STATUS "Configuring MRML")
+message(STATUS "  MRML_APPLICATION_NAME is ${MRML_APPLICATION_NAME}")
+message(STATUS "  MRML_VERSION is ${MRML_VERSION}")
+message(STATUS "  MRML_REVISION is ${MRML_REVISION}")
+message(STATUS "  MRML_SUPPORT_VERSION is ${MRML_SUPPORT_VERSION}")
+
 # Qt designer plugins
 set(MRML_BUILD_QT_DESIGNER_PLUGINS ${Slicer_BUILD_QT_DESIGNER_PLUGINS})
 

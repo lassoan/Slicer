@@ -20,6 +20,7 @@
 
 // QtCore includes
 #include <QMessageBox>
+#include <QVersionNumber>
 
 #include "qSlicerSceneReader.h"
 #include "qSlicerSceneIOOptionsWidget.h"
@@ -106,17 +107,42 @@ bool qSlicerSceneReader::load(const qSlicerIO::IOProperties& properties)
     d->CamerasLogic->SetCopyImportedCameras(wasCopying);
     }
 
-  if (this->mrmlScene()->GetLastLoadedVersion() &&
-     this->mrmlScene()->GetVersion() &&
-      strcmp(this->mrmlScene()->GetLastLoadedVersion(),
-             this->mrmlScene()->GetVersion()) > 0 )
+  // Display warning message if scene file was created with a different application or with a future application version
+  std::string currentApplication;
+  int currentMajor = 0;
+  int currentMinor = 0;
+  int currentPatch = 0;
+  int currentRevision = 0;
+  std::string loadedApplication;
+  int loadedMajor = 0;
+  int loadedMinor = 0;
+  int loadedPatch = 0;
+  int loadedRevision = 0;
+  if (vtkMRMLScene::ParseVersion(this->mrmlScene()->GetVersion(), currentApplication,
+    currentMajor, currentMinor, currentPatch, currentRevision)
+    && vtkMRMLScene::ParseVersion(this->mrmlScene()->GetLastLoadedVersion(), loadedApplication,
+      loadedMajor, loadedMinor, loadedPatch, loadedRevision))
     {
-      std::string msg = "Warning: scene file " + file.toStdString() + " has version " +
-        std::string(this->mrmlScene()->GetLastLoadedVersion()) + " greater than Slicer4 version " +
-        std::string(this->mrmlScene()->GetVersion()) + ".";
-
+    QString warningMsg;
+    if (loadedApplication != currentApplication)
+      {
+      warningMsg += tr(" Scene file was saved with %1 application (current application is %2).")
+        .arg(QString::fromUtf8(loadedApplication.c_str()))
+        .arg(QString::fromUtf8(currentApplication.c_str()));
+      }
+    QVersionNumber loadedSceneVersion(loadedMajor, loadedMinor, loadedPatch);
+    QVersionNumber currentVersion(currentMajor, currentMinor, currentPatch);
+    if (loadedSceneVersion > currentVersion)
+      {
+      warningMsg += tr(" Scene file has version %1 greater than current application version %2.")
+        .arg(loadedSceneVersion.toString())
+        .arg(currentVersion.toString());
+      }
+    if (!warningMsg.isEmpty())
+      {
       QMessageBox::warning(nullptr, tr("Reading MRML Scene..."),
-                              tr(msg.c_str()) );
+        tr("Warning: scene may not load correctly.%1").arg(warningMsg));
+      }
     }
 
   return res;
