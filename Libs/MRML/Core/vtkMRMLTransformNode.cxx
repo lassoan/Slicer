@@ -18,6 +18,8 @@ Version:   $Revision: 1.14 $
 #include "vtkMRMLBSplineTransformNode.h"
 #include "vtkMRMLGridTransformNode.h"
 #include "vtkMRMLLinearTransformNode.h"
+
+#include "vtkMRMLLinearTransformSequenceStorageNode.h"
 #include "vtkMRMLScene.h"
 #include "vtkMRMLTransformStorageNode.h"
 #include "vtkMRMLTransformDisplayNode.h"
@@ -54,6 +56,8 @@ vtkMRMLTransformNode::vtkMRMLTransformNode()
 
   this->CachedMatrixTransformToParent=vtkMatrix4x4::New();
   this->CachedMatrixTransformFromParent=vtkMatrix4x4::New();
+
+  this->ContentModifiedEvents->InsertNextValue(vtkMRMLTransformableNode::TransformModifiedEvent);
 }
 
 //----------------------------------------------------------------------------
@@ -285,21 +289,18 @@ int vtkMRMLTransformNode::DeepCopyTransform(vtkAbstractTransform* dst, vtkAbstra
 }
 
 //----------------------------------------------------------------------------
-// Copy the node's attributes to this object.
-// Does NOT copy: ID, FilePrefix, Name, VolumeID
-void vtkMRMLTransformNode::Copy(vtkMRMLNode *anode)
+void vtkMRMLTransformNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=true*/)
 {
-  vtkMRMLTransformNode *node = (vtkMRMLTransformNode *) anode;
-  if (node==nullptr)
+  MRMLNodeModifyBlocker blocker(this);
+  Superclass::CopyContent(anode, deepCopy);
+
+  vtkMRMLTransformNode* node = vtkMRMLTransformNode::SafeDownCast(anode);
+  if (!node)
     {
-    vtkErrorMacro("vtkMRMLTransformNode::Copy: input node type is incompatible");
     return;
     }
-
-  int disabledModify = this->StartModify();
-
-  Superclass::Copy(anode);
-
+  if (deepCopy)
+  {
   this->SetReadAsTransformToParent(node->GetReadAsTransformToParent());
 
   // Unfortunately VTK transform DeepCopy actually performs a shallow copy (only data object
@@ -307,23 +308,35 @@ void vtkMRMLTransformNode::Copy(vtkMRMLNode *anode)
   // operation.
   if (node->TransformToParent)
     {
-    vtkAbstractTransform* transformCopy=node->TransformToParent->MakeTransform();
-    DeepCopyTransform(transformCopy,node->TransformToParent);
+    vtkSmartPointer<vtkAbstractTransform> transformCopy = vtkSmartPointer<vtkAbstractTransform>::Take(
+      node->TransformToParent->MakeTransform());
+    DeepCopyTransform(transformCopy, node->TransformToParent);
     vtkSetAndObserveMRMLObjectMacro(this->TransformToParent, transformCopy);
-    transformCopy->Delete();
+    }
+  else
+    {
+    vtkSetAndObserveMRMLObjectMacro(this->TransformToParent, nullptr);
     }
   if (node->TransformFromParent)
     {
-    vtkAbstractTransform* transformCopy=node->TransformFromParent->MakeTransform();
-    DeepCopyTransform(transformCopy,node->TransformFromParent);
+    vtkSmartPointer<vtkAbstractTransform> transformCopy = vtkSmartPointer<vtkAbstractTransform>::Take(
+      node->TransformFromParent->MakeTransform());
+    DeepCopyTransform(transformCopy, node->TransformFromParent);
     vtkSetAndObserveMRMLObjectMacro(this->TransformFromParent, transformCopy);
-    transformCopy->Delete();
     }
-
+  else
+    {
+    vtkSetAndObserveMRMLObjectMacro(this->TransformFromParent, nullptr);
+    }
+  }
+else
+  {
+  // shallow-copy
+  vtkSetAndObserveMRMLObjectMacro(this->TransformToParent, node->TransformToParent);
+  vtkSetAndObserveMRMLObjectMacro(this->TransformFromParent, node->TransformFromParent);
+  }
   this->Modified();
   this->TransformModified();
-
-  this->EndModify(disabledModify);
 }
 
 //----------------------------------------------------------------------------
@@ -1625,4 +1638,16 @@ bool vtkMRMLTransformNode::IsGeneralTransformLinear(vtkAbstractTransform* inputT
       }
     }
   return true;
+}
+
+//----------------------------------------------------------------------------
+vtkMRMLStorageNode* vtkMRMLTransformNode::CreateDefaultSequenceStorageNode()
+{
+  return vtkMRMLLinearTransformSequenceStorageNode::New();
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLTransformNode::CreateDefaultSequenceDisplayNodes()
+{
+  // don't create display nodes for transforms by default
 }

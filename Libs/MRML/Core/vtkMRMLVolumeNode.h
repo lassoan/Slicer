@@ -53,9 +53,9 @@ public:
   /// Write this node's information to a MRML file in XML format.
   void WriteXML(ostream& of, int indent) override;
 
-  ///
-  /// Copy the node's attributes to this object
-  void Copy(vtkMRMLNode *node) override;
+  /// Copy node content (excludes basic data, such as name and node references).
+  /// \sa vtkMRMLNode::CopyContent
+  vtkMRMLCopyContentMacro(vtkMRMLVectorVolumeDisplayNode);
 
   ///
   /// Copy the node's attributes to this object
@@ -217,6 +217,9 @@ public:
   /// intensity value to "empty" voxels when the image is transformed.
   /// It is computed as median value of the 8 corner voxels.
   virtual double GetImageBackgroundScalarComponentAsDouble(int component);
+
+  /// Creates the most appropriate display node class for storing a sequence of these nodes.
+  void CreateDefaultSequenceDisplayNodes() override;
 
 protected:
   vtkMRMLVolumeNode();

@@ -137,13 +137,10 @@ void vtkMRMLPlotSeriesNode::ReadXMLAttributes(const char** atts)
 }
 
 //----------------------------------------------------------------------------
-// Copy the node's attributes to this object.
-//
-void vtkMRMLPlotSeriesNode::Copy(vtkMRMLNode *anode)
+void vtkMRMLPlotSeriesNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=true*/)
 {
-  int disabledModify = this->StartModify();
-
-  Superclass::Copy(anode);
+  MRMLNodeModifyBlocker blocker(this);
+  Superclass::CopyContent(anode, deepCopy);
 
   vtkMRMLCopyBeginMacro(anode);
   vtkMRMLCopyEnumMacro(PlotType);
@@ -157,8 +154,6 @@ void vtkMRMLPlotSeriesNode::Copy(vtkMRMLNode *anode)
   vtkMRMLCopyVectorMacro(Color, double, 3);
   vtkMRMLCopyFloatMacro(Opacity);
   vtkMRMLCopyEndMacro();
-
-  this->EndModify(disabledModify);
 }
 
 //----------------------------------------------------------------------------

@@ -57,9 +57,9 @@ public:
   /// Write this node's information to a MRML file in XML format.
   void WriteXML(ostream& of, int indent) override;
 
-  ///
-  /// Copy the node's attributes to this object
-  void Copy(vtkMRMLNode *node) override;
+  /// Copy node content (excludes basic data, such as name and node references).
+  /// \sa vtkMRMLNode::CopyContent
+  vtkMRMLCopyContentMacro(vtkMRMLStorableNode);
 
   ///
   /// Finds the storage node and read the data
@@ -117,6 +117,12 @@ public:
   /// Returns true on success. If storage node is not needed then
   /// storage node is not created and the method returns with true.
   virtual bool AddDefaultStorageNode(const char* filename = nullptr);
+
+  /// Creates the most appropriate storage node class for storing a sequence of these nodes.
+  /// The caller owns the returned object and responsible for deleting it.
+  /// If the method is not overwritten by subclass then it creates vtkMRMLSequenceStorageNode,
+  /// which saves the sequence in a MRML scene bundle file.
+  virtual vtkMRMLStorageNode* CreateDefaultSequenceStorageNode();
 
   /// Returns true if the node is more recent than the file on disk.
   /// This information can be used by the application to know which node

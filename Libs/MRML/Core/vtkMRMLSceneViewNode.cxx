@@ -400,7 +400,12 @@ void vtkMRMLSceneViewNode::StoreScene()
       vtkSmartPointer<vtkMRMLNode> newNode = vtkSmartPointer<vtkMRMLNode>::Take(node->CreateNodeInstance());
 
       newNode->SetScene(this->SnapshotScene);
-      newNode->CopyWithoutModifiedEvent(node);
+
+      int oldMode = newNode->GetDisableModifiedEvent();
+      newNode->DisableModifiedEventOn();
+      newNode->Copy(node);
+      newNode->SetDisableModifiedEvent(oldMode);
+
       newNode->SetID(node->GetID());
 
       newNode->SetAddToSceneNoModify(1);
@@ -466,7 +471,12 @@ void vtkMRMLSceneViewNode::AddMissingNodes()
       vtkSmartPointer<vtkMRMLNode> newNode = vtkSmartPointer<vtkMRMLNode>::Take(node->CreateNodeInstance());
 
       newNode->SetScene(this->SnapshotScene);
-      newNode->CopyWithoutModifiedEvent(node);
+
+      int oldMode = newNode->GetDisableModifiedEvent();
+      newNode->DisableModifiedEventOn();
+      newNode->Copy(node);
+      newNode->SetDisableModifiedEvent(oldMode);
+
       newNode->SetID(node->GetID());
 
       newNode->SetAddToSceneNoModify(1);
@@ -593,7 +603,8 @@ void vtkMRMLSceneViewNode::RestoreScene(bool removeNodes)
           {
           snode->SetScene(this->Scene);
           // to prevent copying of default info if not stored in snapshot
-          snode->CopyWithSingleModifiedEvent(node);
+          MRMLNodeModifyBlocker blocker(snode);
+          snode->Copy(node);
           // to prevent reading data on UpdateScene()
           snode->SetAddToSceneNoModify(0);
           }
@@ -793,9 +804,14 @@ bool vtkMRMLSceneViewNode::IncludeNodeInSceneView(vtkMRMLNode *node)
     }
   bool includeInView = true;
   // check for simple node types
+  // Storable nodes cannot be restored from scene views, as they would require
+  // storage nodes to load content, therefore we do not include them in scene views
+  // (except camera, which is a storable node but actually does not require a
+  // storage node and it is important to save in scene views).
   if (node->IsA("vtkMRMLSceneViewNode") ||
       node->IsA("vtkMRMLSceneViewStorageNode") ||
-      node->IsA("vtkMRMLSnapshotClipNode"))
+      node->IsA("vtkMRMLSnapshotClipNode") ||
+      (node->IsA("vtkMRMLStorableNode") && !node->IsA("vtkMRMLCameraNode")) )
     {
     includeInView = false;
     }

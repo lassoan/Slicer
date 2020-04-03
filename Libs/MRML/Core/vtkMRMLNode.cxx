@@ -50,6 +50,9 @@ vtkMRMLNode::vtkMRMLNode()
   , DisableModifiedEvent(0)
   , ModifiedEventPending(0)
 {
+  this->ContentModifiedEvents = vtkIntArray::New();
+  this->ContentModifiedEvents->InsertNextValue(vtkCommand::ModifiedEvent);
+
   // Set up callbacks
   this->MRMLCallbackCommand = vtkCallbackCommand::New();
   this->MRMLCallbackCommand->SetClientData( reinterpret_cast<void *>(this) );
@@ -93,6 +96,12 @@ vtkMRMLNode::~vtkMRMLNode()
     this->MRMLCallbackCommand = nullptr;
     }
 
+  if (this->ContentModifiedEvents)
+    {
+    this->ContentModifiedEvents->Delete();
+    this->ContentModifiedEvents = nullptr;
+    }
+
   this->SetTempURLString(nullptr);
   this->SetSingletonTag(nullptr);
 }
@@ -100,6 +109,7 @@ vtkMRMLNode::~vtkMRMLNode()
 //----------------------------------------------------------------------------
 void vtkMRMLNode::CopyWithScene(vtkMRMLNode *node)
 {
+  MRMLNodeModifyBlocker blocker(this);
   if (node->GetScene())
     {
     this->SetScene(node->GetScene());
@@ -114,8 +124,7 @@ void vtkMRMLNode::CopyWithScene(vtkMRMLNode *node)
 //----------------------------------------------------------------------------
 void vtkMRMLNode::Copy(vtkMRMLNode *node)
 {
-  int disabledModify = this->StartModify();
-
+  MRMLNodeModifyBlocker blocker(this);
   vtkMRMLCopyBeginMacro(node);
 
   // Only copy the node name when in the source node it is not empty
@@ -124,10 +133,7 @@ void vtkMRMLNode::Copy(vtkMRMLNode *node)
     {
     vtkMRMLCopyStringMacro(Name);
     }
-  vtkMRMLCopyStringMacro(Description);
   vtkMRMLCopyBooleanMacro(HideFromEditors);
-  vtkMRMLCopyBooleanMacro(SaveWithScene);
-  vtkMRMLCopyBooleanMacro(Selectable);
   vtkMRMLCopyBooleanMacro(AddToScene);
   if (node->GetSingletonTag())
     {
@@ -135,14 +141,22 @@ void vtkMRMLNode::Copy(vtkMRMLNode *node)
     }
   vtkMRMLCopyBooleanMacro(UndoEnabled);
   vtkMRMLCopyEndMacro();
-
-  this->Attributes = node->Attributes;
-
+  this->CopyContent(node);
   this->CopyReferences(node);
-
-  this->EndModify(disabledModify);
 }
 
+//----------------------------------------------------------------------------
+void vtkMRMLNode::CopyContent(vtkMRMLNode* node, bool vtkNotUsed(deepCopy)/*=true*/)
+{
+  MRMLNodeModifyBlocker blocker(this);
+  vtkMRMLCopyBeginMacro(node);
+  vtkMRMLCopyStringMacro(Description);
+  vtkMRMLCopyBooleanMacro(Selectable);
+  vtkMRMLCopyEndMacro();
+  this->Attributes = node->Attributes;
+}
+
+//----------------------------------------------------------------------------
 bool ArraysEqual(vtkIntArray* array1, vtkIntArray* array2)
 {
   if (array1 == nullptr && array2 == nullptr)
@@ -1770,4 +1784,12 @@ void vtkMRMLNode::vtkMRMLNodeReference::SetReferencedNode(vtkMRMLNode* node)
   }
   this->ReferencedNode = node;
   this->Modified();
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLNode::HasCopyContent() const
+{
+  // This may be overridden in derived classes by placing vtkMRMLNodeHasCopyContentMacro
+  // in the header.
+  return strcmp("vtkMRMLNode", this->GetClassNameInternal()) == 0;
 }

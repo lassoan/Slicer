@@ -653,7 +653,7 @@ def saveNode(node, filename, properties={}):
   by specifying a 'fileType'attribute to the optional 'properties' dictionary.
   """
   from slicer import app
-  properties["nodeID"] = node.GetID();
+  properties["nodeID"] = node.GetID()
   properties["fileName"] = filename
   if hasattr(properties, "fileType"):
     filetype = properties["fileType"]
@@ -720,7 +720,7 @@ def moduleNames():
 
 def getModule(moduleName):
   from slicer import app
-  module = app.moduleManager().module(moduleName);
+  module = app.moduleManager().module(moduleName)
   if not module:
     import sys
     print("Could not find module with name '%s" % moduleName, file=sys.stderr)
@@ -2170,7 +2170,7 @@ def setToolbarsVisible(visible, ignore=None):
   # (put in try block because Sequence Browser module is not always installed)
   try:
     import slicer
-    slicer.modules.sequencebrowser.autoShowToolBar = visible
+    slicer.modules.sequences.autoShowToolBar = visible
   except:
     # Sequences module is not installed
     pass

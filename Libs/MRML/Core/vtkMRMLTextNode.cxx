@@ -34,6 +34,7 @@ vtkMRMLTextNode::vtkMRMLTextNode()
   , Encoding(VTK_ENCODING_US_ASCII)
   , ForceCreateStorageNode(CreateStorageNodeAuto)
 {
+  this->ContentModifiedEvents->InsertNextValue(vtkMRMLTextNode::TextModifiedEvent);
 }
 
 //-----------------------------------------------------------------------------
@@ -135,15 +136,14 @@ void vtkMRMLTextNode::WriteXML(ostream& of, int nIndent)
 }
 
 //----------------------------------------------------------------------------
-void vtkMRMLTextNode::Copy(vtkMRMLNode* anode)
+void vtkMRMLTextNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=true*/)
 {
-  int disabledModify = this->StartModify();
-  Superclass::Copy(anode);
+  MRMLNodeModifyBlocker blocker(this);
+  Superclass::CopyContent(anode, deepCopy);
   vtkMRMLCopyBeginMacro(anode);
   vtkMRMLCopyStringMacro(Text);
   vtkMRMLCopyIntMacro(Encoding);
   vtkMRMLCopyEndMacro();
-  this->EndModify(disabledModify);
 }
 
 //----------------------------------------------------------------------------

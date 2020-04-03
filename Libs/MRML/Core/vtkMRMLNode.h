@@ -130,6 +130,32 @@ void class::Set##name (const char* _arg)            \
   }
 #endif
 
+// Use this macro to declare that this node supports
+// CopyContent. It also declares CopyContent method.
+//
+// This technique is needed so that we can determine if
+// a specific node class has implemented CopyContent (if only
+// a parent class implemented it that is not enough).
+//
+#ifndef vtkMRMLCopyContentMacro
+#define vtkMRMLCopyContentMacro(thisClassName) \
+    void CopyContent(vtkMRMLNode* node, bool deepCopy=true) override; \
+    bool HasCopyContent() const override \
+    { \
+    return strcmp(#thisClassName, this->GetClassNameInternal()) == 0; \
+    }
+#endif
+
+// Use this macro to declare that this node supports
+// CopyContent, without implementing CopyContent method
+// (this is the case when parent classes copy all content).
+#ifndef vtkMRMLCopyContentDefaultMacro
+#define vtkMRMLCopyContentDefaultMacro(thisClassName) \
+    bool HasCopyContent() const override \
+    { \
+    return strcmp(#thisClassName, this->GetClassNameInternal()) == 0; \
+    }
+#endif
 
 /// \brief Abstract Superclass for all specific types of MRML nodes.
 ///
@@ -151,6 +177,10 @@ public:
   ///
   /// \note Subclasses should implement this method
   virtual vtkMRMLNode* CreateNodeInstance() = 0;
+
+  /// \brief Returns true if the class supports deep and shallow copying node content
+  /// (implements ShallowCopyContent and DeepCopyContent).
+  virtual bool HasCopyContent() const;
 
   /// Set node attributes
   ///
@@ -195,14 +225,24 @@ public:
   /// Write this node's body to a MRML file in XML format.
   virtual void WriteNodeBodyXML(ostream& of, int indent);
 
-  /// \brief Copy parameters (not including ID and Scene) from another node
-  /// of the same type.
-  ///
+  /// \brief Copy node contents from another node of the same type.
+  /// Does not copy node ID and Scene.
+  /// Performs deep copy - an independent copy is created from all data, including bulk data.
   /// \note
   /// Subclasses should implement this method.
   /// Call this method in the subclass implementation.
-  /// Node name is only updated if a non-empty node name is specified in the source node.
   virtual void Copy(vtkMRMLNode *node);
+
+  /// \brief Copy node contents from another node of the same type.
+  /// Does not copy node ID, Scene, Name, SingletonTag, HideFromEditors, AddToScene, UndoEnabled,
+  /// and node references.
+  /// If deepCopy is set to false then a shallow copy of bulk data (such as image or mesh data) could be made;
+  /// copying may be faster but the node may share some data with the source node instead of creating
+  /// an independent copy.
+  /// \note
+  /// If a class implements this then make sure CopyContent method is implemented
+  /// in all parent classes as well and vtkMRMLNodeHasCopyContentMacro(ClassName) is added to the header.
+  virtual void CopyContent(vtkMRMLNode* node, bool deepCopy=true);
 
   /// \brief Copy the references of the node into this.
   ///
@@ -216,6 +256,7 @@ public:
   /// \note The node is **not** added into the scene of \a node. You must do it
   /// manually **after** calling CopyWithScene(vtkMRMLNode*) using
   /// vtkMRMLScene::AddNode(vtkMRMLNode*).
+  /// Only one vtkCommand::ModifiedEvent is invoked, after the copy is fully completed.
   ///
   /// \bug Calling vtkMRMLScene::AddNode(vtkMRMLNode*) **before**
   /// CopyWithScene(vtkMRMLNode*) is **NOT** supported, it will unsynchronize
@@ -521,38 +562,6 @@ public:
       }
     }
 
-  void CopyWithSingleModifiedEvent (vtkMRMLNode *node)
-    {
-    int oldMode = this->GetDisableModifiedEvent();
-    this->DisableModifiedEventOn();
-    this->Copy(node);
-    this->InvokePendingModifiedEvent();
-    this->SetDisableModifiedEvent(oldMode);
-    }
-
-  void CopyWithoutModifiedEvent (vtkMRMLNode *node)
-    {
-    int oldMode = this->GetDisableModifiedEvent();
-    this->DisableModifiedEventOn();
-    this->Copy(node);
-    this->SetDisableModifiedEvent(oldMode);
-    }
-
-  /// \brief \copybrief CopyWithScene(vtkMRMLNode *)
-  ///
-  /// This function is a wrapper around CopyWithScene(vtkMRMLNode *) ensuring
-  /// that only one vtkCommand::ModifiedEvent is invoked. It internally uses
-  /// the function StartModify() and EndModify(int).
-  ///
-  /// \sa CopyWithScene(vtkMRMLNode *)
-  /// \sa StartModify() EndModify(int)
-  void CopyWithSceneWithSingleModifiedEvent (vtkMRMLNode *node)
-    {
-    int oldMode = this->StartModify();
-    this->CopyWithScene(node);
-    this->EndModify(oldMode);
-    }
-
   /// Get the scene this node has been added to.
   virtual vtkMRMLScene* GetScene();
 
@@ -571,6 +580,12 @@ public:
 
   /// Update the stored reference to another node in the scene.
   virtual void UpdateReferenceID(const char *oldID, const char *newID);
+
+  /// Return list of events that indicate that content of the node is modified.
+  /// For example, it is not enough to observe vtkCommand::ModifiedEvent to get
+  /// notified when a transform stored in a transform node is modified, but
+  /// vtkMRMLTransformableNode::TransformModifiedEvent must be observed as well.
+  vtkGetObjectMacro(ContentModifiedEvents, vtkIntArray);
 
   /// \brief Encode a URL string.
   ///
@@ -924,6 +939,8 @@ protected:
 
   typedef std::map< std::string, std::string > AttributesType;
   AttributesType Attributes;
+
+  vtkIntArray* ContentModifiedEvents;
 
   vtkObserverManager *MRMLObserverManager;
 

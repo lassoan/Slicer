@@ -209,14 +209,11 @@ void vtkMRMLPlotChartNode::ReadXMLAttributes(const char** atts)
   this->EndModify(disabledModify);
 }
 
-
 //----------------------------------------------------------------------------
-// Copy the node's attributes to this object.
-void vtkMRMLPlotChartNode::Copy(vtkMRMLNode *anode)
+void vtkMRMLPlotChartNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=true*/)
 {
-  int disabledModify = this->StartModify();
-
-  Superclass::Copy(anode);
+  MRMLNodeModifyBlocker blocker(this);
+  Superclass::CopyContent(anode, deepCopy);
 
   vtkMRMLCopyBeginMacro(anode);
   vtkMRMLCopyStringMacro(Title);
@@ -241,8 +238,6 @@ void vtkMRMLPlotChartNode::Copy(vtkMRMLNode *anode)
   vtkMRMLCopyBooleanMacro(EnablePointMoveAlongX);
   vtkMRMLCopyBooleanMacro(EnablePointMoveAlongY);
   vtkMRMLCopyEndMacro();
-
-  this->EndModify(disabledModify);
 }
 
 //----------------------------------------------------------------------------

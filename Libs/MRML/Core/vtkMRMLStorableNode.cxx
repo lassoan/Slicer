@@ -15,6 +15,7 @@ Version:   $Revision: 1.3 $
 // MRML includes
 #include "vtkMRMLStorableNode.h"
 #include "vtkMRMLScene.h"
+#include "vtkMRMLSequenceStorageNode.h"
 #include "vtkMRMLStorageNode.h"
 #include "vtkTagTable.h"
 
@@ -207,15 +208,12 @@ void vtkMRMLStorableNode::ReadXMLAttributes(const char** atts)
 
 }
 
-
 //----------------------------------------------------------------------------
-// Copy the node's attributes to this object.
-// Does NOT copy: ID, FilePrefix, Name, ID
-void vtkMRMLStorableNode::Copy(vtkMRMLNode *anode)
+void vtkMRMLStorableNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=true*/)
 {
-  int disabledModify = this->StartModify();
+  MRMLNodeModifyBlocker blocker(this);
+  Superclass::CopyContent(anode, deepCopy);
 
-  Superclass::Copy(anode);
   vtkMRMLStorableNode *node = (vtkMRMLStorableNode *) anode;
   if (!node)
     {
@@ -248,9 +246,6 @@ void vtkMRMLStorableNode::Copy(vtkMRMLNode *anode)
         }
       }
     }
-
-  this->EndModify(disabledModify);
-
 }
 
 //----------------------------------------------------------------------------
@@ -452,4 +447,10 @@ bool vtkMRMLStorableNode::AddDefaultStorageNode(const char* filename /* =nullptr
   this->GetScene()->AddNode(storageNode);
   this->SetAndObserveStorageNodeID(storageNode->GetID());
   return storageNode;
+}
+
+//---------------------------------------------------------------------------
+vtkMRMLStorageNode* vtkMRMLStorableNode:: CreateDefaultSequenceStorageNode()
+{
+  return vtkMRMLSequenceStorageNode::New();
 }

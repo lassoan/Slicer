@@ -48,9 +48,9 @@ class VTK_MRML_EXPORT vtkMRMLScalarVolumeNode : public vtkMRMLVolumeNode
   /// Write this node's information to a MRML file in XML format.
   void WriteXML(ostream& of, int indent) override;
 
-  ///
-  /// Copy the node's attributes to this object
-  void Copy(vtkMRMLNode *node) override;
+  /// Copy node content (excludes basic data, such as name and node references).
+  /// \sa vtkMRMLNode::CopyContent
+  vtkMRMLCopyContentDefaultMacro(vtkMRMLScalarVolumeNode);
 
   ///
   /// Get node XML tag name (like Volume, Model)
@@ -71,6 +71,9 @@ class VTK_MRML_EXPORT vtkMRMLScalarVolumeNode : public vtkMRMLVolumeNode
   ///
   /// Create and observe default display node
   void CreateDefaultDisplayNodes() override;
+
+  /// Creates the most appropriate storage node class for storing a sequence of these nodes.
+  vtkMRMLStorageNode* CreateDefaultSequenceStorageNode() override;
 
   /// Measured quantity of voxel values, specified as a standard coded entry.
   /// For example: (DCM, 112031, "Attenuation Coefficient")

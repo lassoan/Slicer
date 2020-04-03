@@ -53,6 +53,11 @@ list(APPEND ITK_INCLUDE_DIRS ${ITKFactoryRegistration_INCLUDE_DIRS})
 include(${ITK_USE_FILE})
 
 #
+# LibArchive
+#
+find_package(LibArchive REQUIRED MODULE)
+
+#
 # vtkTeem
 #
 if(MRML_USE_vtkTeem)
@@ -77,6 +82,7 @@ set(include_dirs
   ${vtkITK_INCLUDE_DIRS}
   ${vtkSegmentationCore_INCLUDE_DIRS}
   ${FreeSurfer_INCLUDE_DIRS}
+  ${LibArchive_INCLUDE_DIR}
   )
 if(MRML_USE_vtkTeem)
   list(APPEND include_dirs ${vtkTeem_INCLUDE_DIRS})
@@ -109,6 +115,8 @@ endif()
 # Sources
 # --------------------------------------------------------------------------
 set(MRMLCore_SRCS
+  vtkArchive.cxx
+  vtkArchive.h
   vtkCodedEntry.cxx
   vtkEventBroker.cxx
   vtkDataFileFormatHelper.cxx
@@ -145,6 +153,8 @@ set(MRMLCore_SRCS
   vtkMRMLLabelMapVolumeDisplayNode.cxx
   vtkMRMLLabelMapVolumeNode.cxx
   vtkMRMLLinearTransformNode.cxx
+  vtkMRMLLinearTransformSequenceStorageNode.cxx
+  vtkMRMLLinearTransformSequenceStorageNode.h
   vtkMRMLMarkupsStorageNode.cxx
   vtkMRMLModelDisplayNode.cxx
   vtkMRMLModelHierarchyNode.cxx
@@ -172,6 +182,10 @@ set(MRMLCore_SRCS
   vtkMRMLSegmentationDisplayNode.h
   vtkMRMLSegmentationStorageNode.cxx
   vtkMRMLSegmentationStorageNode.h
+  vtkMRMLSequenceNode.cxx
+  vtkMRMLSequenceNode.h
+  vtkMRMLSequenceStorageNode.cxx
+  vtkMRMLSequenceStorageNode.h
   vtkMRMLSelectionNode.cxx
   vtkMRMLSliceCompositeNode.cxx
   vtkMRMLSliceNode.cxx
@@ -202,6 +216,8 @@ set(MRMLCore_SRCS
   vtkMRMLGlyphableVolumeSliceDisplayNode.cxx
   vtkMRMLVolumeHeaderlessStorageNode.cxx
   vtkMRMLVolumeNode.cxx
+  vtkMRMLVolumeSequenceStorageNode.cxx
+  vtkMRMLVolumeSequenceStorageNode.h
   vtkObservation.cxx
   vtkObserverManager.cxx
   vtkMRMLLayoutNode.cxx
@@ -278,6 +294,7 @@ set(libs
   ${VTK_LIBRARIES}
   vtkIOInfovis
   FreeSurfer
+  ${LibArchive_LIBRARY}
   )
 if(MRML_USE_vtkTeem)
   list(APPEND libs vtkTeem)
