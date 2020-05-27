@@ -19,7 +19,6 @@
 
 // MRML includes
 #include "vtkCurveGenerator.h"
-#include "vtkMRMLMarkupsFiducialStorageNode.h"
 #include "vtkMRMLMarkupsDisplayNode.h"
 #include "vtkMRMLMarkupsStorageNode.h"
 #include "vtkMRMLSelectionNode.h"
@@ -364,10 +363,8 @@ vtkMRMLStorageNode* vtkMRMLMarkupsNode::CreateDefaultStorageNode()
     vtkErrorMacro("CreateDefaultStorageNode failed: scene is invalid");
     return nullptr;
     }
-  // By default we could store points in the scene (especially for lines
-  // and angles), but for now we always store in an fcsv file.
   return vtkMRMLStorageNode::SafeDownCast(
-    scene->CreateNodeByClass("vtkMRMLMarkupsFiducialStorageNode"));
+    scene->CreateNodeByClass("vtkMRMLMarkupsJsonStorageNode"));
 }
 
 //-------------------------------------------------------------------------
@@ -386,6 +383,11 @@ void vtkMRMLMarkupsNode::CreateDefaultDisplayNodes()
     }
   vtkMRMLMarkupsDisplayNode* dispNode = vtkMRMLMarkupsDisplayNode::SafeDownCast(
     this->GetScene()->AddNewNodeByClass("vtkMRMLMarkupsDisplayNode"));
+  if (!dispNode)
+    {
+    vtkErrorMacro("vtkMRMLMarkupsNode::CreateDefaultDisplayNodes failed: scene failed to instantiate a vtkMRMLMarkupsDisplayNode node");
+    return;
+    }
   this->SetAndObserveDisplayNodeID(dispNode->GetID());
 }
 
@@ -491,10 +493,6 @@ int vtkMRMLMarkupsNode::AddControlPoint(ControlPoint *controlPoint)
     {
     controlPoint->ID = this->GenerateUniqueControlPointID();
     }
-  if (controlPoint->Label.empty())
-    {
-    controlPoint->Label = this->GenerateControlPointLabel(this->LastUsedControlPointNumber);
-    }
 
   this->ControlPoints.push_back(controlPoint);
 
@@ -519,20 +517,21 @@ int vtkMRMLMarkupsNode::AddControlPoint(ControlPoint *controlPoint)
 //-----------------------------------------------------------
 int vtkMRMLMarkupsNode::AddNControlPoints(int n, std::string label /*=std::string()*/, vtkVector3d* point /*=nullptr*/)
 {
-  int controlPointIndex = -1;
   if (n < 0)
     {
     vtkErrorMacro("AddNControlPoints: invalid number of points " << n);
-    return controlPointIndex;
+    return -1;
     }
 
-  if (this->MaximumNumberOfControlPoints != 0 &&  n > this->MaximumNumberOfControlPoints)
+  if (this->MaximumNumberOfControlPoints != 0 &&  this->GetNumberOfControlPoints() + n > this->MaximumNumberOfControlPoints)
     {
-    vtkErrorMacro("AddNControlPoints: number of points " << n <<
-                  " major than maximum number of control points allowed : " << this->MaximumNumberOfControlPoints);
-    return controlPointIndex;
+    vtkErrorMacro("AddNControlPoints: number of existing points (" << this->GetNumberOfControlPoints()
+      << ") plus requested number of new points (" << n << ") are more than maximum number of control points allowed ("
+      << this->MaximumNumberOfControlPoints << ")");
+    return -1;
     }
 
+  int controlPointIndex = -1;
   for (int i = 0; i < n; i++)
     {
     ControlPoint *controlPoint = new ControlPoint;
@@ -547,6 +546,10 @@ int vtkMRMLMarkupsNode::AddNControlPoints(int n, std::string label /*=std::strin
     else
       {
       controlPoint->PositionStatus = PositionUndefined;
+      }
+    if (controlPoint->Label.empty())
+      {
+      controlPoint->Label = this->GenerateControlPointLabel(this->LastUsedControlPointNumber);
       }
     controlPointIndex = this->AddControlPoint(controlPoint);
     }
@@ -2104,4 +2107,50 @@ void vtkMRMLMarkupsNode::UpdateInteractionHandleToWorldMatrix()
   handleToWorldMatrix->RotateWXYZ(angle, rotationVector_World);
   handleToWorldMatrix->Translate(origin_World);
   this->InteractionHandleToWorldMatrix->DeepCopy(handleToWorldMatrix->GetMatrix());
+}
+
+//---------------------------------------------------------------------------
+const char* vtkMRMLMarkupsNode::GetPositionStatusAsString(int id)
+{
+  switch (id)
+    {
+    case vtkMRMLMarkupsNode::PositionUndefined:
+      {
+      return "undefined";
+      }
+    case vtkMRMLMarkupsNode::PositionPreview:
+      {
+      return "preview";
+      }
+    case vtkMRMLMarkupsNode::PositionDefined:
+      {
+      return "defined";
+      }
+    default:
+      {
+      vtkGenericWarningMacro("Unknown position status: " << id);
+      return "";
+      }
+    }
+}
+
+//---------------------------------------------------------------------------
+int vtkMRMLMarkupsNode::GetPositionStatusFromString(const char* name)
+{
+  if (name == nullptr)
+    {
+    // invalid name
+    return -1;
+    }
+  for (int i = 0; i < vtkMRMLMarkupsNode::PositionStatus_Last; i++)
+    {
+    if (strcmp(name, vtkMRMLMarkupsNode::GetPositionStatusAsString(i)) == 0)
+      {
+      // found a matching name
+      return i;
+      }
+    }
+  // name not found
+  vtkGenericWarningMacro("Unknown position status: " << name);
+  return -1;
 }

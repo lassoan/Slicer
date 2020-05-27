@@ -71,6 +71,7 @@ class  VTK_SLICER_MARKUPS_MODULE_MRML_EXPORT vtkMRMLMarkupsNode : public vtkMRML
   /// Make the storage node a friend so that ReadDataInternal can set the ControlPoint ids
   friend class vtkMRMLMarkupsStorageNode;
   friend class vtkMRMLMarkupsFiducialStorageNode;
+  friend class vtkMRMLMarkupsJsonStorageNode;
 
 public:
 
@@ -220,8 +221,12 @@ public:
   {
     PositionUndefined,
     PositionPreview,
-    PositionDefined
+    PositionDefined,
+    PositionStatus_Last
   };
+
+  static const char* GetPositionStatusAsString(int id);
+  static int GetPositionStatusFromString(const char* name);
 
   /// Clear out the node of all control points
   virtual void RemoveAllControlPoints();
@@ -266,6 +271,8 @@ public:
   /// Add n control points.
   /// If point is specified then all control point positions will be initialized to that position,
   /// otherwise control poin positions are initialized to (0,0,0).
+  /// If requested number of points would result more points than the maximum allowed number of points
+  /// then no points are added at all.
   /// Return index of the last placed control point, -1 on failure.
   int AddNControlPoints(int n, std::string label = std::string(), vtkVector3d* point = nullptr);
   /// Add a new control point, defined in the world coordinate system.
