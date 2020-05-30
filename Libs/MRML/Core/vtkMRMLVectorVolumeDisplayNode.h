@@ -63,29 +63,38 @@ class VTK_MRML_EXPORT vtkMRMLVectorVolumeDisplayNode : public vtkMRMLGlyphableVo
 
   enum
     {
-    scalarModeMagnitude = 0
+    ScalarModeRGB = 0, // RGB if number of components is 3 or 4, single component otherwise
+    ScalarModeSingleComponent = 1,
+    ScalarMode_Last
     };
   vtkGetMacro(ScalarMode, int);
   vtkSetMacro(ScalarMode, int);
 
-  void SetScalarModeToMagnitude() {
-    this->SetScalarMode(this->scalarModeMagnitude);
-  }
+  void SetScalarModeToRGB() { this->SetScalarMode(this->ScalarModeRGB); }
+  void SetScalarModeToSingleComponent() { this->SetScalarMode(this->ScalarModeSingleComponent); }
+
+  static const char* GetScalarModeAsString(int mode);
+  static int GetScalarModeFromString(const char* name);
+
+
+  /// Index of displayed scalar component
+  vtkGetMacro(ScalarComponent, int);
+  vtkSetMacro(ScalarComponent, int);
 
   enum
     {
-    glyphModeLines = 1,
-    glyphModeTubes = 2
+    GlyphModeLines = 1,
+    GlyphModeTubes = 2,
+    GlyphMode_Last
     };
   vtkGetMacro(GlyphMode, int);
   vtkSetMacro(GlyphMode, int);
 
-  void SetGlyphModeToLines() {
-    this->SetGlyphMode(this->glyphModeLines);
-  };
-  void SetGlyphModeToTubes() {
-    this->SetGlyphMode(this->glyphModeTubes);
-  };
+  void SetGlyphModeToLines() { this->SetGlyphMode(this->GlyphModeLines); };
+  void SetGlyphModeToTubes() { this->SetGlyphMode(this->GlyphModeTubes); };
+
+  static const char* GetGlyphModeAsString(int mode);
+  static int GetGlyphModeFromString(const char* name);
 
   //virtual vtkPolyData* ExecuteGlyphPipeLineAndGetPolyData( vtkImageData* ) {return nullptr;};
 
@@ -131,10 +140,20 @@ protected:
 
   int ScalarMode;
   int GlyphMode;
+  int ScalarComponent;
+
+  enum
+  {
+    PipelineRGB,
+    PipelineRGBA,
+    PipelineSingleComponent
+  };
+  int PipelineType;
 
   vtkImageShiftScale *ShiftScale;
   vtkImageRGBToHSI *RGBToHSI;
   vtkImageExtractComponents *ExtractIntensity;
+  vtkImageExtractComponents* ExtractComponents;
 };
 
 #endif

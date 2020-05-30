@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>331</width>
+    <width>402</width>
     <height>303</height>
    </rect>
   </property>
@@ -14,56 +14,19 @@
    <string>Scalar Volume Display</string>
   </property>
   <layout class="QGridLayout" name="gridLayout" columnstretch="0,0,0">
-   <property name="margin">
+   <property name="leftMargin">
     <number>0</number>
    </property>
-   <item row="11" column="0" colspan="3">
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>0</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-   <item row="8" column="0" colspan="3">
-    <widget class="qMRMLWindowLevelWidget" name="MRMLWindowLevelWidget"/>
-   </item>
-   <item row="0" column="2">
-    <widget class="qMRMLColorTableComboBox" name="ColorTableComboBox">
-     <property name="showChildNodeTypes">
-      <bool>true</bool>
-     </property>
-     <property name="addEnabled">
-      <bool>false</bool>
-     </property>
-     <property name="removeEnabled">
-      <bool>false</bool>
-     </property>
-    </widget>
-   </item>
-   <item row="1" column="0">
-    <widget class="QLabel" name="InterpolateLabel">
-     <property name="text">
-      <string>Interpolate:</string>
-     </property>
-    </widget>
-   </item>
-   <item row="9" column="0" colspan="3">
-    <widget class="qMRMLVolumeThresholdWidget" name="MRMLVolumeThresholdWidget"/>
-   </item>
-   <item row="0" column="0">
-    <widget class="QLabel" name="LookupTableLabel">
-     <property name="text">
-      <string>Lookup Table:</string>
-     </property>
-    </widget>
-   </item>
-   <item row="2" column="0">
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item row="3" column="0">
     <widget class="QLabel" name="WindowLevelPresetsLabel">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
@@ -76,7 +39,96 @@
      </property>
     </widget>
    </item>
-   <item row="6" column="0" colspan="3">
+   <item row="3" column="2">
+    <widget class="QPushButton" name="LockWindowLevelButton">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>30</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="toolTip">
+      <string/>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="icon">
+      <iconset>
+       <normaloff>:/Icons/Medium/SlicerUnlock.png</normaloff>:/Icons/Medium/SlicerUnlock.png</iconset>
+     </property>
+     <property name="checkable">
+      <bool>false</bool>
+     </property>
+     <property name="flat">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="0">
+    <widget class="QLabel" name="InterpolateLabel">
+     <property name="text">
+      <string>Interpolate:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="11" column="0" colspan="3">
+    <widget class="ctkCollapsibleGroupBox" name="HistogramGroupBox">
+     <property name="title">
+      <string>Histogram</string>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+     <layout class="QGridLayout" name="gridLayout_2">
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>6</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="ctkTransferFunctionView" name="TransferFunctionView">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>100</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="1" column="0">
+    <widget class="QLabel" name="LookupTableLabel">
+     <property name="text">
+      <string>Lookup Table:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="9" column="0" colspan="3">
+    <widget class="qMRMLWindowLevelWidget" name="MRMLWindowLevelWidget"/>
+   </item>
+   <item row="7" column="0" colspan="3">
     <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
       <widget class="QToolButton" name="CTBonePresetToolButton">
@@ -280,14 +332,17 @@
      </item>
     </layout>
    </item>
-   <item row="1" column="2">
+   <item row="10" column="0" colspan="3">
+    <widget class="qMRMLVolumeThresholdWidget" name="MRMLVolumeThresholdWidget"/>
+   </item>
+   <item row="2" column="2">
     <widget class="QCheckBox" name="InterpolateCheckbox">
      <property name="text">
       <string/>
      </property>
     </widget>
    </item>
-   <item row="7" column="0" colspan="3">
+   <item row="8" column="0" colspan="3">
     <widget class="QWidget" name="PresetsWidget" native="true">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
@@ -299,26 +354,11 @@
       <property name="spacing">
        <number>0</number>
       </property>
-      <property name="margin">
-       <number>0</number>
-      </property>
-     </layout>
-    </widget>
-   </item>
-   <item row="10" column="0" colspan="3">
-    <widget class="ctkCollapsibleGroupBox" name="HistogramGroupBox">
-     <property name="title">
-      <string>Histogram</string>
-     </property>
-     <property name="checked">
-      <bool>false</bool>
-     </property>
-     <layout class="QGridLayout" name="gridLayout_2">
       <property name="leftMargin">
        <number>0</number>
       </property>
       <property name="topMargin">
-       <number>6</number>
+       <number>0</number>
       </property>
       <property name="rightMargin">
        <number>0</number>
@@ -326,60 +366,87 @@
       <property name="bottomMargin">
        <number>0</number>
       </property>
-      <item row="0" column="0">
-       <widget class="ctkTransferFunctionView" name="TransferFunctionView">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>100</height>
-         </size>
-        </property>
-       </widget>
-      </item>
      </layout>
     </widget>
    </item>
-   <item row="2" column="2">
-    <widget class="QPushButton" name="LockWindowLevelButton">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
+   <item row="12" column="0" colspan="3">
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
      </property>
-     <property name="minimumSize">
+     <property name="sizeHint" stdset="0">
       <size>
-       <width>30</width>
+       <width>20</width>
        <height>0</height>
       </size>
      </property>
-     <property name="toolTip">
-      <string/>
+    </spacer>
+   </item>
+   <item row="1" column="2">
+    <widget class="qMRMLColorTableComboBox" name="ColorTableComboBox">
+     <property name="showChildNodeTypes">
+      <bool>true</bool>
      </property>
-     <property name="text">
-      <string/>
-     </property>
-     <property name="icon">
-      <iconset resource="../../../../../../Base/QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-       <normaloff>:/Icons/Medium/SlicerUnlock.png</normaloff>:/Icons/Medium/SlicerUnlock.png</iconset>
-     </property>
-     <property name="checkable">
+     <property name="addEnabled">
       <bool>false</bool>
      </property>
-     <property name="flat">
+     <property name="removeEnabled">
       <bool>false</bool>
      </property>
     </widget>
+   </item>
+   <item row="0" column="0">
+    <widget class="QLabel" name="ScalarComponentLabel">
+     <property name="text">
+      <string>Component:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="2">
+    <layout class="QHBoxLayout" name="horizontalLayout_3">
+     <item>
+      <widget class="QComboBox" name="ScalarComponentTypeComboBox">
+       <item>
+        <property name="text">
+         <string>RGB</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>single</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="ScalarComponentIndexLabel">
+       <property name="text">
+        <string>index:</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSpinBox" name="ScalarComponentIndexSpinBox"/>
+     </item>
+    </layout>
    </item>
   </layout>
  </widget>
  <customwidgets>
+  <customwidget>
+   <class>ctkCollapsibleGroupBox</class>
+   <extends>QGroupBox</extends>
+   <header>ctkCollapsibleGroupBox.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>ctkTransferFunctionView</class>
+   <extends>QGraphicsView</extends>
+   <header>ctkTransferFunctionView.h</header>
+  </customwidget>
   <customwidget>
    <class>qMRMLColorTableComboBox</class>
    <extends>qMRMLNodeComboBox</extends>
@@ -406,17 +473,6 @@
    <extends>QWidget</extends>
    <header>qSlicerWidget.h</header>
    <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>ctkCollapsibleGroupBox</class>
-   <extends>QGroupBox</extends>
-   <header>ctkCollapsibleGroupBox.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>ctkTransferFunctionView</class>
-   <extends>QGraphicsView</extends>
-   <header>ctkTransferFunctionView.h</header>
   </customwidget>
  </customwidgets>
  <resources>

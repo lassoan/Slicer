@@ -57,6 +57,8 @@ protected slots:
   void onPresetButtonClicked();
   void onLockWindowLevelButtonClicked();
   void onHistogramSectionExpanded(bool);
+  void onScalarModeChanged(int);
+  void onScalarComponentIndexChanged(int);
 
 protected:
   void showEvent(QShowEvent * event) override;

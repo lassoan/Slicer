@@ -13,6 +13,7 @@
 // MRML includes
 #include "vtkMRMLColorNode.h"
 #include "vtkMRMLScalarVolumeDisplayNode.h"
+#include "vtkMRMLVectorVolumeDisplayNode.h"
 #include "vtkMRMLScalarVolumeNode.h"
 #include "vtkMRMLScene.h"
 
@@ -81,6 +82,11 @@ void qSlicerScalarVolumeDisplayWidgetPrivate::init()
     new ctkTransferFunctionBarsItem(this->Histogram);
   barsItem->setBarWidth(1.);
   scene->addItem(barsItem);
+
+  QObject::connect(this->ScalarComponentTypeComboBox, SIGNAL(currentIndexChanged(int)),
+                   q, SLOT(onScalarModeChanged(int)));
+  QObject::connect(this->ScalarComponentIndexSpinBox, SIGNAL(valueChanged(int)),
+                   q, SLOT(onScalarComponentIndexChanged(int)));
 
   QObject::connect(this->InterpolateCheckbox, SIGNAL(toggled(bool)),
                    q, SLOT(setInterpolate(bool)));
@@ -223,6 +229,48 @@ void qSlicerScalarVolumeDisplayWidget::updateWidgetFromMRML()
     d->DTIPresetToolButton->setEnabled(!lockedWindowLevel);
     d->MRMLWindowLevelWidget->setEnabled(!lockedWindowLevel);
     }
+
+  vtkMRMLVectorVolumeDisplayNode* vectorDisplayNode = vtkMRMLVectorVolumeDisplayNode::SafeDownCast(displayNode);
+  if (vectorDisplayNode)
+  {
+    bool rgb = vectorDisplayNode->GetScalarMode() == vtkMRMLVectorVolumeDisplayNode::ScalarModeRGB;
+    int inputImageComponents = 0;
+    vtkImageData* inputImage = vectorDisplayNode->GetInputImageData();
+    if (inputImage)
+      {
+      inputImageComponents = inputImage->GetNumberOfScalarComponents();
+      }
+
+    d->ScalarComponentLabel->setVisible(true);
+
+    const QSignalBlocker blocker1(d->ScalarComponentTypeComboBox);
+    d->ScalarComponentTypeComboBox->setVisible(true);
+    if (inputImageComponents < 3)
+      {
+      d->ScalarComponentTypeComboBox->setEnabled(false);
+      d->ScalarComponentTypeComboBox->setCurrentIndex(1);
+      }
+    else
+      {
+      d->ScalarComponentTypeComboBox->setEnabled(true);
+      d->ScalarComponentTypeComboBox->setCurrentIndex(rgb ? 0 : 1);
+      }
+
+    const QSignalBlocker blocker2(d->ScalarComponentIndexSpinBox);
+    int maxSelectableComponentIndex = std::max(vectorDisplayNode->GetScalarComponent(), rgb ? inputImageComponents - 3 : inputImageComponents - 1);
+    d->ScalarComponentIndexSpinBox->setMaximum(maxSelectableComponentIndex);
+    d->ScalarComponentIndexSpinBox->setValue(vectorDisplayNode->GetScalarComponent());
+    d->ScalarComponentIndexLabel->setVisible(maxSelectableComponentIndex > 0);
+    d->ScalarComponentIndexSpinBox->setVisible(maxSelectableComponentIndex > 0);
+    }
+  else
+    {
+    d->ScalarComponentLabel->setVisible(false);
+    d->ScalarComponentTypeComboBox->setVisible(false);
+    d->ScalarComponentIndexLabel->setVisible(false);
+    d->ScalarComponentIndexSpinBox->setVisible(false);
+    }
+
   this->updateHistogram();
 }
 
@@ -359,6 +407,30 @@ void qSlicerScalarVolumeDisplayWidget::onHistogramSectionExpanded(bool expanded)
   this->updateHistogram();
 }
 
+// --------------------------------------------------------------------------
+void qSlicerScalarVolumeDisplayWidget::onScalarModeChanged(int index)
+{
+  vtkMRMLVectorVolumeDisplayNode* displayNode =
+    vtkMRMLVectorVolumeDisplayNode::SafeDownCast(this->volumeDisplayNode());
+  if (!displayNode)
+    {
+    return;
+    }
+  displayNode->SetScalarMode(index == 0 ?
+    vtkMRMLVectorVolumeDisplayNode::ScalarModeRGB : vtkMRMLVectorVolumeDisplayNode::ScalarModeSingleComponent);
+}
+
+// --------------------------------------------------------------------------
+void qSlicerScalarVolumeDisplayWidget::onScalarComponentIndexChanged(int componentIndex)
+{
+  vtkMRMLVectorVolumeDisplayNode* displayNode =
+    vtkMRMLVectorVolumeDisplayNode::SafeDownCast(this->volumeDisplayNode());
+  if (!displayNode)
+  {
+    return;
+  }
+  displayNode->SetScalarComponent(componentIndex);
+}
 // --------------------------------------------------------------------------
 void qSlicerScalarVolumeDisplayWidget::setInterpolate(bool interpolate)
 {
