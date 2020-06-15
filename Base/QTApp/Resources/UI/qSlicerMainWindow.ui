@@ -107,6 +107,8 @@
    <attribute name="toolBarBreak">
     <bool>false</bool>
    </attribute>
+    <addaction name="EditUndoAction"/>
+    <addaction name="EditRedoAction"/>
   </widget>
   <widget class="QToolBar" name="ViewToolBar">
    <property name="windowTitle">
