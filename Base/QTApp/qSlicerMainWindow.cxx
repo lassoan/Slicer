@@ -252,7 +252,7 @@ void qSlicerMainWindowPrivate::setupUi(QMainWindow * mainWindow)
 
   QList<QAction*> toolBarActions;
   toolBarActions << this->MainToolBar->toggleViewAction();
-  //toolBarActions << this->UndoRedoToolBar->toggleViewAction();
+  toolBarActions << this->UndoRedoToolBar->toggleViewAction();
   toolBarActions << this->ModuleSelectorToolBar->toggleViewAction();
   toolBarActions << this->ModuleToolBar->toggleViewAction();
   toolBarActions << this->ViewToolBar->toggleViewAction();
@@ -277,8 +277,8 @@ void qSlicerMainWindowPrivate::setupUi(QMainWindow * mainWindow)
   this->LayoutToolBar->toggleViewAction()->trigger();
   //q->removeToolBar(this->UndoRedoToolBar);
   //q->removeToolBar(this->LayoutToolBar);
-  delete this->UndoRedoToolBar;
-  this->UndoRedoToolBar = nullptr;
+  //delete this->UndoRedoToolBar;
+  //this->UndoRedoToolBar = nullptr;
   delete this->LayoutToolBar;
   this->LayoutToolBar = nullptr;
 
