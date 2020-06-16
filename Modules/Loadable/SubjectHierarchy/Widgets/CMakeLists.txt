@@ -16,8 +16,6 @@ if(Slicer_BUILD_CLI_SUPPORT)
 endif()
 
 set(${KIT}_SRCS
-  qMRMLTransformItemDelegate.cxx
-  qMRMLTransformItemDelegate.h
   qMRMLSubjectHierarchyModel.cxx
   qMRMLSubjectHierarchyModel.h
   qMRMLSubjectHierarchyModel_p.h
@@ -66,7 +64,6 @@ set(${KIT}_MOC_SRCS
   qSlicerSubjectHierarchyFolderPlugin.h
   qSlicerSubjectHierarchyOpacityPlugin.h
   qSlicerSubjectHierarchyVisibilityPlugin.h
-  qMRMLTransformItemDelegate.h
   qMRMLSubjectHierarchyTreeView.h
   qMRMLSubjectHierarchyComboBox.h
   qMRMLSubjectHierarchyModel.h
