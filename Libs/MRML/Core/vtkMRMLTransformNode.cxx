@@ -60,6 +60,8 @@ vtkMRMLTransformNode::vtkMRMLTransformNode()
 
   this->ContentModifiedEvents->InsertNextValue(vtkMRMLTransformableNode::TransformModifiedEvent);
 
+  this->UndoEnabledOn();
+
   this->DefaultSequenceStorageNodeClassName = "vtkMRMLLinearTransformSequenceStorageNode";
 }
 

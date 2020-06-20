@@ -450,6 +450,7 @@ void qSlicerCoreApplicationPrivate::init()
 
   // Create MRML scene
   vtkMRMLScene* scene = vtkMRMLScene::New();
+  scene->SetUndoOn();
   q->setMRMLScene(scene);
   // Scene is not owned by this class. Remove the local variable because
   // handlePreApplicationCommandLineArguments() may cause quick exit from the application

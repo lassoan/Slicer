@@ -92,6 +92,8 @@ vtkMRMLMarkupsNode::vtkMRMLMarkupsNode()
 
   this->Measurements = vtkCollection::New();
   this->Measurements->AddObserver(vtkCommand::ModifiedEvent, this->MRMLCallbackCommand);
+
+  this->UndoEnabledOn();
 }
 
 //----------------------------------------------------------------------------
