@@ -96,6 +96,8 @@ vtkMRMLMarkupsNode::vtkMRMLMarkupsNode()
   this->TransformedCurvePolyLocator = vtkSmartPointer<vtkPointLocator>::New();
   this->InteractionHandleToWorldMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
   this->ContentModifiedEvents->InsertNextValue(vtkMRMLMarkupsNode::PointModifiedEvent);
+
+  this->UndoEnabledOn();
 }
 
 //----------------------------------------------------------------------------
