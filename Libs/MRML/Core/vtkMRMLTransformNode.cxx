@@ -58,6 +58,8 @@ vtkMRMLTransformNode::vtkMRMLTransformNode()
   this->CachedMatrixTransformFromParent=vtkMatrix4x4::New();
 
   this->ContentModifiedEvents->InsertNextValue(vtkMRMLTransformableNode::TransformModifiedEvent);
+
+  this->UndoEnabledOn();
 }
 
 //----------------------------------------------------------------------------

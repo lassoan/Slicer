@@ -343,6 +343,7 @@ void qSlicerCoreApplicationPrivate::init()
 
   // Create MRML scene
   vtkNew<vtkMRMLScene> scene;
+  scene->SetUndoOn();
   q->setMRMLScene(scene.GetPointer());
 
   // Instantiate moduleManager
