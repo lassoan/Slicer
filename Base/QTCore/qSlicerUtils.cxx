@@ -97,6 +97,19 @@ bool qSlicerUtils::isLoadableModule(const QString& filePath)
   return regex.exactMatch(QFileInfo(filePath).fileName());
 }
 
+//-----------------------------------------------------------------------------
+bool qSlicerUtils::isTestingModule(const QStringList& categories)
+{
+  foreach(const QString & category, categories)
+    {
+    if (category.split('.').takeFirst() != "Testing")
+      {
+      return false;
+      }
+    }
+  return true;
+}
+
 //------------------------------------------------------------------------------
 QString qSlicerUtils::searchTargetInIntDir(const QString& directory, const QString& target)
 {

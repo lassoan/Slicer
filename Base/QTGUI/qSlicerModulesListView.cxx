@@ -31,6 +31,7 @@
 #include "qSlicerAbstractModule.h"
 #include "qSlicerAbstractModuleFactoryManager.h"
 #include "qSlicerModuleFactoryManager.h"
+#include "qSlicerUtils.h"
 
 // QtGUI includes
 #include "qSlicerModuleFactoryFilterModel.h"
@@ -48,6 +49,13 @@ protected:
   qSlicerModulesListView* const q_ptr;
 
 public:
+  enum CustomRole
+  {
+    ModuleNameRole = Qt::UserRole,
+    IsBuiltInRole,
+    IsTestingRole,
+  };
+
   qSlicerModulesListViewPrivate(qSlicerModulesListView& object);
   void init();
 
@@ -96,7 +104,7 @@ void qSlicerModulesListViewPrivate::init()
 void qSlicerModulesListViewPrivate::updateItem(QStandardItem* item)
 {
   Q_Q(qSlicerModulesListView);
-  QString moduleName = item->data(Qt::UserRole).toString();
+  QString moduleName = item->data(qSlicerModulesListViewPrivate::ModuleNameRole).toString();
   item->setCheckable(true);
   // The module is ignored, therefore it hasn't been loaded
   if (this->FactoryManager != nullptr && this->FactoryManager->ignoredModuleNames().contains(moduleName))
@@ -148,6 +156,9 @@ void qSlicerModulesListViewPrivate::updateItem(QStandardItem* item)
     qobject_cast<qSlicerAbstractModule*>(coreModule);
   if (module)
     {
+    item->setData(module->isBuiltIn(), qSlicerModulesListViewPrivate::IsBuiltInRole);
+    item->setData(qSlicerUtils::isTestingModule(module->categories()), qSlicerModulesListViewPrivate::IsTestingRole);
+
     // See QTBUG-20248
     bool block = this->ModulesListModel->blockSignals(true);
     item->setIcon(module->icon());
@@ -190,8 +201,9 @@ QStandardItem* qSlicerModulesListViewPrivate
 ::moduleItem(const QString& moduleName)const
 {
   QModelIndex start = this->ModulesListModel->index(0, 0);
-  QModelIndexList moduleIndexes = this->ModulesListModel->match(start, Qt::UserRole, moduleName,
-                                                                /* hits= */ 1, Qt::MatchExactly);
+  QModelIndexList moduleIndexes = this->ModulesListModel->match(
+    start, qSlicerModulesListViewPrivate::ModuleNameRole, moduleName,
+    /* hits= */ 1, Qt::MatchExactly);
   if (moduleIndexes.count() == 0)
     {
     return nullptr;
@@ -206,7 +218,7 @@ QStringList qSlicerModulesListViewPrivate
   QStringList modules;
   foreach(const QModelIndex& index, indexes)
     {
-    modules << index.data(Qt::UserRole).toString();
+    modules << index.data(qSlicerModulesListViewPrivate::ModuleNameRole).toString();
     }
   return modules;
 }
@@ -435,7 +447,7 @@ void qSlicerModulesListView::addModule(const QString& moduleName)
   Q_D(qSlicerModulesListView);
   Q_ASSERT(d->moduleItem(moduleName) == nullptr);
   QStandardItem * item = new QStandardItem();
-  item->setData(moduleName, Qt::UserRole);
+  item->setData(moduleName, qSlicerModulesListViewPrivate::ModuleNameRole);
   d->updateItem(item);
   int index = d->sortedInsertionIndex(moduleName);
   d->ModulesListModel->insertRow(index, item);
@@ -479,7 +491,7 @@ void qSlicerModulesListView::onItemChanged(QStandardItem* item)
     {
     return;
     }
-  QString moduleName = item->data(Qt::UserRole).toString();
+  QString moduleName = item->data(qSlicerModulesListViewPrivate::ModuleNameRole).toString();
   qSlicerAbstractCoreModule* module = d->FactoryManager->moduleInstance(moduleName);
   if (item->checkState() == Qt::Checked)
     {

@@ -53,6 +53,8 @@ public:
   /// regular expression: "(lib)?qSlicer.+Module\\.(so, dll, dylib)"
   static bool isLoadableModule(const QString& filePath);
 
+  static bool isTestingModule(const QStringList& categories);
+
   /// Look for target file in build intermediate directory.
   /// On windows, the intermediate directory includes: . Debug RelWithDebInfo Release MinSizeRel
   /// And it return the first matched directory
