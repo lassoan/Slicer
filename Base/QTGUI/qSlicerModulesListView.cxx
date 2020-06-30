@@ -54,6 +54,7 @@ public:
     ModuleNameRole = Qt::UserRole,
     IsBuiltInRole,
     IsTestingRole,
+    IsHiddenRole,
   };
 
   qSlicerModulesListViewPrivate(qSlicerModulesListView& object);
@@ -158,6 +159,7 @@ void qSlicerModulesListViewPrivate::updateItem(QStandardItem* item)
     {
     item->setData(module->isBuiltIn(), qSlicerModulesListViewPrivate::IsBuiltInRole);
     item->setData(qSlicerUtils::isTestingModule(module->categories()), qSlicerModulesListViewPrivate::IsTestingRole);
+    item->setData(module->isHidden(), qSlicerModulesListViewPrivate::IsHiddenRole);
 
     // See QTBUG-20248
     bool block = this->ModulesListModel->blockSignals(true);

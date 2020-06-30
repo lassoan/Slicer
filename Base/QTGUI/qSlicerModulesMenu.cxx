@@ -25,7 +25,6 @@
 // CTK includes
 #include "qSlicerAbstractModule.h"
 #include "qSlicerModuleManager.h"
-#include "qSlicerModuleFactoryManager.h"
 
 // Slicer includes
 #include "qSlicerModulesMenu.h"
@@ -55,15 +54,11 @@ public:
   QMenu*   actionMenu(QAction* action, QMenu* parentMenu)const;
 
   qSlicerModuleManager* ModuleManager;
-  QAction*              AllModulesAction;
   QAction*              NoModuleAction; //< Can be used to remove the current module
   QString               CurrentModule;
   bool                  DuplicateActions;
   bool                  ShowHiddenModules;
-  bool                  AllModulesActionVisible;
   QStringList           TopLevelCategoryOrder;
-
-  qSlicerModuleFinderDialog* ModuleFinder;
 };
 
 //---------------------------------------------------------------------------
@@ -71,31 +66,19 @@ qSlicerModulesMenuPrivate::qSlicerModulesMenuPrivate(qSlicerModulesMenu& object)
   : q_ptr(&object)
 {
   this->ModuleManager = nullptr;
-  this->AllModulesAction = nullptr;
   this->NoModuleAction = nullptr;
   this->DuplicateActions = false;
   this->ShowHiddenModules = false;
-  this->AllModulesActionVisible = true;
   this->TopLevelCategoryOrder << "Wizards" << "Informatics" << "Registration"
     << "Segmentation" << "Quantification" << "Diffusion" << "IGT"
     << "Filtering" << "Surface Models" << "Converters" << "Endoscopy"
     << "Utilities" << "Developer Tools" << "Legacy" << "Testing";
-  this->ModuleFinder = nullptr;
 }
 
 //---------------------------------------------------------------------------
 void qSlicerModulesMenuPrivate::init()
 {
   Q_Q(qSlicerModulesMenu);
-  this->ModuleFinder = new qSlicerModuleFinderDialog(q);
-
-  this->AllModulesAction = new QAction();
-  this->AllModulesAction->setText(qSlicerModulesMenu::tr("All Modules"));
-  this->AllModulesAction->setShortcut(QKeySequence(Qt::CTRL + Qt::SHIFT + Qt::Key_F));
-
-  QObject::connect(this->AllModulesAction, SIGNAL(triggered()),
-    q, SLOT(onShowModuleFinder()));
-
   this->addDefaultCategories();
 
   // Invisible action, don't add it anywhere.
@@ -108,11 +91,6 @@ void qSlicerModulesMenuPrivate::init()
 void qSlicerModulesMenuPrivate::addDefaultCategories()
 {
   Q_Q(qSlicerModulesMenu);
-  if(this->AllModulesActionVisible)
-    {
-    q->addAction(this->AllModulesAction);
-    q->addSeparator();
-    }
   // between the 2 separators are the top level modules (with no category)
   q->addSeparator();
   // after the top level modules are the non-built-in categories (from
@@ -181,13 +159,6 @@ void qSlicerModulesMenuPrivate::addModuleAction(QMenu* menu, QAction* moduleActi
   QStringList orderedList;
   if (menu == q)
     {
-    if (this->AllModulesActionVisible)
-      {
-      // special ordering at the top level, the actions need to be added
-      // between the submenu AllModules and the other submenus
-      actions.removeFirst(); // remove AllModules
-      actions.removeFirst(); // remove first separator
-      }
     if (moduleAction->menu())
       {
       orderedList = this->TopLevelCategoryOrder;
@@ -432,42 +403,6 @@ bool qSlicerModulesMenu::showHiddenModules()const
 }
 
 //---------------------------------------------------------------------------
-QAction* qSlicerModulesMenu::allModulesAction()const
-{
-  Q_D(const qSlicerModulesMenu);
-  return d->AllModulesAction;
-}
-
-//---------------------------------------------------------------------------
-void qSlicerModulesMenu::setAllModulesActionVisible(bool visible)
-{
-  Q_D(qSlicerModulesMenu);
-  if (d->AllModulesActionVisible == visible)
-    {
-    return;
-    }
-  QList<QAction*> actions = this->actions();
-  if (!visible)
-    {
-    this->removeAction(actions.at(0)); // remove AllModules
-    this->removeAction(actions.at(1)); // remove first separator
-    }
-  else
-    {
-    QAction* separator = this->insertSeparator(actions.at(0));
-    this->insertAction(separator, d->AllModulesAction);
-    }
-  d->AllModulesActionVisible = visible;
-}
-
-//---------------------------------------------------------------------------
-bool qSlicerModulesMenu::isAllModulesActionVisible()const
-{
-  Q_D(const qSlicerModulesMenu);
-  return d->AllModulesActionVisible;
-}
-
-//---------------------------------------------------------------------------
 void qSlicerModulesMenu::setTopLevelCategoryOrder(const QStringList& categories)
 {
   Q_D(qSlicerModulesMenu);
@@ -531,8 +466,6 @@ void qSlicerModulesMenu::setModuleManager(qSlicerModuleManager* moduleManager)
     {
     return;
     }
-
-  d->ModuleFinder->setFactoryManager(d->ModuleManager->factoryManager());
 
   QObject::connect(d->ModuleManager,
                    SIGNAL(moduleLoaded(QString)),
@@ -698,11 +631,4 @@ void qSlicerModulesMenu::actionSelected(QAction* action)
     }
   d->CurrentModule = newCurrentModule;
   emit currentModuleChanged(d->CurrentModule);
-}
-
-//---------------------------------------------------------------------------
-void qSlicerModulesMenu::onShowModuleFinder()
-{
-  Q_D(qSlicerModulesMenu);
-  d->ModuleFinder->exec();
 }

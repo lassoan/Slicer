@@ -49,6 +49,7 @@ public:
   bool ShowFailed;
   bool ShowBuiltIn;
   bool ShowTesting;
+  bool ShowHidden;
 
   QStringList ShowModules;
   bool HideAllWhenShowModulesIsEmpty;
@@ -86,6 +87,7 @@ qSlicerModuleFactoryFilterModelPrivate::qSlicerModuleFactoryFilterModelPrivate(q
   this->ShowFailed = true;
   this->ShowBuiltIn = true;
   this->ShowTesting = true;
+  this->ShowHidden = true;
   this->HideAllWhenShowModulesIsEmpty = false;
 }
 
@@ -188,6 +190,21 @@ void qSlicerModuleFactoryFilterModel::setShowBuiltIn(bool show)
 {
   Q_D(qSlicerModuleFactoryFilterModel);
   d->ShowBuiltIn = show;
+  this->invalidateFilter();
+}
+
+// --------------------------------------------------------------------------
+bool qSlicerModuleFactoryFilterModel::showHidden()const
+{
+  Q_D(const qSlicerModuleFactoryFilterModel);
+  return d->ShowHidden;
+}
+
+// --------------------------------------------------------------------------
+void qSlicerModuleFactoryFilterModel::setShowHidden(bool show)
+{
+  Q_D(qSlicerModuleFactoryFilterModel);
+  d->ShowHidden = show;
   this->invalidateFilter();
 }
 
@@ -317,6 +334,14 @@ bool qSlicerModuleFactoryFilterModel::filterAcceptsRow(int sourceRow, const QMod
     {
     // qSlicerModulesListViewPrivate::IsTestingRole = Qt::UserRole+2
     if (this->sourceModel()->data(sourceIndex, Qt::UserRole+2).toBool())
+      {
+      return false;
+      }
+    }
+  if (!d->ShowHidden)
+    {
+    // qSlicerModulesListViewPrivate::IsHiddenRole = Qt::UserRole+3
+    if (this->sourceModel()->data(sourceIndex, Qt::UserRole+3).toBool())
       {
       return false;
       }

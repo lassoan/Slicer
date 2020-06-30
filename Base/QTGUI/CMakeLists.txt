@@ -199,7 +199,6 @@ set(KIT_MOC_SRCS
 
   qSlicerModuleFactoryFilterModel.h
   qSlicerModuleFinderDialog.h
-  qSlicerModuleFinderDialog_p.h
   qSlicerModulesListView.h
   qSlicerModulesMenu.h
   qSlicerModulePanel.h

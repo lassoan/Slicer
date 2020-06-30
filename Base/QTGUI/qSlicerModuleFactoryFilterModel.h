@@ -47,6 +47,8 @@ class Q_SLICER_BASE_QTGUI_EXPORT qSlicerModuleFactoryFilterModel
   Q_PROPERTY(bool showBuiltIn READ showBuiltIn WRITE setShowBuiltIn)
   /// True by default
   Q_PROPERTY(bool showTesting READ showTesting WRITE setShowTesting)
+  /// True by default
+  Q_PROPERTY(bool showHidden READ showHidden WRITE setShowHidden)
 
   /// Don't use in conjunction of setFilter*()
   /// Empty by default
@@ -70,6 +72,7 @@ public:
   bool showFailed()const;
   bool showBuiltIn()const;
   bool showTesting()const;
+  bool showHidden()const;
 
   QStringList showModules()const;
 
@@ -87,6 +90,7 @@ public slots:
   void setShowFailed(bool show);
   void setShowBuiltIn(bool show);
   void setShowTesting(bool show);
+  void setShowHidden(bool show);
 
   void setShowModules(const QStringList& modules);
 
