@@ -67,6 +67,8 @@ public:
 
   void setErrorLogIconHighlighted(bool);
 
+  void updatePythonConsolPalette();
+
 #ifdef Slicer_USE_PYTHONQT
   QDockWidget*                    PythonConsoleDockWidget;
   QAction*                        PythonConsoleToggleViewAction;
