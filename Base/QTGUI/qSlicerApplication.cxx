@@ -822,7 +822,7 @@ QStringList qSlicerApplication::recentLogFiles()
   for (int fileNumber = 0; fileNumber < numberOfFilesToKeep; ++fileNumber)
     {
     QString paddedFileNumber = QString("%1").arg(fileNumber, 3, 10, QChar('0')).toUpper();
-    QString filePath = revisionUserSettings->value(paddedFileNumber, "").toString();
+    QString filePath = qSlicerCoreApplication::application()->toSlicerHomeAbsolutePath(revisionUserSettings->value(paddedFileNumber, "").toString());
     if (!filePath.isEmpty())
       {
       logFilePaths.append(filePath);
@@ -873,7 +873,7 @@ void qSlicerApplication::setupFileLogging()
     if (fileNumber < numberOfFilesToKeep)
       {
       QString paddedFileNumber = QString("%1").arg(fileNumber, 3, 10, QChar('0')).toUpper();
-      revisionUserSettings->setValue(paddedFileNumber, filePath);
+      revisionUserSettings->setValue(paddedFileNumber, qSlicerCoreApplication::application()->toSlicerHomeRelativePath(filePath));
       }
     // Otherwise delete file
     else
@@ -1103,6 +1103,7 @@ void qSlicerApplication::logApplicationInformation() const
          preferExecutableCli ? "yes" : "no");
 
   // Additional module paths
+  // These paths are not converted to absolute path, because the raw values are moreuseful for troubleshooting.
   QStringList additionalModulePaths =
       this->revisionUserSettings()->value("Modules/AdditionalPaths").toStringList();
 
