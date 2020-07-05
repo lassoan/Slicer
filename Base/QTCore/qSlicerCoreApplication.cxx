@@ -46,6 +46,7 @@
 //  - Slicer_ORGANIZATION_DOMAIN
 //  - Slicer_ORGANIZATION_NAME
 //  - SLICER_REVISION_SPECIFIC_USER_SETTINGS_FILEBASENAME
+//  - Slicer_STORE_SETTINGS_IN_APPLICATION_HOME_DIR
 #include "vtkSlicerConfigure.h"
 
 #ifdef Slicer_USE_PYTHONQT
@@ -454,6 +455,18 @@ QSettings* qSlicerCoreApplicationPrivate::instantiateSettings(bool useTmp)
     {
     q->setApplicationName(q->applicationName() + "-tmp");
     }
+#ifdef Slicer_STORE_SETTINGS_IN_APPLICATION_HOME_DIR
+  // If a Slicer.ini file is available in the home directory then use that,
+  // otherwise use the default one in the user profile folder.
+  // Qt appends organizationName to the directory set in QSettings::setPath, therefore we must include it in the folder name
+  // (otherwise QSettings() would return a different setting than app->userSettings()).
+  QString iniFileName = QDir(this->SlicerHome).filePath(QString("%1/%2.ini").arg(q->organizationName()).arg(q->applicationName()));
+  if (QFile(iniFileName).exists())
+    {
+    // Use settings file in the home folder
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, this->SlicerHome);
+    }
+#endif
   QSettings* settings = this->newSettings();
   if (useTmp && !q->coreCommandOptions()->keepTemporarySettings())
     {
@@ -1112,8 +1125,8 @@ QString qSlicerCoreApplication::defaultScenePath() const
 {
   QSettings* appSettings = this->userSettings();
   Q_ASSERT(appSettings);
-  QString defaultScenePath = appSettings->value(
-        "DefaultScenePath", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+  QString defaultScenePath = this->toSlicerHomeAbsolutePath(appSettings->value(
+        "DefaultScenePath", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString());
 
   return defaultScenePath;
 }
@@ -1127,7 +1140,7 @@ void qSlicerCoreApplication::setDefaultScenePath(const QString& path)
     }
   QSettings* appSettings = this->userSettings();
   Q_ASSERT(appSettings);
-  appSettings->setValue("DefaultScenePath", path);
+  appSettings->setValue("DefaultScenePath", this->toSlicerHomeRelativePath(path));
 }
 
 //-----------------------------------------------------------------------------
@@ -1168,7 +1181,8 @@ QString qSlicerCoreApplication::temporaryPath() const
   Q_D(const qSlicerCoreApplication);
   QSettings* appSettings = this->userSettings();
   Q_ASSERT(appSettings);
-  QString temporaryPath = appSettings->value("TemporaryPath", this->defaultTemporaryPath()).toString();
+  QString temporaryPath = qSlicerCoreApplication::application()->toSlicerHomeAbsolutePath(
+    appSettings->value("TemporaryPath", this->defaultTemporaryPath()).toString());
   d->createDirectory(temporaryPath, "temporary"); // Make sure the path exists
   return temporaryPath;
 }
@@ -1230,8 +1244,16 @@ QString qSlicerCoreApplication::slicerUserSettingsFilePath()const
 //-----------------------------------------------------------------------------
 QString qSlicerCoreApplication::slicerRevisionUserSettingsFilePath()const
 {
+#ifdef Slicer_STORE_SETTINGS_APPLICATION_IN_HOME_DIR
+  this->userSettings(); // ensure applicationName is initialized
+  QString filePath = QString("%1/%2").arg(this->slicerHome()).arg(this->organizationName());
+  QString prefix = this->applicationName();
+#else
   QFileInfo fileInfo = QFileInfo(this->userSettings()->fileName());
+  QString filePath = fileInfo.path();
   QString prefix = fileInfo.completeBaseName();
+#endif
+
   QString suffix = "-" + this->revision();
   bool useTmp = this->coreCommandOptions()->settingsDisabled();
   if (useTmp)
@@ -1240,7 +1262,7 @@ QString qSlicerCoreApplication::slicerRevisionUserSettingsFilePath()const
     useTmp = true;
     }
   QString fileName =
-      QDir(fileInfo.path()).filePath(QString("%1%2%3.ini")
+      QDir(filePath).filePath(QString("%1%2%3.ini")
                                      .arg(prefix)
                                      .arg(SLICER_REVISION_SPECIFIC_USER_SETTINGS_FILEBASENAME)
                                      .arg(suffix));
@@ -1256,7 +1278,7 @@ void qSlicerCoreApplication::setTemporaryPath(const QString& path)
 {
   QSettings* appSettings = this->userSettings();
   Q_ASSERT(appSettings);
-  appSettings->setValue("TemporaryPath", path);
+  appSettings->setValue("TemporaryPath", this->toSlicerHomeRelativePath(path));
   this->applicationLogic()->SetTemporaryPath(path.toUtf8());
 }
 
@@ -1277,7 +1299,8 @@ QString qSlicerCoreApplication::defaultExtensionsInstallPath() const
 QString qSlicerCoreApplication::extensionsInstallPath() const
 {
   QSettings settings(this->slicerRevisionUserSettingsFilePath(), QSettings::IniFormat);
-  return settings.value("Extensions/InstallPath", this->defaultExtensionsInstallPath()).toString();
+  return qSlicerCoreApplication::application()->toSlicerHomeAbsolutePath(
+    settings.value("Extensions/InstallPath", this->defaultExtensionsInstallPath()).toString());
 }
 
 //-----------------------------------------------------------------------------
@@ -1287,7 +1310,8 @@ void qSlicerCoreApplication::setExtensionsInstallPath(const QString& path)
     {
     return;
     }
-  this->revisionUserSettings()->setValue("Extensions/InstallPath", path);
+  this->revisionUserSettings()->setValue("Extensions/InstallPath",
+    qSlicerCoreApplication::application()->toSlicerHomeRelativePath(path));
 #ifdef Slicer_BUILD_EXTENSIONMANAGER_SUPPORT
   Q_ASSERT(this->extensionsManagerModel());
   this->extensionsManagerModel()->updateModel();
@@ -1871,4 +1895,86 @@ void qSlicerCoreApplication::showConsoleMessage(QString message, bool error/*=tr
   {
     std::cout << message.toLocal8Bit().constData() << std::endl;
   }
+}
+
+// --------------------------------------------------------------------------
+QString qSlicerCoreApplication::toSlicerHomeAbsolutePath(const QString& path) const
+{
+  Q_D(const qSlicerCoreApplication);
+  if (path.isEmpty())
+    {
+    return path;
+    }
+  QFileInfo fileInfo(path);
+  if (fileInfo.isRelative())
+    {
+    // make absolute path by appending to SlicerHome
+    return QDir(d->SlicerHome).filePath(path);
+    }
+  else
+    {
+    // already absolute path
+    return path;
+    }
+}
+
+// --------------------------------------------------------------------------
+QString qSlicerCoreApplication::toSlicerHomeRelativePath(const QString& path) const
+{
+  Q_D(const qSlicerCoreApplication);
+  if (path.isEmpty())
+    {
+    return path;
+    }
+  QDir dir(path);
+  if (dir.isRelative())
+    {
+    // already relative path
+    return path;
+    }
+  // Check if path is within SlicerHome
+  QDir slicerHomeDir(d->SlicerHome);
+  bool isWithinSlicerHome = false;
+  do
+    {
+    if (dir == slicerHomeDir)
+      {
+      isWithinSlicerHome = true;
+      break;
+      }
+    } while (dir.cdUp());
+  // Store relative path if it is within SlicerHome
+  if (isWithinSlicerHome)
+    {
+    return slicerHomeDir.relativeFilePath(path);
+    }
+  else
+    {
+    return path;
+    }
+}
+
+// --------------------------------------------------------------------------
+QStringList qSlicerCoreApplication::toSlicerHomeAbsolutePaths(const QStringList& paths) const
+{
+  Q_D(const qSlicerCoreApplication);
+  QStringList absolutePaths;
+  foreach(QString path, paths)
+    {
+    absolutePaths << this->toSlicerHomeAbsolutePath(path);
+    }
+  return absolutePaths;
+}
+
+
+// --------------------------------------------------------------------------
+QStringList qSlicerCoreApplication::toSlicerHomeRelativePaths(const QStringList& paths) const
+{
+  Q_D(const qSlicerCoreApplication);
+  QStringList relativePaths;
+  foreach(QString path, paths)
+    {
+    relativePaths << this->toSlicerHomeRelativePath(path);
+    }
+  return relativePaths;
 }
