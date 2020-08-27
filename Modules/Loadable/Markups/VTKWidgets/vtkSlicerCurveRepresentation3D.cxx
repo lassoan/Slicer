@@ -50,6 +50,16 @@ vtkSlicerCurveRepresentation3D::vtkSlicerCurveRepresentation3D()
   this->LineActor->SetMapper(this->LineMapper);
   this->LineActor->SetProperty(this->GetControlPointsPipeline(Unselected)->Property);
 
+  this->LineOccludedMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+  this->LineOccludedMapper->SetInputConnection(this->TubeFilter->GetOutputPort());
+  this->LineOccludedMapper->SetRelativeCoincidentTopologyLineOffsetParameters(0, -25000);
+  this->LineOccludedMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(0, -25000);
+  this->LineOccludedMapper->SetRelativeCoincidentTopologyPointOffsetParameter(-25000);
+
+  this->LineOccludedActor = vtkSmartPointer<vtkActor>::New();
+  this->LineOccludedActor->SetMapper(this->LineOccludedMapper);
+  this->LineOccludedActor->SetProperty(this->GetControlPointsPipeline(Unselected)->OccludedProperty);
+
   this->CurvePointLocator = vtkSmartPointer<vtkCellLocator>::New();
 }
 
@@ -92,6 +102,7 @@ void vtkSlicerCurveRepresentation3D::UpdateFromMRML(vtkMRMLNode* caller, unsigne
   this->TubeFilter->SetRadius(diameter * 0.5);
 
   this->LineActor->SetVisibility(markupsNode->GetNumberOfControlPoints() >= 2);
+  this->LineOccludedActor->SetVisibility(this->MarkupsDisplayNode && this->LineActor->GetVisibility() && this->MarkupsDisplayNode->GetOccludedVisibility());
 
   bool allControlPointsSelected = this->GetAllControlPointsSelected();
   int controlPointType = Active;
@@ -100,6 +111,7 @@ void vtkSlicerCurveRepresentation3D::UpdateFromMRML(vtkMRMLNode* caller, unsigne
     controlPointType = allControlPointsSelected ? Selected : Unselected;
     }
   this->LineActor->SetProperty(this->GetControlPointsPipeline(controlPointType)->Property);
+  this->LineOccludedActor->SetProperty(this->GetControlPointsPipeline(controlPointType)->OccludedProperty);
 
   bool allNodesHidden = true;
   for (int controlPointIndex = 0; controlPointIndex < markupsNode->GetNumberOfControlPoints(); controlPointIndex++)
@@ -141,6 +153,7 @@ void vtkSlicerCurveRepresentation3D::GetActors(vtkPropCollection *pc)
 {
   this->Superclass::GetActors(pc);
   this->LineActor->GetActors(pc);
+  this->LineOccludedActor->GetActors(pc);
 }
 
 //----------------------------------------------------------------------
@@ -149,6 +162,7 @@ void vtkSlicerCurveRepresentation3D::ReleaseGraphicsResources(
 {
   this->Superclass::ReleaseGraphicsResources(win);
   this->LineActor->ReleaseGraphicsResources(win);
+  this->LineOccludedActor->ReleaseGraphicsResources(win);
 }
 
 //----------------------------------------------------------------------
@@ -159,6 +173,10 @@ int vtkSlicerCurveRepresentation3D::RenderOverlay(vtkViewport *viewport)
   if (this->LineActor->GetVisibility())
     {
     count +=  this->LineActor->RenderOverlay(viewport);
+    }
+  if (this->LineOccludedActor->GetVisibility())
+    {
+    count +=  this->LineOccludedActor->RenderOverlay(viewport);
     }
   return count;
 }
@@ -176,6 +194,10 @@ int vtkSlicerCurveRepresentation3D::RenderOpaqueGeometry(
     this->TubeFilter->SetRadius(diameter * 0.5);
     count += this->LineActor->RenderOpaqueGeometry(viewport);
     }
+  if (this->LineOccludedActor->GetVisibility())
+    {
+    count += this->LineOccludedActor->RenderOpaqueGeometry(viewport);
+    }
   return count;
 }
 
@@ -192,6 +214,13 @@ int vtkSlicerCurveRepresentation3D::RenderTranslucentPolygonalGeometry(
     this->LineActor->SetPropertyKeys(this->GetPropertyKeys());
     count += this->LineActor->RenderTranslucentPolygonalGeometry(viewport);
     }
+  if (this->LineOccludedActor->GetVisibility())
+    {
+    // The internal actor needs to share property keys.
+    // This ensures the mapper state is consistent and allows depth peeling to work as expected.
+    this->LineOccludedActor->SetPropertyKeys(this->GetPropertyKeys());
+    count += this->LineOccludedActor->RenderTranslucentPolygonalGeometry(viewport);
+    }
   return count;
 }
 
@@ -203,6 +232,10 @@ vtkTypeBool vtkSlicerCurveRepresentation3D::HasTranslucentPolygonalGeometry()
     return true;
     }
   if (this->LineActor->GetVisibility() && this->LineActor->HasTranslucentPolygonalGeometry())
+    {
+    return true;
+    }
+  if (this->LineOccludedActor->GetVisibility() && this->LineOccludedActor->HasTranslucentPolygonalGeometry())
     {
     return true;
     }

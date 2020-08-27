@@ -69,6 +69,27 @@ vtkSlicerAngleRepresentation3D::vtkSlicerAngleRepresentation3D()
   this->ArcActor->SetMapper(this->ArcMapper);
   this->ArcActor->SetProperty(this->GetControlPointsPipeline(Unselected)->Property);
 
+  this->LineOccludedMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+  this->LineOccludedMapper->SetInputConnection(this->TubeFilter->GetOutputPort());
+  this->LineOccludedMapper->SetRelativeCoincidentTopologyLineOffsetParameters(0, -25000);
+  this->LineOccludedMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(0, -25000);
+  this->LineOccludedMapper->SetRelativeCoincidentTopologyPointOffsetParameter(-25000);
+
+
+  this->ArcOccludedMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+  this->ArcOccludedMapper->SetInputConnection(this->ArcTubeFilter->GetOutputPort());
+  this->ArcOccludedMapper->SetRelativeCoincidentTopologyLineOffsetParameters(0, -25000);
+  this->ArcOccludedMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(0, -25000);
+  this->ArcOccludedMapper->SetRelativeCoincidentTopologyPointOffsetParameter(-25000);
+
+  this->LineOccludedActor = vtkSmartPointer<vtkActor>::New();
+  this->LineOccludedActor->SetMapper(this->LineOccludedMapper);
+  this->LineOccludedActor->SetProperty(this->GetControlPointsPipeline(Unselected)->OccludedProperty);
+
+  this->ArcOccludedActor = vtkSmartPointer<vtkActor>::New();
+  this->ArcOccludedActor->SetMapper(this->ArcOccludedMapper);
+  this->ArcOccludedActor->SetProperty(this->GetControlPointsPipeline(Unselected)->OccludedProperty);
+
   this->HideTextActorIfAllPointsOccluded = true;
 }
 
@@ -198,6 +219,8 @@ void vtkSlicerAngleRepresentation3D::UpdateFromMRML(vtkMRMLNode* caller, unsigne
 
   this->LineActor->SetVisibility(lineVisibility);
   this->ArcActor->SetVisibility(lineVisibility && markupsNode->GetNumberOfDefinedControlPoints(true) == 3);
+  this->LineOccludedActor->SetVisibility(this->MarkupsDisplayNode && this->LineActor->GetVisibility() && this->MarkupsDisplayNode->GetOccludedVisibility());
+  this->ArcOccludedActor->SetVisibility(this->MarkupsDisplayNode && this->ArcActor->GetVisibility() && this->MarkupsDisplayNode->GetOccludedVisibility());
 
   int controlPointType = Active;
   if (this->MarkupsDisplayNode->GetActiveComponentType() != vtkMRMLMarkupsDisplayNode::ComponentLine)
@@ -207,6 +230,8 @@ void vtkSlicerAngleRepresentation3D::UpdateFromMRML(vtkMRMLNode* caller, unsigne
   this->LineActor->SetProperty(this->GetControlPointsPipeline(controlPointType)->Property);
   this->ArcActor->SetProperty(this->GetControlPointsPipeline(controlPointType)->Property);
   this->TextActor->SetTextProperty(this->GetControlPointsPipeline(controlPointType)->TextProperty);
+  this->LineOccludedActor->SetProperty(this->GetControlPointsPipeline(controlPointType)->OccludedProperty);
+  this->ArcOccludedActor->SetProperty(this->GetControlPointsPipeline(controlPointType)->OccludedProperty);
 }
 
 //----------------------------------------------------------------------
@@ -215,6 +240,8 @@ void vtkSlicerAngleRepresentation3D::GetActors(vtkPropCollection *pc)
   this->Superclass::GetActors(pc);
   this->LineActor->GetActors(pc);
   this->ArcActor->GetActors(pc);
+  this->ArcOccludedActor->GetActors(pc);
+  this->LineOccludedActor->GetActors(pc);
 }
 
 //----------------------------------------------------------------------
@@ -239,6 +266,14 @@ int vtkSlicerAngleRepresentation3D::RenderOverlay(vtkViewport *viewport)
     {
     count +=  this->ArcActor->RenderOverlay(viewport);
     }
+  if (this->ArcOccludedActor->GetVisibility())
+    {
+    count +=  this->ArcOccludedActor->RenderOverlay(viewport);
+    }
+  if (this->LineOccludedActor->GetVisibility())
+    {
+    count +=  this->LineOccludedActor->RenderOverlay(viewport);
+    }
   return count;
 }
 
@@ -259,6 +294,14 @@ int vtkSlicerAngleRepresentation3D::RenderOpaqueGeometry(
     {
     this->ArcTubeFilter->SetRadius(diameter * 0.5);
     count += this->ArcActor->RenderOpaqueGeometry(viewport);
+    }
+  if (this->LineOccludedActor->GetVisibility())
+    {
+    count += this->LineOccludedActor->RenderOpaqueGeometry(viewport);
+    }
+  if (this->ArcOccludedActor->GetVisibility())
+    {
+    count += this->ArcOccludedActor->RenderOpaqueGeometry(viewport);
     }
   return count;
 }
@@ -283,6 +326,20 @@ int vtkSlicerAngleRepresentation3D::RenderTranslucentPolygonalGeometry(
     this->ArcActor->SetPropertyKeys(this->GetPropertyKeys());
     count += this->ArcActor->RenderTranslucentPolygonalGeometry(viewport);
     }
+  if (this->LineOccludedActor->GetVisibility())
+    {
+    // The internal actor needs to share property keys.
+    // This ensures the mapper state is consistent and allows depth peeling to work as expected.
+    this->LineOccludedActor->SetPropertyKeys(this->GetPropertyKeys());
+    count += this->LineOccludedActor->RenderTranslucentPolygonalGeometry(viewport);
+    }
+  if (this->ArcOccludedActor->GetVisibility())
+    {
+    // The internal actor needs to share property keys.
+    // This ensures the mapper state is consistent and allows depth peeling to work as expected.
+    this->ArcOccludedActor->SetPropertyKeys(this->GetPropertyKeys());
+    count += this->ArcOccludedActor->RenderTranslucentPolygonalGeometry(viewport);
+    }
   return count;
 }
 
@@ -298,6 +355,14 @@ vtkTypeBool vtkSlicerAngleRepresentation3D::HasTranslucentPolygonalGeometry()
     return true;
     }
   if (this->ArcActor->GetVisibility() && this->ArcActor->HasTranslucentPolygonalGeometry())
+    {
+    return true;
+    }
+  if (this->LineOccludedActor->GetVisibility() && this->LineOccludedActor->HasTranslucentPolygonalGeometry())
+    {
+    return true;
+    }
+  if (this->ArcOccludedActor->GetVisibility() && this->ArcOccludedActor->HasTranslucentPolygonalGeometry())
     {
     return true;
     }

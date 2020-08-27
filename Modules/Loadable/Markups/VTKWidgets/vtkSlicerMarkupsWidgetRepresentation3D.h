@@ -113,6 +113,10 @@ protected:
     // Properties used to control the appearance of selected objects and
     // the manipulator in general.
     vtkSmartPointer<vtkProperty> Property;
+
+    vtkSmartPointer<vtkPolyDataMapper> OccludedMapper;
+    vtkSmartPointer<vtkActor> OccludedActor;
+    vtkSmartPointer<vtkProperty> OccludedProperty;
   };
 
   ControlPointsPipeline3D* GetControlPointsPipeline(int controlPointType);

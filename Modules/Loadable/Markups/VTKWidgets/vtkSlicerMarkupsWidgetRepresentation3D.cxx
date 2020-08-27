@@ -82,6 +82,21 @@ vtkSlicerMarkupsWidgetRepresentation3D::ControlPointsPipeline3D::ControlPointsPi
   this->Actor->SetMapper(this->Mapper);
   this->Actor->SetProperty(this->Property);
 
+  this->OccludedMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+  this->OccludedMapper->SetInputConnection(this->Glypher->GetOutputPort());
+  this->OccludedMapper->ScalarVisibilityOff();
+  this->OccludedMapper->SetRelativeCoincidentTopologyLineOffsetParameters(0, -25000);
+  this->OccludedMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(0, -25000);
+  this->OccludedMapper->SetRelativeCoincidentTopologyPointOffsetParameter(-25000);
+
+  this->OccludedProperty = vtkSmartPointer<vtkProperty>::New();
+  this->OccludedProperty->DeepCopy(this->Property);
+  this->OccludedProperty->SetOpacity(0.0);
+
+  this->OccludedActor = vtkSmartPointer<vtkActor>::New();
+  this->OccludedActor->SetMapper(this->OccludedMapper);
+  this->OccludedActor->SetProperty(this->OccludedProperty);
+
   // Labels
 
   this->ControlPointIndices = vtkSmartPointer<vtkIdTypeArray>::New();
@@ -191,6 +206,7 @@ void vtkSlicerMarkupsWidgetRepresentation3D::UpdateAllPointsAndLabelsFromMRML()
       {
       // no projection display in 3D
       controlPoints->Actor->SetVisibility(false);
+      controlPoints->OccludedActor->SetVisibility(false);
       controlPoints->LabelsActor->SetVisibility(false);
       continue;
       }
@@ -254,6 +270,7 @@ void vtkSlicerMarkupsWidgetRepresentation3D::UpdateAllPointsAndLabelsFromMRML()
       controlPoints->LabelControlPointsPolyData->Modified();
 
       controlPoints->Actor->SetVisibility(true);
+      controlPoints->OccludedActor->SetVisibility(controlPoints->Actor->GetVisibility() && this->MarkupsDisplayNode->GetOccludedVisibility());
       // For backward compatibility, we hide labels if text scale is set to 0.
       controlPoints->LabelsActor->SetVisibility(this->MarkupsDisplayNode->GetPointLabelsVisibility()
         && this->MarkupsDisplayNode->GetTextScale() > 0.0);
@@ -261,6 +278,7 @@ void vtkSlicerMarkupsWidgetRepresentation3D::UpdateAllPointsAndLabelsFromMRML()
     else
       {
       controlPoints->Actor->SetVisibility(false);
+      controlPoints->OccludedActor->SetVisibility(false);
       controlPoints->LabelsActor->SetVisibility(false);
       }
     }
@@ -633,6 +651,23 @@ void vtkSlicerMarkupsWidgetRepresentation3D::UpdateFromMRML(vtkMRMLNode* caller,
     controlPoints->TextProperty->SetOpacity(this->MarkupsDisplayNode->GetOpacity() * hierarchyOpacity);
     controlPoints->TextProperty->SetFontSize(static_cast<int>(5. * this->MarkupsDisplayNode->GetTextScale()));
 
+    controlPoints->OccludedProperty->DeepCopy(controlPoints->Property);
+    if (this->MarkupsDisplayNode->GetOccludedVisibility() && this->MarkupsDisplayNode->GetOccludedOpacity() > 0.0)
+      {
+      // If OccludedVisibility is enabled, then the depth of the widget will be 0.0.
+      // The point should never be occluded, so set tolerance to 1.0.
+      controlPoints->SelectVisiblePoints->SetTolerance(1.0);
+
+      double occludedOpacity = this->MarkupsDisplayNode->GetOccludedOpacity() * controlPoints->OccludedActor->GetProperty()->GetOpacity();
+      controlPoints->OccludedProperty->SetOpacity(occludedOpacity);
+      }
+    else
+      {
+      controlPoints->OccludedActor->SetVisibility(false);
+      controlPoints->SelectVisiblePoints->SetTolerance(0.0);
+      controlPoints->OccludedProperty->SetOpacity(0.0);
+      }
+
     if (this->MarkupsDisplayNode->GlyphTypeIs3D())
       {
       this->GetControlPointsPipeline(controlPointType)->Glypher->SetSourceConnection(
@@ -677,6 +712,7 @@ void vtkSlicerMarkupsWidgetRepresentation3D::GetActors(vtkPropCollection *pc)
    {
     ControlPointsPipeline3D* controlPoints = reinterpret_cast<ControlPointsPipeline3D*>(this->ControlPoints[i]);
     controlPoints->Actor->GetActors(pc);
+    controlPoints->OccludedActor->GetActors(pc);
     controlPoints->LabelsActor->GetActors(pc);
     }
   this->TextActor->GetActors(pc);
@@ -691,6 +727,7 @@ void vtkSlicerMarkupsWidgetRepresentation3D::ReleaseGraphicsResources(
     {
     ControlPointsPipeline3D* controlPoints = reinterpret_cast<ControlPointsPipeline3D*>(this->ControlPoints[i]);
     controlPoints->Actor->ReleaseGraphicsResources(win);
+    controlPoints->OccludedActor->ReleaseGraphicsResources(win);
     controlPoints->LabelsActor->ReleaseGraphicsResources(win);
     }
   this->TextActor->ReleaseGraphicsResources(win);
@@ -706,6 +743,10 @@ int vtkSlicerMarkupsWidgetRepresentation3D::RenderOverlay(vtkViewport *viewport)
     if (controlPoints->Actor->GetVisibility())
       {
       count += controlPoints->Actor->RenderOverlay(viewport);
+      }
+    if (controlPoints->OccludedActor->GetVisibility())
+      {
+      count += controlPoints->OccludedActor->RenderOverlay(viewport);
       }
     if (controlPoints->LabelsActor->GetVisibility())
       {
@@ -769,6 +810,10 @@ int vtkSlicerMarkupsWidgetRepresentation3D::RenderOpaqueGeometry(
         }
       count += controlPoints->Actor->RenderOpaqueGeometry(viewport);
       }
+    if (controlPoints->OccludedActor->GetVisibility())
+      {
+      count += controlPoints->OccludedActor->RenderOpaqueGeometry(viewport);
+      }
     if (controlPoints->LabelsActor->GetVisibility())
       {
       count += controlPoints->LabelsActor->RenderOpaqueGeometry(viewport);
@@ -827,9 +872,14 @@ int vtkSlicerMarkupsWidgetRepresentation3D::RenderTranslucentPolygonalGeometry(
     // The internal actor needs to share property keys.
     // This ensures the mapper state is consistent and allows depth peeling to work as expected.
     controlPoints->Actor->SetPropertyKeys(this->GetPropertyKeys());
+    controlPoints->OccludedActor->SetPropertyKeys(this->GetPropertyKeys());
     if (controlPoints->Actor->GetVisibility())
       {
       count += controlPoints->Actor->RenderTranslucentPolygonalGeometry(viewport);
+      }
+    if (controlPoints->OccludedActor->GetVisibility())
+      {
+      count += controlPoints->OccludedActor->RenderTranslucentPolygonalGeometry(viewport);
       }
     if (controlPoints->LabelsActor->GetVisibility())
       {
@@ -854,6 +904,10 @@ vtkTypeBool vtkSlicerMarkupsWidgetRepresentation3D::HasTranslucentPolygonalGeome
     {
     ControlPointsPipeline3D* controlPoints = reinterpret_cast<ControlPointsPipeline3D*>(this->ControlPoints[i]);
     if (controlPoints->Actor->GetVisibility() && controlPoints->Actor->HasTranslucentPolygonalGeometry())
+      {
+      return true;
+      }
+    if (controlPoints->OccludedActor->GetVisibility() && controlPoints->OccludedActor->HasTranslucentPolygonalGeometry())
       {
       return true;
       }
