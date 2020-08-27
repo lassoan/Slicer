@@ -339,6 +339,8 @@ void qMRMLColorModel::updateNode()
   QObject::disconnect(this, SIGNAL(itemChanged(QStandardItem*)),
                       this, SLOT(onItemChanged(QStandardItem*)));
 
+  bool wasBlocked = this->blockSignals(true);
+
   this->setRowCount(
     d->MRMLColorNode->GetNumberOfColors() + (this->noneEnabled() ? 1 : 0));
   int startIndex = (this->noneEnabled() ? 1 : 0);
@@ -356,6 +358,8 @@ void qMRMLColorModel::updateNode()
       this->updateItemFromColor(colorItem, color, j);
       }
     }
+
+  this->blockSignals(wasBlocked);
 
   QObject::connect(this, SIGNAL(itemChanged(QStandardItem*)),
                    this, SLOT(onItemChanged(QStandardItem*)),
