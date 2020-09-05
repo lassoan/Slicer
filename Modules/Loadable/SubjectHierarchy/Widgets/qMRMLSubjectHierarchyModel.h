@@ -152,6 +152,8 @@ public:
   /// \sa isAncestorItem()
   Q_INVOKABLE bool isAffiliatedItem(vtkIdType itemA, vtkIdType itemB)const;
 
+  static Q_INVOKABLE vtkMRMLNode* nodeFromUrl(vtkMRMLScene* scene, QUrl* url);
+
 signals:
   /// This signal is sent when a user is about to reparent an item by drag and drop
   void aboutToReparentByDragAndDrop(vtkIdType itemID, vtkIdType newParentID);

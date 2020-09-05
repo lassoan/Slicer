@@ -21,6 +21,8 @@
 // Qt includes
 #include <QStyle>
 #include <QPainter>
+#include <QUrl>
+#include <QUrlQuery>
 
 // CTK includes
 #include "ctkVTKWidgetsUtils.h"
@@ -181,4 +183,20 @@ void qMRMLUtils::qColorToColor(const QColor &qcolor, double* color)
     color[1] = qcolor.greenF();
     color[2] = qcolor.blueF();
     }
+}
+
+//------------------------------------------------------------------------------
+vtkMRMLNode* qMRMLUtils::urlToNode(vtkMRMLScene* scene, QUrl* url)
+{
+  if (!scene || !url)
+    {
+    return nullptr;
+    }
+  if (url->scheme() != "mrml" || url->host() != "scene" || url->path() != "/node")
+    {
+    return nullptr;
+    }
+  QUrlQuery query(url->query());
+  vtkMRMLNode* node= scene->GetNodeByID(query.queryItemValue("id").toStdString());
+  return node;
 }

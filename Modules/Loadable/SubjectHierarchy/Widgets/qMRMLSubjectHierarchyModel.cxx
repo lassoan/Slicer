@@ -26,6 +26,8 @@
 #include <QApplication>
 #include <QMessageBox>
 #include <QTimer>
+#include <QUrl>
+#include <QUrlQuery>
 
 // qMRML includes
 #include "qMRMLSubjectHierarchyModel_p.h"
@@ -646,11 +648,14 @@ bool qMRMLSubjectHierarchyModel::moveToRow(vtkIdType itemID, int newRow)
 QMimeData* qMRMLSubjectHierarchyModel::mimeData(const QModelIndexList& indexes)const
 {
   Q_D(const qMRMLSubjectHierarchyModel);
+  d->DraggedSubjectHierarchyItems.clear();
   if (!indexes.size())
     {
     return nullptr;
     }
+  QList<QUrl> selectedShItemUrls;
   QModelIndexList allColumnsIndexes;
+  vtkMRMLSubjectHierarchyNode* shNode = this->subjectHierarchyNode();
   foreach(const QModelIndex& index, indexes)
     {
     QModelIndex parent = index.parent();
@@ -660,13 +665,26 @@ QMimeData* qMRMLSubjectHierarchyModel::mimeData(const QModelIndexList& indexes)c
       }
     if (index.column() == 0) // Prevent duplicate IDs
       {
-      d->DraggedSubjectHierarchyItems << this->subjectHierarchyItemFromIndex(index);
+      vtkIdType itemId = this->subjectHierarchyItemFromIndex(index);
+      d->DraggedSubjectHierarchyItems << itemId;
+      if (shNode)
+        {
+        vtkMRMLNode* node = shNode->GetItemDataNode(itemId);
+        if (node)
+          {
+          QString urlString = QString("mrml://scene/node?id=%1").arg(node->GetID());
+          selectedShItemUrls.push_back(QUrl(urlString));
+          }
+        }
       }
     }
   // Remove duplicates (mixes up order of items)
   allColumnsIndexes = allColumnsIndexes.toSet().toList();
 
-  return this->QStandardItemModel::mimeData(allColumnsIndexes);
+  QMimeData* mimeData = this->QStandardItemModel::mimeData(allColumnsIndexes);
+  mimeData->setUrls(selectedShItemUrls);
+
+  return mimeData;
 }
 
 //------------------------------------------------------------------------------
@@ -679,6 +697,34 @@ bool qMRMLSubjectHierarchyModel::dropMimeData( const QMimeData *data, Qt::DropAc
   bool res = this->Superclass::dropMimeData(
     data, action, row, 0, parent.sibling(parent.row(), 0));
   return res;
+}
+
+//------------------------------------------------------------------------------
+vtkMRMLNode* qMRMLSubjectHierarchyModel::nodeFromUrl(vtkMRMLScene* scene, QUrl* url)
+{
+  if (!scene || !url)
+    {
+    return nullptr;
+    }
+  vtkMRMLSubjectHierarchyNode* shNode = vtkMRMLSubjectHierarchyNode::GetSubjectHierarchyNode(scene);
+  if (!shNode)
+    {
+    return nullptr;
+    }
+  if (url->scheme() != "mrmlscene" || url->host() != "subjecthierarchy" || url->path() != "/item")
+    {
+    return nullptr;
+    }
+  QUrlQuery query(url->query());
+  QString itemIdStr = query.queryItemValue("id");
+  bool* ok = false;
+  int itemId = itemIdStr.toLong(ok);
+  if (!ok)
+    {
+    return nullptr;
+    }
+  vtkMRMLNode* node= shNode->GetItemDataNode(itemId);
+  return node;
 }
 
 //------------------------------------------------------------------------------

@@ -20,10 +20,13 @@
 
 // Qt includes
 #include <QDebug>
+#include <QDropEvent>
 #include <QEvent>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QMimeData>
 #include <QToolButton>
+#include <QUrl>
 
 // CTK includes
 #include <ctkAxesWidget.h>
@@ -33,6 +36,7 @@
 // qMRML includes
 #include "qMRMLColors.h"
 #include "qMRMLSliceView_p.h"
+#include "qMRMLUtils.h"
 
 // MRMLDisplayableManager includes
 #include <vtkMRMLAbstractDisplayableManager.h>
@@ -44,8 +48,12 @@
 #include <vtkMRMLSliceViewInteractorStyle.h>
 
 // MRML includes
+#include <vtkMRMLLabelMapVolumeNode.h>
+#include <vtkMRMLSliceCompositeNode.h>
 #include <vtkMRMLSliceNode.h>
 #include <vtkMRMLScene.h>
+#include <vtkMRMLSliceLogic.h>
+#include <vtkMRMLVolumeNode.h>
 
 // VTK includes
 #include <vtkCollection.h>
@@ -266,6 +274,7 @@ qMRMLSliceView::qMRMLSliceView(QWidget* _parent) : Superclass(_parent)
 {
   Q_D(qMRMLSliceView);
   d->init();
+  setAcceptDrops(true);
 }
 
 // --------------------------------------------------------------------------
@@ -469,5 +478,102 @@ void qMRMLSliceView::setDefaultViewCursor(const QCursor &cursor)
 #elif (VTK_MAJOR_VERSION == 8 && VTK_MINOR_VERSION == 2)
     this->VTKWidget()->setDefaultQVTKCursor(cursor);  // TODO: test if cursor settings works
 #endif
+    }
+}
+
+//---------------------------------------------------------------------------
+void qMRMLSliceView::dragEnterEvent(QDragEnterEvent* event)
+{
+  Q_D(qMRMLSliceView);
+  if (!event->mimeData()->hasFormat("text/uri-list"))
+    {
+    return;
+    }
+  foreach(QUrl url, event->mimeData()->urls())
+    {
+    if (!url.isValid() || url.isEmpty())
+      {
+      continue;
+      }
+    vtkMRMLNode* node = qMRMLUtils::urlToNode(d->MRMLScene, &url);
+    if (vtkMRMLVolumeNode::SafeDownCast(node))
+      {
+      event->accept();
+      return;
+      }
+    }
+  Superclass::dragEnterEvent(event);
+}
+
+//-----------------------------------------------------------------------------
+void qMRMLSliceView::dropEvent(QDropEvent* event)
+{
+  Q_D(qMRMLSliceView);
+  if (!event->mimeData()->hasFormat("text/uri-list"))
+    {
+    return;
+    }
+  vtkMRMLVolumeNode* backgroundNode = nullptr;
+  vtkMRMLVolumeNode* foregroundNode = nullptr;
+  vtkMRMLLabelMapVolumeNode* labelNode = nullptr;
+  foreach(QUrl url, event->mimeData()->urls())
+    {
+    if (!url.isValid() || url.isEmpty())
+      {
+      continue;
+      }
+    vtkMRMLNode* node = qMRMLUtils::urlToNode(d->MRMLScene, &url);
+    vtkMRMLVolumeNode* volumeNode = vtkMRMLVolumeNode::SafeDownCast(node);
+    if (!volumeNode)
+      {
+      continue;
+      }
+    if (vtkMRMLLabelMapVolumeNode::SafeDownCast(node))
+      {
+      if (labelNode == nullptr)
+        {
+        labelNode = vtkMRMLLabelMapVolumeNode::SafeDownCast(node);
+        }
+      }
+    else
+      {
+      if (!backgroundNode)
+        {
+        backgroundNode = volumeNode;
+        }
+      else if (!foregroundNode)
+        {
+        foregroundNode = volumeNode;
+        }
+      }
+    }
+
+  vtkMRMLSliceLogic* sliceLogic = this->sliceViewInteractorStyle()->GetSliceLogic();
+  if (!sliceLogic)
+    {
+    return;
+    }
+  vtkMRMLSliceCompositeNode* sliceCompositeNode = sliceLogic->GetSliceCompositeNode();
+  if (!sliceCompositeNode)
+    {
+    return;
+    }
+  if (backgroundNode || foregroundNode)
+    {
+    sliceCompositeNode->SetBackgroundVolumeID(backgroundNode ? backgroundNode->GetID() : nullptr);
+    sliceCompositeNode->SetForegroundVolumeID(foregroundNode ? foregroundNode->GetID() : nullptr);
+    // ensure that the foreground volume is visible
+    if (foregroundNode)
+      {
+      sliceCompositeNode->SetForegroundOpacity(0.5);
+      }
+    sliceLogic->FitSliceToAll();
+    d->MRMLSliceNode->RotateToVolumePlane(backgroundNode);
+    }
+  if (labelNode)
+    {
+    sliceCompositeNode->SetLabelVolumeID(labelNode ? labelNode->GetID() : nullptr);
+    sliceLogic->FitSliceToAll();
+    d->MRMLSliceNode->RotateToVolumePlane(labelNode);
     }
 }

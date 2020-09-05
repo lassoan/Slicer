@@ -75,6 +75,8 @@ public:
   /// Convert QColor to C++ RGB array
   Q_INVOKABLE static void qColorToColor(const QColor &qcolor, double* color);
 
+  Q_INVOKABLE static vtkMRMLNode* urlToNode(vtkMRMLScene* scene, QUrl* url);
+
 private:
   Q_DISABLE_COPY(qMRMLUtils);
 
