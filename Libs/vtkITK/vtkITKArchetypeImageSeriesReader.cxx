@@ -971,6 +971,34 @@ int vtkITKArchetypeImageSeriesReader::RequestInformation(
                                               scalarType,
                                               numberOfComponents);
 
+  if (imageIO->GetPixelType() == itk::IOPixelEnum::RGB)
+    {
+    this->VoxelValueQuantities =
+      "CodeValue:110834|CodingSchemeDesignator:DCM|CodeMeaning:RGB R Component;"
+      "CodeValue:110835|CodingSchemeDesignator:DCM|CodeMeaning:RGB G Component;"
+      "CodeValue:110836|CodingSchemeDesignator:DCM|CodeMeaning:RGB B Component";
+    }
+  else if (imageIO->GetPixelType() == itk::IOPixelEnum::RGBA)
+    {
+    this->VoxelValueQuantities =
+      "CodeValue:110834|CodingSchemeDesignator:DCM|CodeMeaning:RGB R Component;"
+      "CodeValue:110835|CodingSchemeDesignator:DCM|CodeMeaning:RGB G Component;"
+      "CodeValue:110836|CodingSchemeDesignator:DCM|CodeMeaning:RGB B Component;"
+      "CodeValue:100000|CodingSchemeDesignator:SLR|CodeMeaning:RGB A Component";
+    }
+  else if (imageIO->GetPixelType() == itk::IOPixelEnum::COVARIANTVECTOR)
+    {
+    // this will be reoriented if LPS/RAS conversion is performed
+    this->VoxelValueQuantities =
+      "CodeValue:110822|CodingSchemeDesignator:DCM|CodeMeaning:Spatial Displacement X Component;"
+      "CodeValue:110823|CodingSchemeDesignator:DCM|CodeMeaning:Spatial Displacement Y Component;"
+      "CodeValue:110824|CodingSchemeDesignator:DCM|CodeMeaning:Spatial Displacement Z Component";
+    }
+  else
+    {
+    this->VoxelValueQuantities.clear();
+    }
+
   // Copy the MetaDataDictionary from the ITK layer to the VTK layer
   if (imageIO.GetPointer() != nullptr)
     {

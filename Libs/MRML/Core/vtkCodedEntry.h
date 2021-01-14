@@ -78,6 +78,17 @@ public:
   /// \return true on success
   bool SetFromString(const std::string& content);
 
+  /// Returns true if content of this coded entry matches content of the other.
+  /// Only CodingSchemeDesignator and CodeValue are compared, because CodeMeaning is just informational only
+  /// (it can be looked up from coding scheme and value).
+  bool IsMatching(vtkCodedEntry* other);
+
+  /// Returns true if if CodeValue, CodingSchemeDesignator, and CodeMeaning are the same.
+  bool IsEqual(vtkCodedEntry* other);
+
+  /// Returns true if CodeValue, CodingSchemeDesignator, and CodeMeaning are all empty.
+  bool IsEmpty();
+
 protected:
   vtkCodedEntry();
   ~vtkCodedEntry() override;

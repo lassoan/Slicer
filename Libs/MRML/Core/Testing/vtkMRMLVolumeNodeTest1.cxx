@@ -261,5 +261,34 @@ int vtkMRMLVolumeNodeTest1(int , char * [])
     }
   std::cout << "\tDiff between RAS input and output via ijk = " << rasDif << std::endl;
 
+  // Test voxel value quantity and units
+
+  // Default they are expected to be empty
+  CHECK_NULL(node1->GetVoxelValueQuantity());
+  CHECK_NULL(node1->GetVoxelValueUnits());
+  CHECK_BOOL(node1->IsVoxelValueQuantityRGBColor(), false);
+  CHECK_BOOL(node1->IsVoxelValueQuantitySpatialDisplacement(), false);
+
+  node1->SetVoxelValueQuantityToRGBColor();
+  CHECK_BOOL(node1->IsVoxelValueQuantityRGBColor(), true);
+  CHECK_BOOL(node1->IsVoxelValueQuantitySpatialDisplacement(), false);
+  CHECK_STD_STRING(node1->GetVoxelValueQuantity()->GetAsString(), node1->GetVoxelValueQuantity(0)->GetAsString());
+  CHECK_STD_STRING(node1->GetVoxelValueQuantity(0)->GetAsString(), "CodeValue:110834|CodingSchemeDesignator:DCM|CodeMeaning:RGB R Component");
+  CHECK_STD_STRING(node1->GetVoxelValueQuantity(1)->GetAsString(), "CodeValue:110835|CodingSchemeDesignator:DCM|CodeMeaning:RGB G Component");
+  CHECK_STD_STRING(node1->GetVoxelValueQuantity(2)->GetAsString(), "CodeValue:110836|CodingSchemeDesignator:DCM|CodeMeaning:RGB B Component");
+  CHECK_NULL(node1->GetVoxelValueQuantity(3));
+  CHECK_NULL(node1->GetVoxelValueQuantity(4));
+  CHECK_NULL(node1->GetVoxelValueQuantity(15));
+  CHECK_INT(node1->GetNumberOfVoxelValueQuantities(), 3);
+
+  node1->RemoveAllVoxelValueQuantities();
+  CHECK_INT(node1->GetNumberOfVoxelValueQuantities(), 0);
+
+  node1->SetVoxelValueQuantityToSpatialDisplacement();
+  CHECK_BOOL(node1->IsVoxelValueQuantityRGBColor(), false);
+  CHECK_BOOL(node1->IsVoxelValueQuantitySpatialDisplacement(), true);
+  CHECK_NULL(node1->GetVoxelValueQuantity(3));
+  CHECK_STD_STRING(node1->GetVoxelValueQuantity(1)->GetAsString(), "CodeValue:110823|CodingSchemeDesignator:DCM|CodeMeaning:Spatial Displacement Y Component");
+
   return EXIT_SUCCESS;
 }

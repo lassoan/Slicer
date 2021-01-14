@@ -25,6 +25,9 @@ class vtkEventForwarderCommand;
 class vtkImageData;
 class vtkMatrix4x4;
 
+#include "vtkCodedEntry.h"
+#include "vtkCollection.h"
+
 // ITK includes
 #include "itkMetaDataDictionary.h"
 
@@ -230,6 +233,79 @@ public:
   /// Returns true if the parent transform is changed.
   bool AddCenteringTransform();
 
+  ///@{
+  /// Measured quantity of voxel values, specified as a standard coded entry.
+  /// Component argument specifies scalar component for volumes that contain multiple scalar components.
+  /// For example: (DCM, 112031, "Attenuation Coefficient")
+  /// See definitions at http://dicom.nema.org/medical/dicom/current/output/chtml/part16/sect_CID_7180.html
+  void SetVoxelValueQuantity(vtkCodedEntry* quantity, int component=0);
+  void SetVoxelValueQuantities(vtkCollection* quantities);
+  void GetVoxelValueQuantities(vtkCollection* quantities);
+  vtkCodedEntry* GetVoxelValueQuantity(int component=0);
+  void RemoveAllVoxelValueQuantities();
+  int GetNumberOfVoxelValueQuantities();
+  ///@}
+
+  /// Return standard voxel quantity preset: RGB.
+  /// (DCM, 110834, "RGB R Component"), (DCM, 110835, "RGB G Component"), (DCM, 110836, "RGB B Component")
+  /// \sa SetVoxelValueQuantityToRGB, IsVoxelValueQuantityRGB
+  static void GetVoxelValueQuantityPresetRGBColor(vtkCollection* voxelQuantities);
+
+  /// Set measured quantity of voxel values to RGB color.
+  /// \sa GetVoxelValueQuantityPresetRGB
+  void SetVoxelValueQuantityToRGBColor();
+
+  /// Returns true if voxel values quantity RGB color.
+  /// \sa GetVoxelValueQuantityPresetRGB
+  bool IsVoxelValueQuantityRGBColor();
+
+  /// Return standard voxel quantity preset: RGBA.
+  /// (DCM, 110834, "RGB R Component"), (DCM, 110835, "RGB G Component"), (DCM, 110836, "RGB B Component"), , (SLR, 100000, "RGB A Component")
+  /// \sa SetVoxelValueQuantityToRGBA, IsVoxelValueQuantityRGBA
+  static void GetVoxelValueQuantityPresetRGBAColor(vtkCollection* voxelQuantities);
+
+  /// Set measured quantity of voxel values to RGBA color.
+/// \sa GetVoxelValueQuantityPresetRGBA
+  void SetVoxelValueQuantityToRGBAColor();
+
+  /// Returns true if voxel values quantity RGBA color.
+  /// \sa GetVoxelValueQuantityPresetRGBA
+  bool IsVoxelValueQuantityRGBAColor();
+
+  /// Return standard voxel quantity preset: spatial displacement.
+  /// (DCM, 110822, "Spatial Displacement X Component"), (DCM, 110823, "Spatial Displacement Y Component"), (DCM, 110824, "Spatial Displacement Z Component")
+  /// \sa SetVoxelValueQuantityToSpatialDisplacement, IsVoxelValueQuantitySpatialDisplacement
+  static void GetVoxelValueQuantityPresetSpatialDisplacement(vtkCollection* voxelQuantities);
+
+  /// Set measured quantity of voxel values to spatial displacement.
+  /// \sa GetVoxelValueQuantityPresetSpatialDisplacement, IsVoxelValueQuantitySpatialDisplacement
+  void SetVoxelValueQuantityToSpatialDisplacement();
+
+  /// Returns true if voxel values quantity is spatial displacement.
+  /// \sa SetVoxelValueQuantityToSpatialDisplacement, IsVoxelValueQuantitySpatialDisplacement
+  bool IsVoxelValueQuantitySpatialDisplacement();
+
+  ///@{
+  /// Measurement unit of voxel value quantity, specified as a standard coded entry.
+  /// A single value is stored for each component. Plural (units) name is chosen to be consistent
+  /// with nomenclature in the DICOM standard.
+  /// Component argument specifies scalar component for volumes that contain multiple scalar components.
+  /// For example: (UCUM, [hnsf'U], "Hounsfield unit")
+  /// See definitions at http://dicom.nema.org/medical/dicom/current/output/chtml/part16/sect_CID_7180.html
+  void SetVoxelValueUnits(vtkCodedEntry* units, int component=0);
+  void SetVoxelValueUnits(vtkCollection* units);
+  void GetVoxelValueUnits(vtkCollection* units);
+  vtkCodedEntry* GetVoxelValueUnits(int component=0);
+  void RemoveAllVoxelValueUnits();
+  int GetNumberOfVoxelValueUnits();
+  ///@}
+
+    /// Helper function to convert coded entries to string
+  static std::string GetCodedEntriesAsString(vtkCollection* codedEntries);
+
+  /// Helper function to convert string to coded entries
+  static void SetCodedEntriesFromString(vtkCollection* codedEntries, const std::string& str);
+
 protected:
   vtkMRMLVolumeNode();
   ~vtkMRMLVolumeNode() override;
@@ -263,6 +339,20 @@ protected:
   /// If useParentTransform is false then parent transform is ignored.
   void GetCenterPositionRAS(double* centerPositionRAS, bool useParentTransform=true);
 
+  /// Helper function to set value in collection.
+  /// Setting nullptr deletes the item (if it is at the end of the collection).
+  /// Nullptr elements added as needed if there are not enough entires.
+  /// Returns true if the entry is modified.
+  static bool SetCodedEntryInCollection(vtkCollection* codedEntries, vtkCodedEntry* codedEntry, int index);
+
+  /// Helper function to set all values in a collection.
+  /// Returns true if the entry is modified.
+  void SetCodedEntriesFromCollection(vtkCollection* codedEntries, vtkCollection* newEntries);
+
+  /// Helper function to compare all values in a coded entry collection.
+  /// Return true if they are equal.
+  static bool IsMatchingCodedEntryCollections(vtkCollection* codedEntries1, vtkCollection* codedEntries2);
+
   /// these are unit length direction cosines
   double IJKToRASDirections[3][3];
 
@@ -272,6 +362,12 @@ protected:
 
   vtkAlgorithmOutput* ImageDataConnection;
   vtkEventForwarderCommand* DataEventForwarder;
+
+  /// Collection of vtkCodedEntry, each describing quantity stored in voxel values for a scalar component.
+  vtkCollection* VoxelValueQuantities;
+
+  /// Collection of vtkCodedEntry, each describing units stored in voxel values for a scalar component.
+  vtkCollection* VoxelValueUnits;
 
   itk::MetaDataDictionary Dictionary;
 };

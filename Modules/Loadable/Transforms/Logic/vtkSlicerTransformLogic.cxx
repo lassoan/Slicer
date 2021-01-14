@@ -520,10 +520,17 @@ vtkMRMLVolumeNode* vtkSlicerTransformLogic::CreateDisplacementVolumeFromTransfor
   if (magnitude)
   {
     vtkSlicerTransformLogic::GetTransformedPointSamplesAsMagnitudeImage(outputVolume, inputTransformNode, ijkToRas.GetPointer());
+    // Spatial dimension, denoting a linear displacement.
+    vtkNew<vtkCodedEntry> displacement;
+    // http://dicom.nema.org/medical/dicom/current/output/chtml/part16/chapter_D.html
+    displacement->SetValueSchemeMeaning("110856", "DCM", "Linear Displacement");
+    outputVolumeNode->SetVoxelValueQuantity(displacement);
   }
   else
   {
     vtkSlicerTransformLogic::GetTransformedPointSamplesAsVectorImage(outputVolume, inputTransformNode, ijkToRas.GetPointer());
+    // This indicates that the voxel values should be transformed to LPS when written to file
+    outputVolumeNode->SetVoxelValueQuantityToSpatialDisplacement();
   }
 
   if (outputVolumeNode->GetDisplayNode() == nullptr)

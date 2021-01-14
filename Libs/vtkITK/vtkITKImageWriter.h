@@ -67,6 +67,18 @@ public:
     MeasurementFrameMatrix = mat;
   }
 
+  /// Set list of coded entries specifying quantity
+  /// stored in each scalar component.
+  /// Format: "CodeValue:...|CodingSchemeDesignator:...|CodeMeaning:...",
+  /// separated by semicolons if multiple quantities.
+  void SetVoxelValueQuantities(std::string quantities) { this->VoxelValueQuantities = quantities; }
+
+  /// Set list of coded entries specifying unit
+  /// stored in each scalar component.
+  /// Format: "CodeValue:...|CodingSchemeDesignator:...|CodeMeaning:...",
+  /// separated by semicolons if multiple units.
+  void SetVoxelValueUnits(std::string units) { this->VoxelValueUnits = units; }
+
 protected:
   vtkITKImageWriter();
   ~vtkITKImageWriter() override;
@@ -76,6 +88,8 @@ protected:
   vtkMatrix4x4* MeasurementFrameMatrix;
   int UseCompression;
   char* ImageIOClassName;
+  std::string VoxelValueQuantities;
+  std::string VoxelValueUnits;
 
 private:
   vtkITKImageWriter(const vtkITKImageWriter&) = delete;

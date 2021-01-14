@@ -147,3 +147,88 @@ bool vtkCodedEntry::SetFromString(const std::string& content)
   // CodeMeaning is optional
   return success;
 }
+
+//----------------------------------------------------------------------------
+bool vtkCodedEntry::IsMatching(vtkCodedEntry* other)
+{
+  // Get scheme and value from this object as strings
+  std::string thisCodingSchemeDesignator;
+  std::string thisCodeValue;
+  if (this->CodingSchemeDesignator)
+    {
+    thisCodingSchemeDesignator = this->CodingSchemeDesignator;
+    }
+  if (this->CodeValue)
+    {
+    thisCodeValue = this->CodeValue;
+    }
+
+  // Get scheme and value from the other object as strings
+  std::string otherCodingSchemeDesignator;
+  std::string otherCodeValue;
+  if (other)
+    {
+    if (other->GetCodingSchemeDesignator())
+      {
+      otherCodingSchemeDesignator = other->GetCodingSchemeDesignator();
+      }
+    if (other->GetCodeValue())
+      {
+      otherCodeValue = other->GetCodeValue();
+      }
+    }
+
+  // Compare
+  return (thisCodingSchemeDesignator == otherCodingSchemeDesignator
+    && thisCodeValue == otherCodeValue);
+}
+
+//----------------------------------------------------------------------------
+bool vtkCodedEntry::IsEmpty()
+{
+  if (this->CodeValue)
+    {
+    if (strlen(this->CodeValue) > 0)
+      {
+      return false;
+      }
+    }
+  if (this->CodingSchemeDesignator)
+    {
+    if (strlen(this->CodingSchemeDesignator) > 0)
+      {
+      return false;
+      }
+    }
+  if (this->CodeMeaning)
+    {
+    if (strlen(this->CodeMeaning) > 0)
+      {
+      return false;
+      }
+    }
+  return true;
+}
+
+//----------------------------------------------------------------------------
+bool vtkCodedEntry::IsEqual(vtkCodedEntry* other)
+{
+  if (!this->IsMatching(other))
+    {
+    return false;
+    }
+
+  std::string thisCodeMeaning;
+  if (this->CodeMeaning)
+    {
+    thisCodeMeaning = this->CodeMeaning;
+    }
+  std::string otherCodeMeaning;
+  if (other && other->GetCodeMeaning())
+    {
+    otherCodeMeaning = other->GetCodeMeaning();
+    }
+
+  // Compare
+  return (thisCodeMeaning == otherCodeMeaning);
+}

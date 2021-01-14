@@ -259,6 +259,18 @@ public:
   /// Returns the Measurement frame matrix
   vtkMatrix4x4* GetMeasurementFrameMatrix();
 
+  /// Returns list of coded entries specifying quantity
+  /// stored in each scalar component.
+  /// Format: "CodeValue:...|CodingSchemeDesignator:...|CodeMeaning:...",
+  /// separated by semicolons if multiple quantities.
+  std::string GetVoxelValueQuantities() { return VoxelValueQuantities; }
+
+  /// Returns list of coded entries specifying unit
+  /// stored in each scalar component.
+  /// Format: "CodeValue:...|CodingSchemeDesignator:...|CodeMeaning:...",
+  /// separated by semicolons if multiple units.
+  std::string GetVoxelValueUnits() { return VoxelValueUnits; };
+
   ///
   /// Return the MetaDataDictionary from the ITK layer
   const itk::MetaDataDictionary &GetMetaDataDictionary() const;
@@ -896,6 +908,9 @@ protected:
   std::vector<long int> IndexSliceLocation;
   std::vector<long int> IndexImageOrientationPatient;
   std::vector<long int> IndexImagePositionPatient;
+
+  std::string VoxelValueQuantities;
+  std::string VoxelValueUnits;
 
 private:
   vtkITKArchetypeImageSeriesReader(const vtkITKArchetypeImageSeriesReader&) = delete;

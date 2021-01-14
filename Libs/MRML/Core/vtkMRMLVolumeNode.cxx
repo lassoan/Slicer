@@ -26,6 +26,7 @@ Version:   $Revision: 1.14 $
 #include <vtkAppendPolyData.h>
 #include <vtkBoundingBox.h>
 #include <vtkCallbackCommand.h>
+#include <vtkCollectionIterator.h>
 #include <vtkEventForwarderCommand.h>
 #include <vtkGeneralTransform.h>
 #include <vtkHomogeneousTransform.h>
@@ -48,28 +49,29 @@ Version:   $Revision: 1.14 $
 //----------------------------------------------------------------------------
 vtkMRMLVolumeNode::vtkMRMLVolumeNode()
 {
-  int i,j;
-
-  for(i=0; i<3; i++)
+  for(int i=0; i<3; i++)
     {
-    for(j=0; j<3; j++)
+    for(int j=0; j<3; j++)
       {
       this->IJKToRASDirections[i][j] = (i == j) ? 1.0 : 0.0;
       }
     }
 
-  for(i=0; i<3; i++)
+  for(int i=0; i<3; i++)
     {
     this->Spacing[i] = 1.0;
     }
 
-  for(i=0; i<3; i++)
+  for(int i=0; i<3; i++)
     {
     this->Origin[i] = 0.0;
     }
 
   this->ImageDataConnection = nullptr;
   this->DataEventForwarder = nullptr;
+
+  this->VoxelValueQuantities = vtkCollection::New();
+  this->VoxelValueUnits = vtkCollection::New();
 
   this->ContentModifiedEvents->InsertNextValue(vtkMRMLVolumeNode::ImageDataModifiedEvent);
 }
@@ -82,6 +84,64 @@ vtkMRMLVolumeNode::~vtkMRMLVolumeNode()
     {
     this->DataEventForwarder->Delete();
     }
+  this->VoxelValueQuantities->Delete();
+  this->VoxelValueQuantities = nullptr;
+  this->VoxelValueUnits->Delete();
+  this->VoxelValueUnits = nullptr;
+}
+
+//----------------------------------------------------------------------------
+std::string vtkMRMLVolumeNode::GetCodedEntriesAsString(vtkCollection* codedEntries)
+{
+  std::string outputStr;
+  if (!codedEntries)
+    {
+    return outputStr;
+    }
+  int numberOfEntries = codedEntries->GetNumberOfItems();
+  for (int i = 0; i < numberOfEntries; i++)
+    {
+    if (i>0)
+      {
+      outputStr += ";";
+      }
+    vtkCodedEntry* codedEntry = vtkCodedEntry::SafeDownCast(codedEntries->GetItemAsObject(i));
+    if (!codedEntry)
+      {
+      vtkGenericWarningMacro("vtkMRMLVolumeNode::GetCodedEntriesAsString error: Invalid coded entry");
+      continue;
+      }
+    std::string codedEntryStr = codedEntry->GetAsString();
+    vtksys::SystemTools::ReplaceString(codedEntryStr, "%", "%25");
+    vtksys::SystemTools::ReplaceString(codedEntryStr, ";", "%3B");
+    outputStr += codedEntryStr;
+    }
+  return outputStr;
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLVolumeNode::SetCodedEntriesFromString(vtkCollection* codedEntries, const std::string& str)
+{
+  if (!codedEntries)
+    {
+    vtkGenericWarningMacro("GetCodedEntriesFromString failed: invalid codedEntries");
+    return;
+    }
+  codedEntries->RemoveAllItems();
+  /// Macro for reading an iterable container (of std::string) node property from XML.
+#if VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 90)
+  std::vector<std::string> splitStr = vtksys::SystemTools::SplitString(str, ';')
+#else
+  std::vector<vtksys::String> splitStr = vtksys::SystemTools::SplitString(str, ';');
+#endif
+  for (std::string codedEntryStr : splitStr)
+    {
+    vtksys::SystemTools::ReplaceString(codedEntryStr, "%3B", ";");
+    vtksys::SystemTools::ReplaceString(codedEntryStr, "%25", "%");
+    vtkNew<vtkCodedEntry> codedEntry;
+    codedEntry->SetFromString(codedEntryStr);
+    codedEntries->AddItem(codedEntry);
+    }
 }
 
 //----------------------------------------------------------------------------
@@ -89,6 +149,11 @@ void vtkMRMLVolumeNode::WriteXML(ostream& of, int nIndent)
 {
   Superclass::WriteXML(of, nIndent);
 
+  vtkMRMLWriteXMLBeginMacro(of);
+  vtkMRMLWriteXMLVectorMacro(spacing, Spacing, double, 3);
+  vtkMRMLWriteXMLVectorMacro(origin, Origin, double, 3);
+
+  // IJKToRASDirections 3x3 C array
   std::stringstream ss;
   for(int i=0; i<3; i++)
     {
@@ -103,11 +168,10 @@ void vtkMRMLVolumeNode::WriteXML(ostream& of, int nIndent)
     }
   of << " ijkToRASDirections=\"" << ss.str() << "\"";
 
-  of << " spacing=\""
-    << this->Spacing[0] << " " << this->Spacing[1] << " " << this->Spacing[2] << "\"";
+  of << " voxelValueQuantity=\"" << vtkMRMLNode::XMLAttributeEncodeString(this->GetCodedEntriesAsString(this->VoxelValueQuantities)) << "\"";
+  of << " voxelValueUnits=\"" << vtkMRMLNode::XMLAttributeEncodeString(this->GetCodedEntriesAsString(this->VoxelValueUnits)) << "\"";
 
-  of << " origin=\""
-    << this->Origin[0] << " " << this->Origin[1] << " " << this->Origin[2] << "\"";
+  vtkMRMLWriteXMLEndMacro();
 }
 
 //----------------------------------------------------------------------------
@@ -117,13 +181,17 @@ void vtkMRMLVolumeNode::ReadXMLAttributes(const char** atts)
 
   Superclass::ReadXMLAttributes(atts);
 
+  vtkMRMLReadXMLBeginMacro(atts);
+  vtkMRMLReadXMLVectorMacro(spacing, Spacing, double, 3);
+  vtkMRMLReadXMLVectorMacro(origin, Origin, double, 3);
+  vtkMRMLReadXMLEndMacro();
+
   const char* attName;
   const char* attValue;
   while (*atts != nullptr)
     {
     attName = *(atts++);
     attValue = *(atts++);
-
     if (!strcmp(attName, "ijkToRASDirections"))
       {
       std::stringstream ss;
@@ -140,31 +208,17 @@ void vtkMRMLVolumeNode::ReadXMLAttributes(const char** atts)
         }
       this->SetIJKToRASDirections(dirs);
       }
-    if (!strcmp(attName, "spacing"))
+    else if (!strcmp(attName, "voxelValueQuantity"))
       {
-      std::stringstream ss;
-      double val;
-      double spacing[3];
-      ss << attValue;
-      for(int i=0; i<3; i++)
-        {
-        ss >> val;
-        spacing[i] = val;
-        }
-      this->SetSpacing(spacing);
+      // Call URLDecodeString to replace %20 by space in old scenes where this attribute was saved with URL encoding.
+      this->SetCodedEntriesFromString(this->VoxelValueQuantities, vtkMRMLNode::XMLAttributeDecodeString(
+        vtkMRMLNode::URLDecodeString(attValue)));
       }
-    if (!strcmp(attName, "origin"))
+    else if (!strcmp(attName, "voxelValueUnits"))
       {
-      std::stringstream ss;
-      double val;
-      double origin[3];
-      ss << attValue;
-      for(int i=0; i<3; i++)
-        {
-        ss >> val;
-        origin[i] = val;
-        }
-      this->SetOrigin(origin);
+      // Call URLDecodeString to replace %20 by space in old scenes where this attribute was saved with URL encoding.
+      this->SetCodedEntriesFromString(this->VoxelValueUnits, vtkMRMLNode::XMLAttributeDecodeString(
+        vtkMRMLNode::URLDecodeString(attValue)));
       }
    }
 
@@ -191,11 +245,30 @@ void vtkMRMLVolumeNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=true*/)
       targetImageData->DeepCopy(node->GetImageData());
       }
     this->SetAndObserveImageData(targetImageData); // invokes vtkMRMLVolumeNode::ImageDataModifiedEvent, which is not masked by StartModify
+    bool modified = false;
+    this->SetCodedEntriesFromCollection(this->VoxelValueQuantities, node->VoxelValueQuantities);
+    this->SetCodedEntriesFromCollection(this->VoxelValueUnits, node->VoxelValueUnits);
     }
   else
     {
     // shallow-copy
     this->SetAndObserveImageData(node->GetImageData()); // invokes vtkMRMLVolumeNode::ImageDataModifiedEvent, which is not masked by StartModify
+    if (this->VoxelValueQuantities != node->VoxelValueQuantities)
+      {
+      this->VoxelValueQuantities->UnRegister(this);
+      this->VoxelValueQuantities = node->VoxelValueQuantities;
+      this->VoxelValueQuantities->Register(this);
+      this->StorableModifiedTime.Modified();
+      this->Modified();
+      }
+    if (this->VoxelValueUnits != node->VoxelValueUnits)
+      {
+      this->VoxelValueUnits->UnRegister(this);
+      this->VoxelValueUnits = node->VoxelValueUnits;
+      this->VoxelValueUnits->Register(this);
+      this->StorableModifiedTime.Modified();
+      this->Modified();
+      }
     }
 
   // targetScalarVolumeNode->SetAndObserveTransformNodeID is not called, as we want to keep the currently applied transform
@@ -214,32 +287,20 @@ void vtkMRMLVolumeNode::CopyOrientation(vtkMRMLVolumeNode *node)
 //----------------------------------------------------------------------------
 void vtkMRMLVolumeNode::PrintSelf(ostream& os, vtkIndent indent)
 {
-  Superclass::PrintSelf(os,indent);
-  // Matrices
+  Superclass::PrintSelf(os, indent);
+
+  vtkMRMLPrintBeginMacro(os, indent);
+  vtkMRMLPrintVectorMacro(Spacing, double, 3);
+  vtkMRMLPrintVectorMacro(Origin, double, 3);
+
   os << "IJKToRASDirections:\n";
-
-  int i,j;
-
-  for(i=0; i<3; i++)
+  for (int i = 0; i < 3; i++)
     {
-    for(j=0; j<3; j++)
+    for (int j = 0; j < 3; j++)
       {
       os << indent << " " << this->IJKToRASDirections[i][j];
       }
-      os << indent << "\n";
-    }
-  os << "\n";
-
-  os << "Origin:";
-  for(j=0; j<3; j++)
-    {
-    os << indent << " " << this->Origin[j];
-    }
-  os << "\n";
-  os << "Spacing:";
-  for(j=0; j<3; j++)
-    {
-    os << indent << " " << this->Spacing[j];
+    os << indent << "\n";
     }
   os << "\n";
 
@@ -248,6 +309,17 @@ void vtkMRMLVolumeNode::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "ImageData:\n";
     this->GetImageData()->PrintSelf(os, indent.GetNextIndent());
     }
+
+  if (this->GetVoxelValueQuantity())
+    {
+    os << indent << "VoxelValueQuantity: " << this->GetCodedEntriesAsString(this->VoxelValueQuantities) << "\n";
+    }
+  if (this->GetVoxelValueUnits())
+    {
+    os << indent << "VoxelValueUnits: " << this->GetCodedEntriesAsString(this->VoxelValueUnits) << "\n";
+    }
+
+  vtkMRMLPrintEndMacro();
 }
 
 //----------------------------------------------------------------------------
@@ -1309,4 +1381,377 @@ bool vtkMRMLVolumeNode::AddCenteringTransform()
       }
     }
   return true;
+}
+
+//------------------------------------------------------------------------------
+bool vtkMRMLVolumeNode::SetCodedEntryInCollection(vtkCollection* codedEntries, vtkCodedEntry* codedEntry, int index)
+{
+  bool modified = false;
+  if (index < 0)
+    {
+    return modified;
+    }
+  if (!codedEntry || codedEntry->IsEmpty())
+    {
+    // delete item
+    if (index >= codedEntries->GetNumberOfItems())
+      {
+      // item is already deleted, nothing to do
+      return modified;
+      }
+    else
+      {
+      modified = !vtkCodedEntry::SafeDownCast(codedEntries->GetItemAsObject(index))->IsEmpty();
+      if (codedEntry)
+        {
+        codedEntries->ReplaceItem(index, codedEntry);
+        }
+      else
+        {
+        vtkNew<vtkCodedEntry> empty;
+        codedEntries->ReplaceItem(index, codedEntry);
+        }
+      }
+    }
+  else
+    {
+    // Add non-empty item.
+    // Make sure there are enough items before it.
+    while (index > codedEntries->GetNumberOfItems())
+      {
+      vtkNew<vtkCodedEntry> empty;
+      codedEntries->AddItem(empty);
+      modified = true;
+      }
+    // Set/Add item
+    if (index < codedEntries->GetNumberOfItems())
+      {
+      if (codedEntries->GetItemAsObject(index) != codedEntry)
+        {
+        codedEntries->ReplaceItem(index, codedEntry);
+        modified = true;
+        }
+      }
+    else
+      {
+      codedEntries->AddItem(codedEntry);
+      modified = true;
+      }
+    }
+  // Remove nullptr elements from the end
+  while (codedEntries->GetNumberOfItems()>0
+    && vtkCodedEntry::SafeDownCast(codedEntries->GetItemAsObject(codedEntries->GetNumberOfItems()-1))->IsEmpty())
+    {
+    codedEntries->RemoveItem(codedEntries->GetNumberOfItems() - 1);
+    modified = true;
+    }
+  return modified;
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::SetCodedEntriesFromCollection(vtkCollection* codedEntries, vtkCollection* newEntries)
+{
+  if (!newEntries)
+    {
+    vtkNew<vtkCollection> empty;
+    SetCodedEntriesFromCollection(codedEntries, empty);
+    return;
+    }
+  bool modified = false;
+  for (int i = 0; i < newEntries->GetNumberOfItems(); i++)
+    {
+    if (vtkMRMLVolumeNode::SetCodedEntryInCollection(codedEntries, vtkCodedEntry::SafeDownCast(newEntries->GetItemAsObject(i)), i))
+      {
+      modified = true;
+      }
+    }
+  // Remove extra elements
+  while (codedEntries->GetNumberOfItems() > newEntries->GetNumberOfItems())
+    {
+    codedEntries->RemoveItem(codedEntries->GetNumberOfItems() - 1);
+    modified = true;
+    }
+  if (modified)
+    {
+    this->Modified();
+    this->StorableModified();
+    }
+}
+
+//------------------------------------------------------------------------------
+bool vtkMRMLVolumeNode::IsMatchingCodedEntryCollections(vtkCollection* codedEntries1, vtkCollection* codedEntries2)
+{
+  if (!codedEntries1 && !codedEntries2)
+    {
+    return true;
+    }
+  if (!codedEntries1 || !codedEntries2)
+    {
+    return false;
+    }
+  if (codedEntries1->GetNumberOfItems() != codedEntries2->GetNumberOfItems())
+    {
+    return false;
+    }
+  for (int i = 0; i < codedEntries1->GetNumberOfItems(); i++)
+    {
+    vtkCodedEntry* entry1 = vtkCodedEntry::SafeDownCast(codedEntries1->GetItemAsObject(i));
+    vtkCodedEntry* entry2 = vtkCodedEntry::SafeDownCast(codedEntries2->GetItemAsObject(i));
+    if (entry1 == entry2)
+      {
+      // they are the same
+      continue;
+      }
+    if (!entry1->IsMatching(entry2))
+      {
+      return false;
+      }
+    }
+  // no difference was found
+  return true;
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::SetVoxelValueQuantity(vtkCodedEntry* quantity, int component/*=0*/)
+{
+  if (component < 0)
+    {
+    vtkErrorMacro("vtkMRMLVolumeNode::SetVoxelValueQuantity failed: invalid component " << component);
+    return;
+    }
+  if (this->SetCodedEntryInCollection(this->VoxelValueQuantities, quantity, component))
+    {
+    this->Modified();
+    this->StorableModified();
+    }
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::SetVoxelValueQuantities(vtkCollection* quantities)
+{
+  if (!quantities)
+    {
+    this->RemoveAllVoxelValueQuantities();
+    }
+  else
+    {
+    this->SetCodedEntriesFromCollection(this->VoxelValueQuantities, quantities);
+    }
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::GetVoxelValueQuantities(vtkCollection* quantities)
+{
+  if (!quantities)
+    {
+    vtkErrorMacro("vtkMRMLVolumeNode::GetVoxelValueQuantities(vtkCodedEntry failed: invalid quantities");
+    return;
+    }
+  quantities->RemoveAllItems();
+  vtkCollectionIterator* it = this->VoxelValueQuantities->NewIterator();
+  it->InitTraversal();
+  while (!it->IsDoneWithTraversal())
+  {
+    quantities->AddItem(it->GetCurrentObject());
+    it->GoToNextItem();
+  }
+  it->Delete();
+}
+
+//------------------------------------------------------------------------------
+vtkCodedEntry* vtkMRMLVolumeNode::GetVoxelValueQuantity(int component/*=0*/)
+{
+  if (component < 0 || component >= this->VoxelValueQuantities->GetNumberOfItems())
+    {
+    return nullptr;
+    }
+  return vtkCodedEntry::SafeDownCast(this->VoxelValueQuantities->GetItemAsObject(component));
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::RemoveAllVoxelValueQuantities()
+{
+  vtkNew<vtkCollection> empty;
+  this->SetCodedEntriesFromCollection(this->VoxelValueQuantities, empty);
+}
+
+//------------------------------------------------------------------------------
+int vtkMRMLVolumeNode::GetNumberOfVoxelValueQuantities()
+{
+  return this->VoxelValueQuantities->GetNumberOfItems();
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::SetVoxelValueUnits(vtkCodedEntry* units, int component/*=0*/)
+{
+  if (component < 0)
+    {
+    vtkErrorMacro("vtkMRMLVolumeNode::SetVoxelValueUnits failed: invalid component " << component);
+    return;
+    }
+  if (this->SetCodedEntryInCollection(this->VoxelValueUnits, units, component))
+    {
+    this->Modified();
+    this->StorableModified();
+    }
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::SetVoxelValueUnits(vtkCollection* units)
+{
+  if (!units)
+    {
+    this->RemoveAllVoxelValueUnits();
+    }
+  else
+    {
+    this->SetCodedEntriesFromCollection(this->VoxelValueUnits, units);
+    }
+}
+
+//------------------------------------------------------------------------------
+vtkCodedEntry* vtkMRMLVolumeNode::GetVoxelValueUnits(int component/*=0*/)
+{
+  if (component < 0 || component >= this->VoxelValueUnits->GetNumberOfItems())
+    {
+    return nullptr;
+    }
+  return vtkCodedEntry::SafeDownCast(this->VoxelValueUnits->GetItemAsObject(component));
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::GetVoxelValueUnits(vtkCollection* units)
+{
+  if (!units)
+    {
+    vtkErrorMacro("vtkMRMLVolumeNode::GetVoxelValueUnits(vtkCodedEntry failed: invalid units");
+    return;
+    }
+  units->RemoveAllItems();
+  vtkCollectionIterator* it = this->VoxelValueUnits->NewIterator();
+  it->InitTraversal();
+  while (!it->IsDoneWithTraversal())
+  {
+    units->AddItem(it->GetCurrentObject());
+    it->GoToNextItem();
+  }
+  it->Delete();
+}
+
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::RemoveAllVoxelValueUnits()
+{
+  vtkNew<vtkCollection> empty;
+  this->SetCodedEntriesFromCollection(this->VoxelValueUnits, empty);
+}
+
+//------------------------------------------------------------------------------
+int vtkMRMLVolumeNode::GetNumberOfVoxelValueUnits()
+{
+  return this->VoxelValueUnits->GetNumberOfItems();
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGBColor(vtkCollection* voxelQuantities)
+{
+  if (!voxelQuantities)
+    {
+    vtkGenericWarningMacro("vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGB failed: invalid voxelQuantities");
+    return;
+    }
+  voxelQuantities->RemoveAllItems();
+  vtkNew<vtkCodedEntry> red;
+  vtkNew<vtkCodedEntry> green;
+  vtkNew<vtkCodedEntry> blue;
+  red->SetValueSchemeMeaning("110834", "DCM", "RGB R Component");
+  green->SetValueSchemeMeaning("110835", "DCM", "RGB G Component");
+  blue->SetValueSchemeMeaning("110836", "DCM", "RGB B Component");
+  voxelQuantities->AddItem(red);
+  voxelQuantities->AddItem(green);
+  voxelQuantities->AddItem(blue);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::SetVoxelValueQuantityToRGBColor()
+{
+  vtkNew<vtkCollection> preset;
+  vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGBColor(preset);
+  this->SetCodedEntriesFromCollection(this->VoxelValueQuantities, preset);
+}
+
+//------------------------------------------------------------------------------
+bool vtkMRMLVolumeNode::IsVoxelValueQuantityRGBColor()
+{
+  vtkNew<vtkCollection> preset;
+  vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGBColor(preset);
+  return vtkMRMLVolumeNode::IsMatchingCodedEntryCollections(this->VoxelValueQuantities, preset);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGBAColor(vtkCollection* voxelQuantities)
+{
+  if (!voxelQuantities)
+    {
+    vtkGenericWarningMacro("vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGB failed: invalid voxelQuantities");
+    return;
+    }
+  voxelQuantities->RemoveAllItems();
+  vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGBAColor(voxelQuantities);
+
+  vtkNew<vtkCodedEntry> alpha;
+  alpha->SetValueSchemeMeaning("100000", "SLR", "RGB A Component");
+  voxelQuantities->AddItem(alpha);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::SetVoxelValueQuantityToRGBAColor()
+{
+  vtkNew<vtkCollection> preset;
+  vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGBAColor(preset);
+  this->SetCodedEntriesFromCollection(this->VoxelValueQuantities, preset);
+}
+
+//------------------------------------------------------------------------------
+bool vtkMRMLVolumeNode::IsVoxelValueQuantityRGBAColor()
+{
+  vtkNew<vtkCollection> preset;
+  vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGBAColor(preset);
+  return vtkMRMLVolumeNode::IsMatchingCodedEntryCollections(this->VoxelValueQuantities, preset);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::GetVoxelValueQuantityPresetSpatialDisplacement(vtkCollection* voxelQuantities)
+{
+  if (!voxelQuantities)
+    {
+    vtkGenericWarningMacro("vtkMRMLVolumeNode::GetVoxelValueQuantityPresetRGB failed: invalid voxelQuantities");
+    return;
+    }
+  voxelQuantities->RemoveAllItems();
+  vtkNew<vtkCodedEntry> x;
+  vtkNew<vtkCodedEntry> y;
+  vtkNew<vtkCodedEntry> z;
+  x->SetValueSchemeMeaning("110822", "DCM", "Spatial Displacement X Component");
+  y->SetValueSchemeMeaning("110823", "DCM", "Spatial Displacement Y Component");
+  z->SetValueSchemeMeaning("110824", "DCM", "Spatial Displacement Z Component");
+  voxelQuantities->AddItem(x);
+  voxelQuantities->AddItem(y);
+  voxelQuantities->AddItem(z);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLVolumeNode::SetVoxelValueQuantityToSpatialDisplacement()
+{
+  vtkNew<vtkCollection> preset;
+  vtkMRMLVolumeNode::GetVoxelValueQuantityPresetSpatialDisplacement(preset);
+  this->SetCodedEntriesFromCollection(this->VoxelValueQuantities, preset);
+}
+
+//------------------------------------------------------------------------------
+bool vtkMRMLVolumeNode::IsVoxelValueQuantitySpatialDisplacement()
+{
+  vtkNew<vtkCollection> preset;
+  vtkMRMLVolumeNode::GetVoxelValueQuantityPresetSpatialDisplacement(preset);
+  return vtkMRMLVolumeNode::IsMatchingCodedEntryCollections(this->VoxelValueQuantities, preset);
 }

@@ -75,26 +75,11 @@ class VTK_MRML_EXPORT vtkMRMLScalarVolumeNode : public vtkMRMLVolumeNode
   /// Creates the most appropriate storage node class for storing a sequence of these nodes.
   vtkMRMLStorageNode* CreateDefaultSequenceStorageNode() override;
 
-  /// Measured quantity of voxel values, specified as a standard coded entry.
-  /// For example: (DCM, 112031, "Attenuation Coefficient")
-  void SetVoxelValueQuantity(vtkCodedEntry*);
-  vtkGetObjectMacro(VoxelValueQuantity, vtkCodedEntry);
-
-  /// Measurement unit of voxel value quantity, specified as a standard coded entry.
-  /// For example: (UCUM, [hnsf'U], "Hounsfield unit")
-  /// It stores a single unit. Plural (units) name is chosen to be consistent
-  /// with nomenclature in the DICOM standard.
-  void SetVoxelValueUnits(vtkCodedEntry*);
-  vtkGetObjectMacro(VoxelValueUnits, vtkCodedEntry);
-
 protected:
   vtkMRMLScalarVolumeNode();
   ~vtkMRMLScalarVolumeNode() override;
   vtkMRMLScalarVolumeNode(const vtkMRMLScalarVolumeNode&);
   void operator=(const vtkMRMLScalarVolumeNode&);
-
-  vtkCodedEntry* VoxelValueQuantity{nullptr};
-  vtkCodedEntry* VoxelValueUnits{nullptr};
 };
 
 #endif
