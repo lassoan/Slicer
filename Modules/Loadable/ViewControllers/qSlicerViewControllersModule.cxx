@@ -173,6 +173,10 @@ void qSlicerViewControllersModule::readDefaultThreeDViewSettings(vtkMRMLViewNode
     {
     defaultViewNode->SetUseDepthPeeling(settings.value("UseDepthPeeling").toBool());
     }
+  if (settings.contains("UseSSAO"))
+    {
+    defaultViewNode->SetUseSSAO(settings.value("UseSSAO").toBool());
+    }
   readCommonViewSettings(defaultViewNode, settings);
 }
 
@@ -190,6 +194,7 @@ void qSlicerViewControllersModule::writeDefaultThreeDViewSettings(vtkMRMLViewNod
   settings.setValue("AxisLabelsVisibility", bool(defaultViewNode->GetAxisLabelsVisible()));
   settings.setValue("UseOrthographicProjection", defaultViewNode->GetRenderMode()==vtkMRMLViewNode::Orthographic);
   settings.setValue("UseDepthPeeling", bool(defaultViewNode->GetUseDepthPeeling()));
+  settings.setValue("UseSSAO", bool(defaultViewNode->GetUseSSAO()));
   writeCommonViewSettings(defaultViewNode, settings);
 }
 

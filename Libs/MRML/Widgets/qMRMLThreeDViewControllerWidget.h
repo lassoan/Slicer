@@ -88,6 +88,9 @@ public slots:
   /// Use or not depth peeling in the first renderer.
   /// False by default.
   void setUseDepthPeeling(bool use);
+  /// Use or not screen space ambient occlusion in the first renderer.
+  /// False by default.
+  void setUseSSAO(bool use);
   /// Show or hide the FPS in the lower right corner.
   /// False by default.
   void setFPSVisible(bool visible);

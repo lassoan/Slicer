@@ -24,8 +24,8 @@
        <rect>
         <x>0</x>
         <y>0</y>
-        <width>449</width>
-        <height>573</height>
+        <width>447</width>
+        <height>571</height>
        </rect>
       </property>
       <property name="sizePolicy">
@@ -296,6 +296,23 @@
           </item>
           <item row="3" column="1">
            <widget class="ctkCheckBox" name="ThreeDUseOrthographicProjectionCheckBox"/>
+          </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="ThreeDUseSSAOLabel">
+            <property name="text">
+             <string>Improve depth perception (SSAO):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
+           <widget class="ctkCheckBox" name="ThreeDUseSSAOCheckBox">
+            <property name="toolTip">
+             <string>Improve depth perception in models by locally adjusting shading, using screen space ambient occlusion (SSAO) method.</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
           </item>
          </layout>
         </widget>

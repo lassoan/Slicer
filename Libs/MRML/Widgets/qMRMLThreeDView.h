@@ -42,6 +42,17 @@ class vtkCollection;
 class QMRML_WIDGETS_EXPORT qMRMLThreeDView : public ctkVTKRenderView
 {
   Q_OBJECT
+
+  /// This property controls whether the first renderer uses screen space ambient occlusion (SSAO)
+  /// to improve depth perception.
+  /// false by default.
+  Q_PROPERTY(bool useSSAO READ useSSAO WRITE setUseSSAO)
+  /// Set size scale for screen space ambient occlusion (SSAO).
+  /// Scale of 1.0 corresponds to object size of approximately 100 physical length units (millimeters by default).
+  /// Setting too small scale will emphasize non-relevant surface irregularities, too large value
+  /// will miss important depth differences.
+  Q_PROPERTY(double ssaoSizeScale READ ssaoSizeScale WRITE setSSAOSizeScale)
+
 public:
   /// Superclass typedef
   typedef ctkVTKRenderView Superclass;
@@ -97,6 +108,14 @@ public:
   void dragEnterEvent(QDragEnterEvent* event) override;
   void dropEvent(QDropEvent* event) override;
 
+  /// Returns true if screen space ambient occlusion (SSAO) is enabled.
+  /// \sa setUseSSAO
+  bool useSSAO()const;
+
+  /// Returns size scale used for SSAO.
+  /// \sa setSSAOSizeScale, setUseSSAO
+  double ssaoSizeScale()const;
+
 public slots:
 
   /// Set the MRML \a scene that should be listened for events
@@ -113,6 +132,14 @@ public slots:
   /// Reimplemented to hide items to not take into
   /// account when computing the boundaries
   virtual void resetFocalPoint();
+
+  /// Set the useSSAO property value.
+  /// \sa useSSAO
+  virtual void setUseSSAO(bool use);
+
+  /// Set SSAO size scale property value.
+  /// \sa ssaoSizeScale, useSSAO
+  virtual void setSSAOSizeScale(double scale);
 
 protected:
   QScopedPointer<qMRMLThreeDViewPrivate> d_ptr;

@@ -132,6 +132,12 @@ public:
   vtkGetMacro(UseDepthPeeling, int);
   vtkSetMacro(UseDepthPeeling, int);
 
+  /// Use screen space ambient occlusion to improve depth perception in model display by slightly altering shading.
+  /// Set to false by default, to preserve backward compatibility.
+  /// More details on the algorithm: https://blog.kitware.com/ssao/
+  vtkGetMacro(UseSSAO, bool);
+  vtkSetMacro(UseSSAO, bool);
+
   /// Show FPS in the lower right side of the screen.
   /// 0 by default.
   vtkGetMacro(FPSVisible, int);
@@ -291,6 +297,7 @@ public:
     RulerColorFlag,
     UseDepthPeelingFlag,
     FPSVisibleFlag,
+    UseSSAOFlag,
   };
 
   ///
@@ -347,6 +354,9 @@ protected:
 
   /// Use the depth peeling rendering mode.
   int UseDepthPeeling;
+
+  /// Use screen space ambient occlusion.
+  bool UseSSAO;
 
   /// Show the Frame per second as text on the lower right part of the view
   int FPSVisible;

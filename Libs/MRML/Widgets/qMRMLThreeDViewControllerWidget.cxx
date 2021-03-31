@@ -227,12 +227,17 @@ void qMRMLThreeDViewControllerWidgetPrivate::setupPopupUi()
   // More controls
   QMenu* moreMenu = new QMenu(qMRMLThreeDViewControllerWidget::tr("More"), this->PopupWidget);
   moreMenu->addAction(this->actionUseDepthPeeling);
+  moreMenu->addAction(this->actionUseSSAO);
   moreMenu->addAction(this->actionSetFPSVisible);
   this->MoreToolButton->setMenu(moreMenu);
 
   // Depth peeling
   QObject::connect(this->actionUseDepthPeeling, SIGNAL(toggled(bool)),
                    q, SLOT(setUseDepthPeeling(bool)));
+
+  // Scren space ambient occlusion
+  QObject::connect(this->actionUseSSAO, SIGNAL(toggled(bool)),
+                   q, SLOT(setUseSSAO(bool)));
 
   // FPS
   QObject::connect(this->actionSetFPSVisible, SIGNAL(toggled(bool)),
@@ -449,6 +454,7 @@ void qMRMLThreeDViewControllerWidget::updateWidgetFromMRMLView()
     d->ViewNode->GetAxisLabelsVisible());
 
   d->actionUseDepthPeeling->setChecked(d->ViewNode->GetUseDepthPeeling());
+  d->actionUseSSAO->setChecked(d->ViewNode->GetUseSSAO());
   d->actionSetFPSVisible->setChecked(d->ViewNode->GetFPSVisible());
 
   double* color = d->ViewNode->GetBackgroundColor();
@@ -729,6 +735,20 @@ void qMRMLThreeDViewControllerWidget::setUseDepthPeeling(bool use)
 
   d->ViewLogic->StartViewNodeInteraction(vtkMRMLViewNode::UseDepthPeelingFlag);
   d->ViewNode->SetUseDepthPeeling(use ? 1 : 0);
+  d->ViewLogic->EndViewNodeInteraction();
+}
+
+// --------------------------------------------------------------------------
+void qMRMLThreeDViewControllerWidget::setUseSSAO(bool use)
+{
+  Q_D(qMRMLThreeDViewControllerWidget);
+  if (!d->ViewNode)
+    {
+    return;
+    }
+
+  d->ViewLogic->StartViewNodeInteraction(vtkMRMLViewNode::UseSSAOFlag);
+  d->ViewNode->SetUseSSAO(use);
   d->ViewLogic->EndViewNodeInteraction();
 }
 

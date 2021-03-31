@@ -52,6 +52,7 @@ vtkMRMLViewNode::vtkMRMLViewNode()
   this->BackgroundColor2[1] = this->defaultBackgroundColor2()[1];
   this->BackgroundColor2[2] = this->defaultBackgroundColor2()[2];
   this->UseDepthPeeling = 1;
+  this->UseSSAO = 0;
   this->FPSVisible = 0;
   this->OrientationMarkerEnabled = true;
   this->RulerEnabled = true;
@@ -101,6 +102,7 @@ void vtkMRMLViewNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLEnumMacro(stereoType, StereoType);
   vtkMRMLWriteXMLEnumMacro(renderMode, RenderMode);
   vtkMRMLWriteXMLIntMacro(useDepthPeeling, UseDepthPeeling);
+  vtkMRMLWriteXMLBooleanMacro(useSSAO, UseSSAO);
   vtkMRMLWriteXMLIntMacro(gpuMemorySize, GPUMemorySize);
   vtkMRMLWriteXMLBooleanMacro(autoReleaseGraphicsResources, AutoReleaseGraphicsResources);
   vtkMRMLWriteXMLFloatMacro(expectedFPS, ExpectedFPS);
@@ -138,6 +140,7 @@ void vtkMRMLViewNode::ReadXMLAttributes(const char** atts)
   vtkMRMLReadXMLEnumMacro(stereoType, StereoType);
   vtkMRMLReadXMLEnumMacro(renderMode, RenderMode);
   vtkMRMLReadXMLIntMacro(useDepthPeeling, UseDepthPeeling);
+  vtkMRMLReadXMLBooleanMacro(useSSAO, UseSSAO);
   vtkMRMLReadXMLIntMacro(gpuMemorySize, GPUMemorySize);
   vtkMRMLReadXMLBooleanMacro(autoReleaseGraphicsResources, AutoReleaseGraphicsResources);
   vtkMRMLReadXMLFloatMacro(expectedFPS, ExpectedFPS);
@@ -176,6 +179,7 @@ void vtkMRMLViewNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=true*/)
   vtkMRMLCopyEnumMacro(StereoType);
   vtkMRMLCopyEnumMacro(RenderMode);
   vtkMRMLCopyIntMacro(UseDepthPeeling);
+  vtkMRMLCopyBooleanMacro(UseSSAO);
   vtkMRMLCopyIntMacro(GPUMemorySize);
   vtkMRMLCopyBooleanMacro(AutoReleaseGraphicsResources);
   vtkMRMLCopyFloatMacro(ExpectedFPS);
@@ -211,6 +215,7 @@ void vtkMRMLViewNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintEnumMacro(StereoType);
   vtkMRMLPrintEnumMacro(RenderMode);
   vtkMRMLPrintIntMacro(UseDepthPeeling);
+  vtkMRMLPrintIntMacro(UseSSAO);
   vtkMRMLPrintIntMacro(GPUMemorySize);
   vtkMRMLPrintBooleanMacro(AutoReleaseGraphicsResources);
   vtkMRMLPrintFloatMacro(ExpectedFPS);

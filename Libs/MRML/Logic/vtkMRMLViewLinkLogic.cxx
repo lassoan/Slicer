@@ -454,9 +454,9 @@ void vtkMRMLViewLinkLogic::BroadcastViewNodeEvent(vtkMRMLViewNode* viewNode)
       vNode->SetRulerType(viewNode->GetRulerType());
       }
     // Ruler type
-    else if (viewNode->GetInteractionFlags() == vtkMRMLViewNode::UseDepthPeelingFlag)
+    else if (viewNode->GetInteractionFlags() == vtkMRMLViewNode::UseSSAOFlag)
       {
-      vNode->SetUseDepthPeeling(viewNode->GetUseDepthPeeling());
+      vNode->SetUseSSAO(viewNode->GetUseSSAO());
       }
     // FPS visibility
     else if (viewNode->GetInteractionFlags() == vtkMRMLViewNode::FPSVisibleFlag)

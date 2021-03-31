@@ -138,6 +138,9 @@ void qSlicerSettingsViewsPanelPrivate::init()
   q->registerProperty("Default3DView/UseDepthPeeling", this->ThreeDUseDepthPeelingCheckBox,
                       "checked", SIGNAL(toggled(bool)),
                       "3D depth peeling");
+  q->registerProperty("Default3DView/UseSSAO", this->ThreeDUseSSAOCheckBox,
+                      "checked", SIGNAL(toggled(bool)),
+                      "Improve depth perception by shading (SSAO)");
   q->registerProperty("Default3DView/UseOrthographicProjection", this->ThreeDUseOrthographicProjectionCheckBox,
                       "checked", SIGNAL(toggled(bool)),
                       "Orthographic projection");

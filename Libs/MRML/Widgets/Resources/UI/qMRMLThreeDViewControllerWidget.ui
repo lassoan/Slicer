@@ -591,6 +591,17 @@
     <string>Yellow ruler</string>
    </property>
   </action>
+  <action name="actionUseSSAO">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Improve depth perception (SSAO)</string>
+   </property>
+   <property name="toolTip">
+    <string>Improve depth perception in models by locally adjusting shading, using screen space ambient occlusion (SSAO) method.</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>

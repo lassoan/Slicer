@@ -107,6 +107,16 @@ void qMRMLThreeDViewPrivate::init()
 
   this->initDisplayableManagers();
   interactorStyle->SetDisplayableManagers(this->DisplayableManagerGroup);
+
+#if VTK_MAJOR_VERSION >= 9
+  vtkRenderer* renderer = q->renderer();
+  if (!renderer)
+    {
+    return;
+    }
+  renderer->SSAOBlurOn(); // reduce noise in SSAO mode
+  q->setSSAOSizeScale(1.0); // size of displayed objects is about 100 in phyical units (mm)
+#endif
 }
 
 //---------------------------------------------------------------------------
@@ -196,6 +206,7 @@ void qMRMLThreeDViewPrivate::updateWidgetFromMRML()
   q->setRockEnabled(this->MRMLViewNode->GetAnimationMode() == vtkMRMLViewNode::Rock);
 
   q->setUseDepthPeeling(this->MRMLViewNode->GetUseDepthPeeling() != 0);
+  q->setUseSSAO(this->MRMLViewNode->GetUseSSAO());
   q->setFPSVisible(this->MRMLViewNode->GetFPSVisible() != 0);
 }
 
@@ -598,4 +609,69 @@ void qMRMLThreeDView::dropEvent(QDropEvent* event)
     return;
     }
   shNode->ShowItemsInView(shItemIdList, this->mrmlViewNode());
+}
+
+//----------------------------------------------------------------------------
+bool qMRMLThreeDView::useSSAO()const
+{
+  Q_D(const qMRMLThreeDView);
+  vtkRenderer* renderer = this->renderer();
+  if (!renderer)
+    {
+    return false;
+    }
+#if VTK_MAJOR_VERSION >= 9
+  return renderer->GetUseSSAO();
+#else
+  return false;
+#endif
+}
+
+//----------------------------------------------------------------------------
+void qMRMLThreeDView::setUseSSAO(bool useSSAO)
+{
+  Q_D(qMRMLThreeDView);
+#if VTK_MAJOR_VERSION >= 9
+  vtkRenderer* renderer = this->renderer();
+  if (!renderer)
+    {
+    return;
+    }
+  renderer->SetUseSSAO(useSSAO);
+#endif
+}
+
+//----------------------------------------------------------------------------
+double qMRMLThreeDView::ssaoSizeScale()const
+{
+  Q_D(const qMRMLThreeDView);
+  vtkRenderer* renderer = this->renderer();
+  if (!renderer)
+    {
+    return 1.0;
+    }
+#if VTK_MAJOR_VERSION >= 9
+  // See rationale for 0.1 scale in setSSAOSizeScale
+  return renderer->GetSSAORadius()*0.1;
+#else
+  return 1.0;
+#endif
+}
+
+//----------------------------------------------------------------------------
+void qMRMLThreeDView::setSSAOSizeScale(double scale)
+{
+  Q_D(qMRMLThreeDView);
+#if VTK_MAJOR_VERSION >= 9
+  vtkRenderer* renderer = this->renderer();
+  if (!renderer)
+    {
+    return;
+    }
+  double sceneSize = 100.0 * scale;
+  // Bias and radius are from example in https://blog.kitware.com/ssao/.
+  // These values have been tested on different kind of meshes and found to work well.
+  renderer->SetSSAORadius(0.1 * sceneSize); // comparison radius
+  renderer->SetSSAOBias(0.001 * sceneSize); // comparison bias (how much distance difference will be made visible)
+#endif
 }
