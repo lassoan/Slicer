@@ -26,6 +26,7 @@
 
 // QtGUI includes
 #include "qSlicerWidgetPlugin.h"
+#include "qSlicerDataProbePlugin.h"
 #include "qSlicerDirectoryListViewPlugin.h"
 #include "qSlicerModulePanelPlugin.h"
 #include "qSlicerModulesListViewPlugin.h"
@@ -45,6 +46,7 @@ public:
     {
     QList<QDesignerCustomWidgetInterface *> plugins;
     plugins << new qSlicerWidgetPlugin;
+    plugins << new qSlicerDataProbePlugin;
     plugins << new qSlicerDirectoryListViewPlugin;
     plugins << new qSlicerModulePanelPlugin;
     plugins << new qSlicerModulesListViewPlugin;

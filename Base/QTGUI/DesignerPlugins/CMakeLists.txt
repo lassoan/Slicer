@@ -15,6 +15,8 @@ set(${KIT}_SRCS
   qSlicerQTGUIPlugins.cxx
   qSlicerQTGUIPlugins.h
 
+  qSlicerDataProbePlugin.cxx
+  qSlicerDataProbePlugin.h
   qSlicerDirectoryListViewPlugin.cxx
   qSlicerDirectoryListViewPlugin.h
   qSlicerModulePanelPlugin.cxx
@@ -31,6 +33,7 @@ set(${KIT}_SRCS
 set(${KIT}_MOC_SRCS
   qSlicerQTGUIPlugins.h
 
+  qSlicerDataProbePlugin.h
   qSlicerDirectoryListViewPlugin.h
   qSlicerModulePanelPlugin.h
   qSlicerModulesListViewPlugin.h

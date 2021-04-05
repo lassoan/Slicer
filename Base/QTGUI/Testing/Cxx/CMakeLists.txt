@@ -36,6 +36,7 @@ if(BUILD_TESTING)
     qSlicerAbstractModuleWidgetTest1.cxx
     qSlicerApplicationTest1.cxx
     qSlicerDataDialogTest1.cxx
+    qSlicerDataProbeTest1.cxx
     qSlicerDirectoryListViewTest1.cxx
     qSlicerLayoutManagerTest1.cxx
     qSlicerModulePanelTest1.cxx
@@ -90,6 +91,7 @@ if(BUILD_TESTING)
   simple_test( qSlicerAbstractModuleTest1 )
   simple_test( qSlicerAbstractModuleWidgetTest1 )
   simple_test( qSlicerDataDialogTest1 )
+  simple_test( qSlicerDataProbeTest1 )
   simple_test( qSlicerDirectoryListViewTest1 )
   simple_test( qSlicerLayoutManagerTest1 )
   simple_test( qSlicerModulePanelTest1 )

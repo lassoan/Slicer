@@ -32,6 +32,8 @@ set(KIT_SRCS
   qSlicerDarkStyle.h
   qSlicerDataDialog.cxx
   qSlicerDataDialog.h
+  qSlicerDataProbe.cxx
+  qSlicerDataProbe.h
   qSlicerDirectoryListView.cxx
   qSlicerDirectoryListView.h
 
@@ -188,6 +190,7 @@ set(KIT_MOC_SRCS
   qSlicerDarkStyle.h
   qSlicerDataDialog.h
   qSlicerDataDialog_p.h
+  qSlicerDataProbe.h
   qSlicerDirectoryListView.h
   qSlicerFileDialog.h
   qSlicerFileWriterOptionsWidget.h
@@ -278,6 +281,7 @@ endif()
 set(KIT_UI_SRCS
   Resources/UI/qSlicerActionsDialog.ui
   Resources/UI/qSlicerDataDialog.ui
+  Resources/UI/qSlicerDataProbe.ui
   Resources/UI/qSlicerModelsDialog.ui
   Resources/UI/qSlicerModuleFinderDialog.ui
   Resources/UI/qSlicerModulePanel.ui
