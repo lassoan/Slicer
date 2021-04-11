@@ -77,11 +77,16 @@ protected:
   /// Update interaction handle visibility for representation
   void UpdateInteractionPipeline() override;
 
+  vtkSmartPointer<vtkPolyData> LineOutline;
+  vtkSmartPointer<vtkPolyDataMapper2D> LineOutlineMapper;
+  vtkSmartPointer<vtkActor2D> LineOutlineActor;
+
   vtkSmartPointer<vtkPolyData> Line;
   vtkSmartPointer<vtkPolyDataMapper2D> LineMapper;
   vtkSmartPointer<vtkActor2D> LineActor;
   vtkSmartPointer<vtkDiscretizableColorTransferFunction> LineColorMap;
 
+  vtkSmartPointer<vtkTubeFilter> TubeOutlineFilter;
   vtkSmartPointer<vtkTubeFilter> TubeFilter;
 
   vtkSmartPointer<vtkTransformPolyDataFilter> WorldToSliceTransformer;
