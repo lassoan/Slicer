@@ -22,6 +22,7 @@
 
 // Qt includes
 #include <QFont>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QSettings>
 #include <QSysInfo>
@@ -115,6 +116,7 @@ void qSlicerApplicationHelper::preInitializeApplication(
     {
     QApplication::setStyle(style);
     }
+  QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
   qMRMLWidget::postInitializeApplication();
 }
