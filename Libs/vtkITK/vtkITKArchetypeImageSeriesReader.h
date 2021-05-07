@@ -553,11 +553,17 @@ public:
           b += this->ImagePositionPatient[k][n] * this->ImagePositionPatient[k][n];
           c += this->ImagePositionPatient[k][n] * ipp[n];
           }
+        if (fabs(a - b) < 0.01)
+        {
+          return k;
+        }
+        /*
         c = fabs(c)/sqrt(a*b);
         if ( c > 0.99999 )
           {
           return k;
           }
+          */
         }
       return -1;
     }
