@@ -63,6 +63,10 @@ qSlicerViewersToolBarPrivate::qSlicerViewersToolBarPrivate(qSlicerViewersToolBar
 
   this->CrosshairSliceIntersectionsAction = nullptr;
 
+  this->CrosshairInteractiveSliceIntersectionsAction = nullptr;
+  this->CrosshairRotationHandlesSliceIntersectionsAction = nullptr;
+  this->CrosshairTranslationHandlesSliceIntersectionsAction = nullptr;
+
   this->CrosshairToggleAction = nullptr;
 
   this->CrosshairLastMode = vtkMRMLCrosshairNode::ShowBasic;
@@ -150,7 +154,8 @@ void qSlicerViewersToolBarPrivate::init()
                                     vtkMRMLCrosshairNode::ShowIntersection);
   this->CrosshairMapper->setMapping(this->CrosshairSmallBasicAction,
                                     vtkMRMLCrosshairNode::ShowSmallBasic);
-  this->CrosshairMapper->setMapping(this->CrosshairSmallBasicIntersectionAction,                                     vtkMRMLCrosshairNode::ShowSmallIntersection);
+  this->CrosshairMapper->setMapping(this->CrosshairSmallBasicIntersectionAction,
+      vtkMRMLCrosshairNode::ShowSmallIntersection);
   QObject::connect(crosshairActions, SIGNAL(triggered(QAction*)),
                    this->CrosshairMapper, SLOT(map(QAction*)));
   QObject::connect(this->CrosshairMapper, SIGNAL(mapped(int)),
@@ -198,6 +203,42 @@ void qSlicerViewersToolBarPrivate::init()
   QObject::connect(this->CrosshairSliceIntersectionsAction, SIGNAL(triggered(bool)),
                    this, SLOT(setSliceIntersectionVisible(bool)));
 
+  // Interactive slice intersections
+  this->CrosshairInteractiveSliceIntersectionsAction = new QAction(q);
+  this->CrosshairInteractiveSliceIntersectionsAction->setText(tr("Interaction"));
+  this->CrosshairInteractiveSliceIntersectionsAction->setToolTip(tr("Show handles for slice interaction."));
+  this->CrosshairInteractiveSliceIntersectionsAction->setCheckable(true);
+  this->CrosshairInteractiveSliceIntersectionsAction->setEnabled(false);
+  QObject::connect(this->CrosshairInteractiveSliceIntersectionsAction, SIGNAL(triggered(bool)),
+    this, SLOT(setSliceIntersectionHandlesVisible(bool)));
+
+  // Interaction options
+  this->CrosshairTranslationHandlesSliceIntersectionsAction = new QAction(q);
+  this->CrosshairTranslationHandlesSliceIntersectionsAction->setText(tr("Translate"));
+  this->CrosshairTranslationHandlesSliceIntersectionsAction->setToolTip(tr("Control visibility of translation handles for slice interaction."));
+  this->CrosshairTranslationHandlesSliceIntersectionsAction->setCheckable(true);
+  this->CrosshairTranslationHandlesSliceIntersectionsAction->setEnabled(false);
+  QObject::connect(this->CrosshairTranslationHandlesSliceIntersectionsAction, SIGNAL(triggered(bool)),
+    this, SLOT(setSliceIntersectionTranslationHandlesVisible(bool)));
+
+  this->CrosshairRotationHandlesSliceIntersectionsAction = new QAction(q);
+  this->CrosshairRotationHandlesSliceIntersectionsAction->setText(tr("Rotate"));
+  this->CrosshairRotationHandlesSliceIntersectionsAction->setToolTip(tr("Control visibility of rotation handles for slice interaction."));
+  this->CrosshairRotationHandlesSliceIntersectionsAction->setCheckable(true);
+  this->CrosshairRotationHandlesSliceIntersectionsAction->setEnabled(false);
+  QObject::connect(this->CrosshairRotationHandlesSliceIntersectionsAction, SIGNAL(triggered(bool)),
+    this, SLOT(setSliceIntersectionRotationHandlesVisible(bool)));
+
+  this->CrosshairHandleVisibilityMenu = new QMenu();
+  this->CrosshairHandleVisibilityMenu->addAction(this->CrosshairTranslationHandlesSliceIntersectionsAction);
+  this->CrosshairHandleVisibilityMenu->addAction(this->CrosshairRotationHandlesSliceIntersectionsAction);
+
+  this->CrosshairHandleVisibilityAction = new QAction("Interaction options");
+  this->CrosshairHandleVisibilityAction->setObjectName("HandleInteractionOptions");
+  this->CrosshairHandleVisibilityAction->setEnabled(false);
+  //q->setActionPosition(this->CrosshairHandleVisibilityAction, interactionHandlesSection);
+  this->CrosshairHandleVisibilityAction->setMenu(this->CrosshairHandleVisibilityMenu);
+
   // Menu
   this->CrosshairMenu = new QMenu(tr("Crosshair"), q);
   this->CrosshairMenu->addActions(crosshairJumpSlicesActions->actions());
@@ -207,7 +248,8 @@ void qSlicerViewersToolBarPrivate::init()
   this->CrosshairMenu->addActions(crosshairThicknessActions->actions());
   this->CrosshairMenu->addSeparator();
   this->CrosshairMenu->addAction(this->CrosshairSliceIntersectionsAction);
-
+  this->CrosshairMenu->addAction(this->CrosshairInteractiveSliceIntersectionsAction);
+  this->CrosshairMenu->addMenu(this->CrosshairHandleVisibilityMenu);
 
   this->CrosshairToolButton = new QToolButton();
 //  this->CrosshairToolButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -345,8 +387,107 @@ void qSlicerViewersToolBarPrivate::setSliceIntersectionVisible(bool visible)
                                    nodes->GetNextItemAsObject(it)));)
     {
     node->SetSliceIntersectionVisibility(visible);
+    node->SetHandlesInteractive(false); // deactivate interactive mode
+    }
+
+  // Enable updates of display pipelines in scene by modifying all associated slice nodes
+  vtkMRMLScene* scene = this->MRMLScene;
+  std::vector<vtkMRMLNode*> sliceNodes;
+  int nnodes = scene ? scene->GetNodesByClass("vtkMRMLSliceNode", sliceNodes) : 0;
+  for (int i = 0; i < nnodes; i++)
+    {
+    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[i]);
+    sliceNode->Modified();
     }
 }
+
+// --------------------------------------------------------------------------
+void qSlicerViewersToolBarPrivate::setSliceIntersectionHandlesVisible(bool visible)
+{
+  // Q_Q(qSlicerViewersToolBar);
+  vtkSmartPointer<vtkCollection> nodes;
+  nodes.TakeReference(this->MRMLScene->GetNodesByClass("vtkMRMLSliceCompositeNode"));
+  if (!nodes.GetPointer())
+    {
+    return;
+    }
+  vtkMRMLSliceCompositeNode* node = nullptr;
+  vtkCollectionSimpleIterator it;
+  for (nodes->InitTraversal(it); (node = static_cast<vtkMRMLSliceCompositeNode*>(
+    nodes->GetNextItemAsObject(it)));)
+    {
+    node->SetHandlesInteractive(visible);
+    node->SetSliceIntersectionVisibility(!visible);
+    }
+
+  // Enable updates of display pipelines in scene by modifying all associated slice nodes
+  vtkMRMLScene* scene = this->MRMLScene;
+  std::vector<vtkMRMLNode*> sliceNodes;
+  int nnodes = scene ? scene->GetNodesByClass("vtkMRMLSliceNode", sliceNodes) : 0;
+  for (int i = 0; i < nnodes; i++)
+    {
+    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[i]);
+    sliceNode->Modified();
+    }
+}
+
+// --------------------------------------------------------------------------
+void qSlicerViewersToolBarPrivate::setSliceIntersectionRotationHandlesVisible(bool visible)
+  {
+  // Q_Q(qSlicerViewersToolBar);
+  vtkSmartPointer<vtkCollection> nodes;
+  nodes.TakeReference(this->MRMLScene->GetNodesByClass("vtkMRMLSliceCompositeNode"));
+  if (!nodes.GetPointer())
+    {
+    return;
+    }
+  vtkMRMLSliceCompositeNode* node = nullptr;
+  vtkCollectionSimpleIterator it;
+  for (nodes->InitTraversal(it); (node = static_cast<vtkMRMLSliceCompositeNode*>(
+    nodes->GetNextItemAsObject(it)));)
+    {
+    node->SetRotationHandleVisibility(visible);
+    }
+
+  // Enable updates of display pipelines in scene by modifying all associated slice nodes
+  vtkMRMLScene* scene = this->MRMLScene;
+  std::vector<vtkMRMLNode*> sliceNodes;
+  int nnodes = scene ? scene->GetNodesByClass("vtkMRMLSliceNode", sliceNodes) : 0;
+  for (int i = 0; i < nnodes; i++)
+    {
+    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[i]);
+    sliceNode->Modified();
+    }
+  }
+
+// --------------------------------------------------------------------------
+void qSlicerViewersToolBarPrivate::setSliceIntersectionTranslationHandlesVisible(bool visible)
+  {
+  // Q_Q(qSlicerViewersToolBar);
+  vtkSmartPointer<vtkCollection> nodes;
+  nodes.TakeReference(this->MRMLScene->GetNodesByClass("vtkMRMLSliceCompositeNode"));
+  if (!nodes.GetPointer())
+    {
+    return;
+    }
+  vtkMRMLSliceCompositeNode* node = nullptr;
+  vtkCollectionSimpleIterator it;
+  for (nodes->InitTraversal(it); (node = static_cast<vtkMRMLSliceCompositeNode*>(
+    nodes->GetNextItemAsObject(it)));)
+    {
+    node->SetTranslationHandleVisibility(visible);
+    }
+
+  // Enable updates of display pipelines in scene by modifying all associated slice nodes
+  vtkMRMLScene* scene = this->MRMLScene;
+  std::vector<vtkMRMLNode*> sliceNodes;
+  int nnodes = scene ? scene->GetNodesByClass("vtkMRMLSliceNode", sliceNodes) : 0;
+  for (int i = 0; i < nnodes; i++)
+    {
+    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[i]);
+    sliceNode->Modified();
+    }
+  }
 
 //---------------------------------------------------------------------------
 void qSlicerViewersToolBarPrivate::setMRMLScene(vtkMRMLScene* newScene)
@@ -487,7 +628,6 @@ void qSlicerViewersToolBarPrivate::updateWidgetFromMRML()
       {
       this->CrosshairToggleAction->setChecked( crosshairNode->GetCrosshairMode() != vtkMRMLCrosshairNode::NoCrosshair );
       }
-
     }
 
   // toggle the slice intersections. this is harder to manage as there
@@ -503,13 +643,21 @@ void qSlicerViewersToolBarPrivate::updateWidgetFromMRML()
       vtkMRMLSliceCompositeNode *node = red->mrmlSliceCompositeNode();
       if (node)
         {
-        this->CrosshairSliceIntersectionsAction->setChecked(node->GetSliceIntersectionVisibility());
+        this->CrosshairSliceIntersectionsAction->setChecked((node->GetSliceIntersectionVisibility() || node->GetHandlesInteractive()));
+        this->CrosshairInteractiveSliceIntersectionsAction->setChecked(node->GetHandlesInteractive());
+        this->CrosshairInteractiveSliceIntersectionsAction->setEnabled(this->CrosshairSliceIntersectionsAction->isChecked());
+        // Interaction options submenu
+        this->CrosshairHandleVisibilityAction->setEnabled(this->CrosshairInteractiveSliceIntersectionsAction->isChecked());
+        // Rotation handles visibility
+        this->CrosshairRotationHandlesSliceIntersectionsAction->setChecked(node->GetRotationHandleVisibility());
+        this->CrosshairRotationHandlesSliceIntersectionsAction->setEnabled(this->CrosshairInteractiveSliceIntersectionsAction->isChecked());
+        // Translation handles visibility
+        this->CrosshairTranslationHandlesSliceIntersectionsAction->setChecked(node->GetTranslationHandleVisibility());
+        this->CrosshairTranslationHandlesSliceIntersectionsAction->setEnabled(this->CrosshairInteractiveSliceIntersectionsAction->isChecked());
         }
       }
     }
-
 }
-
 
 //---------------------------------------------------------------------------
 void qSlicerViewersToolBarPrivate::OnMRMLSceneStartClose()

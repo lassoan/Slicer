@@ -88,11 +88,11 @@ public:
   void AddCrosshairLine(vtkPoints *pts, vtkCellArray *cellArray,
                         int p1x, int p1y, int p2x, int p2y);
 
-  // Did crosshair position change?
-  bool DidCrosshairPositionChange();
+  // Has crosshair position changed?
+  bool HasCrosshairPositionChanged();
 
-  // Did crosshair property change?
-  bool DidCrosshairPropertyChange();
+  // Has crosshair property changed?
+  bool HasCrosshairPropertyChanged();
 
   vtkMRMLCrosshairDisplayableManager*        External;
   int                                        PickState;
@@ -158,7 +158,7 @@ void vtkMRMLCrosshairDisplayableManager::vtkInternal::Modified()
 }
 
 //---------------------------------------------------------------------------
-bool vtkMRMLCrosshairDisplayableManager::vtkInternal::DidCrosshairPositionChange()
+bool vtkMRMLCrosshairDisplayableManager::vtkInternal::HasCrosshairPositionChanged()
 {
   if (this->CrosshairNode.GetPointer() == nullptr)
     {
@@ -182,7 +182,7 @@ bool vtkMRMLCrosshairDisplayableManager::vtkInternal::DidCrosshairPositionChange
 }
 
 //---------------------------------------------------------------------------
-bool vtkMRMLCrosshairDisplayableManager::vtkInternal::DidCrosshairPropertyChange()
+bool vtkMRMLCrosshairDisplayableManager::vtkInternal::HasCrosshairPropertyChanged()
 {
   if (this->CrosshairNode.GetPointer() == nullptr)
     {
@@ -201,8 +201,7 @@ bool vtkMRMLCrosshairDisplayableManager::vtkInternal::DidCrosshairPropertyChange
 }
 
 //---------------------------------------------------------------------------
-vtkMRMLSliceNode* vtkMRMLCrosshairDisplayableManager::vtkInternal
-::GetSliceNode()
+vtkMRMLSliceNode* vtkMRMLCrosshairDisplayableManager::vtkInternal::GetSliceNode()
 {
   return this->External->GetMRMLSliceNode();
 }
@@ -472,14 +471,14 @@ void vtkMRMLCrosshairDisplayableManager::OnMRMLNodeModified(
 {
   // update the properties and style of the crosshair
   bool builtCrosshair = false;
-  if (this->Internal->DidCrosshairPropertyChange())
+  if (this->Internal->HasCrosshairPropertyChanged())
     {
     this->Internal->BuildCrosshair();
     builtCrosshair = true;
     }
 
   // update the position of the actor
-  if ((this->Internal->DidCrosshairPositionChange() || builtCrosshair)
+  if ((this->Internal->HasCrosshairPositionChanged() || builtCrosshair)
       && this->Internal->Actor)
     {
     double xyz[3];

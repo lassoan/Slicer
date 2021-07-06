@@ -79,6 +79,7 @@ set(DisplayableManager_SRCS
   # DisplayableManager associated with SliceView
   vtkMRMLCrosshairDisplayableManager.cxx
   vtkMRMLCrosshairDisplayableManager3D.cxx
+  vtkMRMLSliceIntersectionDisplayableManager.cxx
   vtkMRMLModelSliceDisplayableManager.cxx
   vtkMRMLVolumeGlyphSliceDisplayableManager.cxx
 
@@ -113,7 +114,10 @@ set(KIT_SRCS
   vtkMRMLAbstractWidgetRepresentation.cxx
   vtkMRMLCameraWidget.cxx
   vtkMRMLSliceIntersectionWidget.cxx
+  vtkMRMLSliceIntersectionInteractionWidget.cxx
   vtkMRMLSliceIntersectionRepresentation2D.cxx
+  vtkMRMLSliceIntersectionInteractionRepresentation.cxx
+  vtkMRMLSliceIntersectionInteractionRepresentationHelper.cxx
   vtkMRMLRubberBandWidgetRepresentation.cxx
   vtkMRMLWindowLevelWidget.cxx
 

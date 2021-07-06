@@ -22,6 +22,7 @@
 #include "vtkMRMLApplicationLogic.h"
 #include "vtkMRMLDisplayableManagerGroup.h"
 #include "vtkMRMLInteractionEventData.h"
+#include "vtkMRMLSliceIntersectionDisplayableManager.h"
 
 // VTK includes
 #include "vtkCallbackCommand.h"
@@ -405,17 +406,31 @@ bool vtkMRMLViewInteractorStyle::DelegateInteractionEventDataToDisplayableManage
     return false;
     }
 
-  // This prevents desynchronized update of displayable managers during user interaction
-  // (ie. slice intersection widget or segmentations lagging behind during slice translation)
-  this->FocusedDisplayableManager->GetMRMLApplicationLogic()->PauseRender();
-  bool processed = this->FocusedDisplayableManager->ProcessInteractionEvent(eventData);
-  int cursor = VTK_CURSOR_DEFAULT;
-  if (processed)
+  // Process event with focused displayable manager
+  bool processed;
+  if (vtkMRMLSliceIntersectionDisplayableManager::SafeDownCast(this->FocusedDisplayableManager))
     {
-    cursor = this->FocusedDisplayableManager->GetMouseCursor();
+    // Process the interaction event without updating mouse cursor. This is needed to enable
+    // mouse cursor updates from vtKMRMLSliceIntersectionInteractionWidget class. Mouse cursor
+    // is changed to VTK_CURSOR_HAND when mouse is hovering the slice intersection interaction
+    // handles.
+    processed = this->FocusedDisplayableManager->ProcessInteractionEvent(eventData);
     }
-  this->FocusedDisplayableManager->SetMouseCursor(cursor);
-  this->FocusedDisplayableManager->GetMRMLApplicationLogic()->ResumeRender();
+  else
+    {
+    // This prevents desynchronized update of displayable managers during user interaction
+    // (ie. slice intersection widget or segmentations lagging behind during slice translation)
+    this->FocusedDisplayableManager->GetMRMLApplicationLogic()->PauseRender();
+    processed = this->FocusedDisplayableManager->ProcessInteractionEvent(eventData);
+    int cursor = VTK_CURSOR_DEFAULT;
+    if (processed)
+      {
+      cursor = this->FocusedDisplayableManager->GetMouseCursor();
+      }
+    this->FocusedDisplayableManager->SetMouseCursor(cursor);
+    this->FocusedDisplayableManager->GetMRMLApplicationLogic()->ResumeRender();
+    }
+
   return processed;
 }
 

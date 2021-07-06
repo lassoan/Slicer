@@ -23,7 +23,7 @@
 /// vtkMRMLVolumes into a single display image.
 class VTK_MRML_EXPORT vtkMRMLSliceCompositeNode : public vtkMRMLNode
 {
-  public:
+public:
   static vtkMRMLSliceCompositeNode *New();
   vtkTypeMacro(vtkMRMLSliceCompositeNode,vtkMRMLNode);
   void PrintSelf(ostream& os, vtkIndent indent) override;
@@ -106,8 +106,29 @@ class VTK_MRML_EXPORT vtkMRMLSliceCompositeNode : public vtkMRMLNode
 
   ///
   /// toggles visibility of intersections of other slices in the slice viewer
-  vtkGetMacro (SliceIntersectionVisibility, int );
-  vtkSetMacro (SliceIntersectionVisibility, int );
+  vtkGetMacro(SliceIntersectionVisibility, int);
+  vtkSetMacro(SliceIntersectionVisibility, int);
+
+  // Interaction handles
+  enum HandleType
+    {
+    HandleNone = 0,
+    HandleRotation,
+    HandleTranslation
+    };
+
+  /// The visibility and interactability of the interaction handles
+  vtkGetMacro(HandlesInteractive, bool);
+  vtkSetMacro(HandlesInteractive, bool);
+  vtkBooleanMacro(HandlesInteractive, bool);
+  vtkGetMacro(TranslationHandleVisibility, bool);
+  vtkSetMacro(TranslationHandleVisibility, bool);
+  vtkBooleanMacro(TranslationHandleVisibility, bool);
+  vtkGetMacro(RotationHandleVisibility, bool);
+  vtkSetMacro(RotationHandleVisibility, bool);
+  vtkBooleanMacro(RotationHandleVisibility, bool);
+  void SetHandleVisibility(int handleType, bool visibility);
+  bool GetHandleVisibility(int handleType);
 
   /// Get annotation space.
   vtkGetMacro ( AnnotationSpace, int );
@@ -251,6 +272,10 @@ protected:
   int FiducialLabelVisibility;
 
   int SliceIntersectionVisibility;
+
+  bool HandlesInteractive;
+  bool TranslationHandleVisibility;
+  bool RotationHandleVisibility;
 
   int AnnotationSpace;
   int AnnotationMode;

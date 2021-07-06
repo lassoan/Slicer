@@ -51,6 +51,9 @@ vtkMRMLSliceCompositeNode::vtkMRMLSliceCompositeNode()
   this->AnnotationSpace = vtkMRMLSliceCompositeNode::IJKAndRAS;
   this->AnnotationMode = vtkMRMLSliceCompositeNode::All;
   this->SliceIntersectionVisibility = 0;
+  this->HandlesInteractive = false;
+  this->TranslationHandleVisibility = true;
+  this->RotationHandleVisibility = true;
   this->DoPropagateVolumeSelection = true;
   this->Interacting = 0;
   this->InteractionFlags = 0;
@@ -77,6 +80,9 @@ void vtkMRMLSliceCompositeNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLIntMacro(fiducialVisibility, FiducialVisibility);
   vtkMRMLWriteXMLIntMacro(fiducialLabelVisibility, FiducialLabelVisibility);
   vtkMRMLWriteXMLIntMacro(sliceIntersectionVisibility, SliceIntersectionVisibility);
+  vtkMRMLWriteXMLBooleanMacro(handlesInteractive, HandlesInteractive);
+  vtkMRMLWriteXMLBooleanMacro(translationHandleVisibility, TranslationHandleVisibility);
+  vtkMRMLWriteXMLBooleanMacro(rotationHandleVisibility, RotationHandleVisibility);
   vtkMRMLWriteXMLStringMacro(layoutName, LayoutName);
   vtkMRMLWriteXMLEnumMacro(annotationSpace, AnnotationSpace);
   vtkMRMLWriteXMLEnumMacro(annotationMode, AnnotationMode);
@@ -198,6 +204,9 @@ void vtkMRMLSliceCompositeNode::ReadXMLAttributes(const char** atts)
   vtkMRMLReadXMLIntMacro(fiducialVisibility, FiducialVisibility);
   vtkMRMLReadXMLIntMacro(fiducialLabelVisibility, FiducialLabelVisibility);
   vtkMRMLReadXMLIntMacro(sliceIntersectionVisibility, SliceIntersectionVisibility);
+  vtkMRMLReadXMLBooleanMacro(handlesInteractive, HandlesInteractive);
+  vtkMRMLReadXMLBooleanMacro(translationHandleVisibility, TranslationHandleVisibility);
+  vtkMRMLReadXMLBooleanMacro(rotationHandleVisibility, RotationHandleVisibility);
   vtkMRMLReadXMLStringMacro(layoutName, LayoutName);
   vtkMRMLReadXMLEnumMacro(annotationSpace, AnnotationSpace);
   vtkMRMLReadXMLEnumMacro(annotationMode, AnnotationMode);
@@ -224,6 +233,9 @@ void vtkMRMLSliceCompositeNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=
   vtkMRMLCopyIntMacro(FiducialVisibility);
   vtkMRMLCopyIntMacro(FiducialLabelVisibility);
   vtkMRMLCopyIntMacro(SliceIntersectionVisibility);
+  vtkMRMLCopyBooleanMacro(HandlesInteractive);
+  vtkMRMLCopyBooleanMacro(TranslationHandleVisibility);
+  vtkMRMLCopyBooleanMacro(RotationHandleVisibility);
   // To avoid breaking current implementation, copy of the "LayoutName" attribute
   // will be enabled after revisiting the view initialization pipeline.
   //vtkMRMLCopyStringMacro(LayoutName);
@@ -250,6 +262,9 @@ void vtkMRMLSliceCompositeNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintIntMacro(FiducialVisibility);
   vtkMRMLPrintIntMacro(FiducialLabelVisibility);
   vtkMRMLPrintIntMacro(SliceIntersectionVisibility);
+  vtkMRMLPrintBooleanMacro(HandlesInteractive);
+  vtkMRMLPrintBooleanMacro(TranslationHandleVisibility);
+  vtkMRMLPrintBooleanMacro(RotationHandleVisibility);
   vtkMRMLPrintStringMacro(LayoutName);
   vtkMRMLPrintEnumMacro(AnnotationSpace);
   vtkMRMLPrintEnumMacro(AnnotationMode);
@@ -295,3 +310,35 @@ const char* vtkMRMLSliceCompositeNode::GetLabelVolumeID()
 {
   return this->GetNodeReferenceID(LabelVolumeNodeReferenceRole);
 }
+
+//---------------------------------------------------------------------------
+void vtkMRMLSliceCompositeNode::SetHandleVisibility(int handleType, bool visibility)
+  {
+  switch (handleType)
+    {
+    case vtkMRMLSliceCompositeNode::HandleTranslation:
+      this->SetTranslationHandleVisibility(visibility);
+      break;
+    case vtkMRMLSliceCompositeNode::HandleRotation:
+      this->SetRotationHandleVisibility(visibility);
+      break;
+    default:
+      vtkErrorMacro("Unknown handle type");
+      break;
+    }
+  }
+
+//---------------------------------------------------------------------------
+bool vtkMRMLSliceCompositeNode::GetHandleVisibility(int handleType)
+  {
+  switch (handleType)
+    {
+    case vtkMRMLSliceCompositeNode::HandleTranslation:
+      return this->GetTranslationHandleVisibility();
+    case vtkMRMLSliceCompositeNode::HandleRotation:
+      return this->GetRotationHandleVisibility();
+    default:
+      vtkErrorMacro("Unknown handle type");
+    }
+  return false;
+  }
