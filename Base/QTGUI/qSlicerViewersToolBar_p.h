@@ -89,6 +89,7 @@ public slots:
   void setCrosshairThickness(int);
   void setCrosshairJumpSlicesMode(int);
   void setSliceIntersectionVisible(bool);
+  void setSliceIntersectionHandlesVisible(bool);
 
 public:
   vtkSmartPointer<vtkMRMLScene>            MRMLScene;
@@ -110,6 +111,7 @@ public:
   QAction*      CrosshairSmallBasicAction;
   QAction*      CrosshairSmallBasicIntersectionAction;
   QAction*      CrosshairSliceIntersectionsAction;
+  QAction*      CrosshairInteractiveSliceIntersectionsAction;
 
   ctkSignalMapper* CrosshairThicknessMapper;
   QAction*      CrosshairFineAction;

@@ -51,6 +51,7 @@ vtkMRMLSliceCompositeNode::vtkMRMLSliceCompositeNode()
   this->AnnotationSpace = vtkMRMLSliceCompositeNode::IJKAndRAS;
   this->AnnotationMode = vtkMRMLSliceCompositeNode::All;
   this->SliceIntersectionVisibility = 0;
+  this->SliceIntersectionHandlesVisibility = 0;
   this->DoPropagateVolumeSelection = true;
   this->Interacting = 0;
   this->InteractionFlags = 0;
@@ -77,6 +78,7 @@ void vtkMRMLSliceCompositeNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLIntMacro(fiducialVisibility, FiducialVisibility);
   vtkMRMLWriteXMLIntMacro(fiducialLabelVisibility, FiducialLabelVisibility);
   vtkMRMLWriteXMLIntMacro(sliceIntersectionVisibility, SliceIntersectionVisibility);
+  vtkMRMLWriteXMLIntMacro(sliceIntersectionHandlesVisibility, SliceIntersectionHandlesVisibility);
   vtkMRMLWriteXMLStringMacro(layoutName, LayoutName);
   vtkMRMLWriteXMLEnumMacro(annotationSpace, AnnotationSpace);
   vtkMRMLWriteXMLEnumMacro(annotationMode, AnnotationMode);
@@ -198,6 +200,7 @@ void vtkMRMLSliceCompositeNode::ReadXMLAttributes(const char** atts)
   vtkMRMLReadXMLIntMacro(fiducialVisibility, FiducialVisibility);
   vtkMRMLReadXMLIntMacro(fiducialLabelVisibility, FiducialLabelVisibility);
   vtkMRMLReadXMLIntMacro(sliceIntersectionVisibility, SliceIntersectionVisibility);
+  vtkMRMLReadXMLIntMacro(sliceIntersectionHandlesVisibility, SliceIntersectionHandlesVisibility);
   vtkMRMLReadXMLStringMacro(layoutName, LayoutName);
   vtkMRMLReadXMLEnumMacro(annotationSpace, AnnotationSpace);
   vtkMRMLReadXMLEnumMacro(annotationMode, AnnotationMode);
@@ -224,6 +227,7 @@ void vtkMRMLSliceCompositeNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=
   vtkMRMLCopyIntMacro(FiducialVisibility);
   vtkMRMLCopyIntMacro(FiducialLabelVisibility);
   vtkMRMLCopyIntMacro(SliceIntersectionVisibility);
+  vtkMRMLCopyIntMacro(SliceIntersectionHandlesVisibility);
   // To avoid breaking current implementation, copy of the "LayoutName" attribute
   // will be enabled after revisiting the view initialization pipeline.
   //vtkMRMLCopyStringMacro(LayoutName);
@@ -250,6 +254,7 @@ void vtkMRMLSliceCompositeNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintIntMacro(FiducialVisibility);
   vtkMRMLPrintIntMacro(FiducialLabelVisibility);
   vtkMRMLPrintIntMacro(SliceIntersectionVisibility);
+  vtkMRMLPrintIntMacro(SliceIntersectionHandlesVisibility);
   vtkMRMLPrintStringMacro(LayoutName);
   vtkMRMLPrintEnumMacro(AnnotationSpace);
   vtkMRMLPrintEnumMacro(AnnotationMode);

@@ -113,7 +113,9 @@ set(KIT_SRCS
   vtkMRMLAbstractWidgetRepresentation.cxx
   vtkMRMLCameraWidget.cxx
   vtkMRMLSliceIntersectionWidget.cxx
+  vtkMRMLSliceIntersectionInteractionWidget.cxx
   vtkMRMLSliceIntersectionRepresentation2D.cxx
+  vtkMRMLSliceIntersectionInteractionRepresentation.cxx
   vtkMRMLRubberBandWidgetRepresentation.cxx
   vtkMRMLWindowLevelWidget.cxx
 

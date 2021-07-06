@@ -30,6 +30,7 @@
 #include <vtkMRMLLightBoxRendererManagerProxy.h>
 #include <vtkMRMLScene.h>
 #include <vtkMRMLSliceIntersectionWidget.h>
+#include <vtkMRMLSliceIntersectionInteractionWidget.h>
 #include <vtkMRMLSliceLogic.h>
 #include <vtkMRMLSliceNode.h>
 
@@ -106,6 +107,7 @@ public:
   double CrosshairPosition[3];
 
   vtkSmartPointer<vtkMRMLSliceIntersectionWidget> SliceIntersectionWidget;
+  vtkSmartPointer<vtkMRMLSliceIntersectionInteractionWidget> SliceIntersectionInteractionWidget;
 };
 
 
@@ -126,6 +128,7 @@ vtkMRMLCrosshairDisplayableManager::vtkInternal
   this->CrosshairPosition[1] = 0.0;
   this->CrosshairPosition[2] = 0.0;
   this->SliceIntersectionWidget = vtkSmartPointer<vtkMRMLSliceIntersectionWidget>::New();
+  this->SliceIntersectionInteractionWidget = vtkSmartPointer<vtkMRMLSliceIntersectionInteractionWidget>::New();
 }
 
 //---------------------------------------------------------------------------
