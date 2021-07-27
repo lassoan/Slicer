@@ -40,7 +40,6 @@
 class vtkSliceIntersectionRepresentation2D;
 class vtkMRMLApplicationLogic;
 class vtkMRMLSegmentationDisplayNode;
-class vtkMRMLAbstractViewNode;
 class vtkMRMLApplicationLogic;
 class vtkMRMLDisplayableNode;
 class vtkMRMLInteractionEventData;
@@ -68,10 +67,12 @@ public:
     //@}
 
     /// Create the default widget representation and initializes the widget and representation.
-    virtual void CreateDefaultRepresentation(vtkMRMLTransformDisplayNode* displayNode, vtkMRMLAbstractViewNode* viewNode, vtkRenderer* renderer);
+    virtual void CreateDefaultRepresentation(vtkMRMLSliceNode* sliceNode, vtkMRMLAbstractViewNode* viewNode, vtkRenderer* renderer);
 
-    virtual vtkMRMLTransformDisplayNode* GetDisplayNode();
-    virtual vtkMRMLTransformNode* GetTransformNode();
+    virtual vtkMRMLSliceNode* GetSliceNode();
+
+    virtual vtkMatrix4x4* GetHandlesInteractionTransformMatrix ();
+    virtual void UpdateHandlesInteractionTransformMatrix (vtkMatrix4x4* transform);
 
     int GetActiveComponentType() override;
     void SetActiveComponentType(int type) override;

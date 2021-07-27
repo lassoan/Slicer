@@ -27,8 +27,8 @@
 #include "vtkMRMLInteractionWidgetRepresentation.h"
 
 // MRML includes
-#include <vtkMRMLTransformDisplayNode.h>
 #include "vtkMRMLSliceNode.h"
+#include "vtkMRMLSliceCompositeNode.h"
 
 class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepresentation : public vtkMRMLInteractionWidgetRepresentation
 {
@@ -51,12 +51,14 @@ public:
     virtual int GetActiveComponentIndex() override;
     virtual void SetActiveComponentIndex(int type) override;
 
-    virtual vtkMRMLTransformDisplayNode* GetDisplayNode();
-    virtual void SetDisplayNode(vtkMRMLTransformDisplayNode* displayNode);
+    virtual vtkMRMLSliceNode* GetSliceNode();
+    virtual void SetSliceNode(vtkMRMLSliceNode* sliceNode);
 
-    virtual vtkMRMLTransformNode* GetTransformNode();
+    virtual vtkMatrix4x4* GetHandlesInteractionTransformMatrix ();
+    virtual void UpdateHandlesInteractionTransformMatrix (vtkMatrix4x4* transform);
 
     void UpdateInteractionPipeline() override;
+    vtkMRMLSliceCompositeNode* FindSliceCompositeNode();
 
     double GetInteractionScale() override; // Size relative to screen
     double GetInteractionSize() override; // Size in mm
@@ -68,7 +70,10 @@ protected:
     vtkMRMLSliceIntersectionInteractionRepresentation();
     ~vtkMRMLSliceIntersectionInteractionRepresentation() override;
 
-    vtkSmartPointer<vtkMRMLTransformDisplayNode> DisplayNode{ nullptr };
+    vtkSmartPointer<vtkMRMLSliceNode> SliceNode;
+
+    // Transform calculated based on the interaction of the user with the handles
+    vtkSmartPointer<vtkMatrix4x4> HandlesInteractionTransformMatrix ;
 
 private:
     vtkMRMLSliceIntersectionInteractionRepresentation(const vtkMRMLSliceIntersectionInteractionRepresentation&) = delete;
