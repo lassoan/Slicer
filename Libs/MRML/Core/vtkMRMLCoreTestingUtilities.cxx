@@ -175,9 +175,6 @@ int ExerciseBasicMRMLMethods(vtkMRMLNode* node)
   CHECK_NOT_NULL(newNode);
   newNode->Delete();
 
-  //  Test UpdateScene()
-  node->UpdateScene(nullptr);
-
   //  Test New()
   vtkSmartPointer < vtkMRMLNode > node1 = vtkSmartPointer < vtkMRMLNode >::Take(node->CreateNodeInstance());
 
@@ -219,12 +216,21 @@ int ExerciseBasicMRMLMethods(vtkMRMLNode* node)
 
   node->Modified();
   node->InvokePendingModifiedEvent();
-  node1->SetName("copywithscene");
-  node->CopyWithScene(node1);
 
-  //  Test UpdateReferences()
-  node->UpdateReferences();
-  node->UpdateReferenceID("oldID", "newID");
+  // Test UpdateReferences and UpdateReferenceID by re-importing the current scene
+  // (there will be node ID conflicts, so node reference updates will be exercised).
+  vtkNew<vtkMRMLScene> updatedScene;
+  updatedScene->AddNode(node);
+  if (!updatedScene->IsNodeClassRegistered(node->GetClassName()))
+    {
+    updatedScene->RegisterNodeClass(node);
+    }
+  updatedScene->SetSaveToXMLString(1);
+  updatedScene->Commit();
+  std::string sceneXMLString = updatedScene->GetSceneXMLString();
+  updatedScene->SetLoadFromXMLString(1);
+  updatedScene->SetSceneXMLString(sceneXMLString);
+  updatedScene->Import();
 
   //  Test URLEncodeString()
   CHECK_STRING(node1->URLEncodeString("Thou Shall Test !"), "Thou%20Shall%20Test%20!");

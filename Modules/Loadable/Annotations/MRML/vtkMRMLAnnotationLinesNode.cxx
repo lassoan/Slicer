@@ -266,7 +266,6 @@ void vtkMRMLAnnotationLinesNode::CreateAnnotationLineDisplayNode()
     }
 
   node = vtkMRMLAnnotationLineDisplayNode::New();
-  node->SetScene(this->GetScene());
   this->GetScene()->AddNode(node);
   node->Delete();
   this->AddAndObserveDisplayNodeID(node->GetID());
@@ -576,9 +575,9 @@ void vtkMRMLAnnotationLinesNode::Initialize(vtkMRMLScene* mrmlScene)
 
    // we need to disable the modified event which would get fired when we set the new displayNode
    this->DisableModifiedEventOn();
-   if (this->GetScene()!=mrmlScene)
+   if (mrmlScene)
      {
-     this->SetScene(mrmlScene);
+     mrmlScene->AddNode(this);
      }
    this->CreateAnnotationLineDisplayNode();
    this->DisableModifiedEventOff();

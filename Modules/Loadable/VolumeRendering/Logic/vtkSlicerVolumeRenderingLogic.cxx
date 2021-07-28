@@ -1237,9 +1237,6 @@ vtkMRMLShaderPropertyNode* vtkSlicerVolumeRenderingLogic::AddShaderPropertyFromF
 
     spNode->SetName(uname.c_str());
 
-    spNode->SetScene(this->GetMRMLScene());
-    spStorageNode->SetScene(this->GetMRMLScene());
-
     this->GetMRMLScene()->AddNode(spStorageNode);
     spNode->SetAndObserveStorageNodeID(spStorageNode->GetID());
 

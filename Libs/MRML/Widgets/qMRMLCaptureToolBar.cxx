@@ -188,7 +188,7 @@ void qMRMLCaptureToolBarPrivate::createSceneView()
   nodeFactory.setBaseName("vtkMRMLSceneViewNode", sceneViewName);
   vtkMRMLNode * newNode = nodeFactory.createNode("vtkMRMLSceneViewNode");
   vtkMRMLSceneViewNode * newSceneViewNode = vtkMRMLSceneViewNode::SafeDownCast(newNode);
-  newSceneViewNode->StoreScene();
+  newSceneViewNode->StoreScene(this->MRMLScene);
 }
 
 // --------------------------------------------------------------------------

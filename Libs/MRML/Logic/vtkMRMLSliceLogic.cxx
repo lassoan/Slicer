@@ -1237,7 +1237,6 @@ void vtkMRMLSliceLogic::CreateSliceModel()
   if ( this->SliceModelNode == nullptr)
     {
     this->SliceModelNode = vtkMRMLModelNode::New();
-    this->SliceModelNode->SetScene(this->GetMRMLScene());
     this->SliceModelNode->SetDisableModifiedEvent(1);
 
     this->SliceModelNode->SetHideFromEditors(1);
@@ -1253,7 +1252,6 @@ void vtkMRMLSliceLogic::CreateSliceModel()
 
     // create display node and set texture
     this->SliceModelDisplayNode = vtkMRMLModelDisplayNode::New();
-    this->SliceModelDisplayNode->SetScene(this->GetMRMLScene());
     this->SliceModelDisplayNode->SetDisableModifiedEvent(1);
 
     //this->SliceModelDisplayNode->SetInputPolyData(this->SliceModelNode->GetOutputPolyData());
@@ -1287,9 +1285,9 @@ void vtkMRMLSliceLogic::CreateSliceModel()
 
     // make the xy to RAS transform
     this->SliceModelTransformNode = vtkMRMLLinearTransformNode::New();
-    this->SliceModelTransformNode->SetScene(this->GetMRMLScene());
     this->SliceModelTransformNode->SetDisableModifiedEvent(1);
 
+    this->SliceModelTransformNode->SetName("SliceModelTransform");
     this->SliceModelTransformNode->SetHideFromEditors(1);
     this->SliceModelTransformNode->SetSelectable(0);
     this->SliceModelTransformNode->SetSaveWithScene(0);

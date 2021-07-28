@@ -86,7 +86,7 @@ vtkMRMLPlotSeriesNode* vtkSlicerPlotsLogic::CloneSeries(vtkMRMLPlotSeriesNode* s
   vtkSmartPointer<vtkMRMLNode> clonedNode = vtkSmartPointer<vtkMRMLNode>::Take(
     source->GetScene()->CreateNodeByClass("vtkMRMLPlotSeriesNode"));
   vtkMRMLPlotSeriesNode *clonedSeriesNode = vtkMRMLPlotSeriesNode::SafeDownCast(clonedNode);
-  clonedSeriesNode->CopyWithScene(source);
+  clonedSeriesNode->Copy(source);
   std::string nodeName(source->GetName() ? source->GetName() : "");
   nodeName += "_Copy";
 

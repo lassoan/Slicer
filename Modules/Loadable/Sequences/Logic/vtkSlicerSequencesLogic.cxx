@@ -199,8 +199,6 @@ vtkMRMLSequenceNode* vtkSlicerSequencesLogic::AddSequence(const char* filename, 
 
     this->GetMRMLScene()->AddNode(storageNode);
 
-    // Set the scene so that SetAndObserveStorageNodeID can find the node in the scene.
-    sequenceNode->SetScene(this->GetMRMLScene());
     sequenceNode->SetAndObserveStorageNodeID(storageNode->GetID());
 
     this->GetMRMLScene()->AddNode(sequenceNode);

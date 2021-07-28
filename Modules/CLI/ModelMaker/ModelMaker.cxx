@@ -1647,7 +1647,6 @@ int main(int argc, char * argv[])
           }
         // each model needs a mrml node, a storage node and a display node
         vtkNew<vtkMRMLModelNode> mnode;
-        mnode->SetScene(modelScene.GetPointer());
         mnode->SetName(labelName.c_str());
 
         vtkNew<vtkMRMLModelStorageNode> snode;

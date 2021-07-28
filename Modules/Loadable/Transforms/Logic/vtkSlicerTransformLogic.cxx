@@ -141,10 +141,7 @@ vtkMRMLTransformNode* vtkSlicerTransformLogic::AddTransform(const char* filename
   // check to see which node can read this type of file
   vtkSmartPointer<vtkMRMLTransformNode> tnode;
 
-  storageNode->SetScene(scene);
-
   vtkNew<vtkMRMLTransformNode> generalTransform;
-  generalTransform->SetScene(scene);
   if (!storageNode->ReadData(generalTransform.GetPointer()))
   {
     vtkErrorMacro("Failed to read transform from file: " << filename);

@@ -93,8 +93,6 @@ int vtkMRMLSliceLogicTest2(int argc, char * argv [] )
     return EXIT_FAILURE;
     }
   scalarNode->SetName("foo");
-  scalarNode->SetScene(scene.GetPointer());
-  displayNode->SetScene(scene.GetPointer());
   //vtkSlicerColorLogic *colorLogic = vtkSlicerColorLogic::New();
   //displayNode->SetAndObserveColorNodeID(colorLogic->GetDefaultVolumeColorNodeID());
   //colorLogic->Delete();

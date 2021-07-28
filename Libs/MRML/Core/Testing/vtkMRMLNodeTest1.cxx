@@ -484,7 +484,7 @@ bool TestCopyWithScene(
   vtkNew<vtkMRMLNodeCallback> spy;
   copy->AddObserver(vtkCommand::ModifiedEvent, spy.GetPointer());
 
-  copy->CopyWithScene(source);
+  copy->Copy(source);
   if (!CheckInt(
         __LINE__, "spy->GetNumberOfModified()",
         spy->GetNumberOfModified(), 1))
@@ -2030,23 +2030,21 @@ bool TestSingletonNodeReferencesUpdate()
 
   vtkNew<vtkMRMLNodeTestHelper1> referencingNode1;
   referencingNode1->SetName("referencingNode1");
-  referencingNode1->SetScene(scene.GetPointer());
   vtkNew<vtkMRMLNodeTestHelper1> referencedNode1;
   referencingNode1->SetName("referencedNode1");
-  scene->AddNode(referencedNode1.GetPointer());
+  scene->AddNode(referencedNode1);
   referencingNode1->SetAndObserveNodeReferenceID(role1, referencedNode1->GetID());
   referencingNode1->SetSingletonTag("other");
-  scene->AddNode(referencingNode1.GetPointer());
+  scene->AddNode(referencingNode1);
 
   vtkNew<vtkMRMLNodeTestHelper1> referencingNode2;
   referencingNode1->SetName("referencingNode2");
-  referencingNode2->SetScene(scene.GetPointer());
   vtkNew<vtkMRMLNodeTestHelper1> referencedNode2;
   referencingNode1->SetName("referencedNode2");
-  scene->AddNode(referencedNode2.GetPointer());
+  scene->AddNode(referencedNode2);
   referencingNode2->SetAndObserveNodeReferenceID(role1, referencedNode2->GetID());
   referencingNode2->SetSingletonTag("other");
-  scene->AddNode(referencingNode2.GetPointer());
+  scene->AddNode(referencingNode2);
 
   return true;
 }

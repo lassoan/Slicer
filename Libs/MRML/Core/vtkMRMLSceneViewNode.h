@@ -71,7 +71,7 @@ class VTK_MRML_EXPORT vtkMRMLSceneViewNode : public vtkMRMLStorableNode
   ///
   /// Store content of the scene
   /// \sa GetStoredScene() RestoreScene()
-  void StoreScene();
+  void StoreScene(vtkMRMLScene* scene);
 
   /// Add missing nodes from the Slicer scene to the stored scene
   /// \sa RestoreScene()

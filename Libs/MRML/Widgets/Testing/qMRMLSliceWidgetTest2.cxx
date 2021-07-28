@@ -63,8 +63,6 @@ vtkMRMLScalarVolumeNode* loadVolume(const char* volume, vtkMRMLScene* scene)
     return nullptr;
     }
   scalarNode->SetName("foo");
-  scalarNode->SetScene(scene);
-  displayNode->SetScene(scene);
   scene->AddNode(storageNode.GetPointer());
   scene->AddNode(displayNode.GetPointer());
   scalarNode->SetAndObserveStorageNodeID(storageNode->GetID());

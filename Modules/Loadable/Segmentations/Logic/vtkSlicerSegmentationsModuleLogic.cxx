@@ -280,7 +280,6 @@ vtkMRMLSegmentationNode* vtkSlicerSegmentationsModuleLogic::LoadSegmentationFrom
   storageNode->SetName(storageUName.c_str());
   this->GetMRMLScene()->AddNode(storageNode.GetPointer());
 
-  segmentationNode->SetScene(this->GetMRMLScene());
   segmentationNode->SetAndObserveStorageNodeID(storageNode->GetID());
   if (colorNode)
     {

@@ -55,8 +55,6 @@ vtkMRMLScalarVolumeNode* loadVolume2(const char* volume, vtkMRMLScene* scene)
     return nullptr;
     }
   scalarNode->SetName("foo");
-  scalarNode->SetScene(scene);
-  displayNode->SetScene(scene);
   //vtkSlicerColorLogic *colorLogic = vtkSlicerColorLogic::New();
   //displayNode->SetAndObserveColorNodeID(colorLogic->GetDefaultVolumeColorNodeID());
   //colorLogic->Delete();

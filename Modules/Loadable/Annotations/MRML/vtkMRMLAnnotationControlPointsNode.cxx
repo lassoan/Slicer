@@ -323,7 +323,6 @@ void vtkMRMLAnnotationControlPointsNode::CreateAnnotationPointDisplayNode()
     }
 
   node = vtkMRMLAnnotationPointDisplayNode::New();
-  node->SetScene(this->GetScene());
   this->GetScene()->AddNode(node);
 
   // vtkMRMLDisplayableNode stores the ids in DisplayNodeIDs
@@ -698,8 +697,11 @@ void vtkMRMLAnnotationControlPointsNode::Initialize(vtkMRMLScene* mrmlScene)
 
   // we need to disable the modified event which would get fired when we set the new displayNode
   this->DisableModifiedEventOn();
+  if (mrmlScene)
+    {
+    mrmlScene->AddNode(this);
+    }
   // at this point we need to have a scene, else the displayNodes can not be created
-  this->SetScene(mrmlScene);
   this->CreateAnnotationPointDisplayNode();
   this->DisableModifiedEventOff();
 

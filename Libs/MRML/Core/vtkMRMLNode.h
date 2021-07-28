@@ -168,6 +168,7 @@ class VTK_MRML_EXPORT vtkMRMLNode : public vtkObject
 {
   /// make the vtkMRMLScene a friend so that AddNodeNoNotify can call
   /// SetID, but that's the only class that is allowed to do so
+    friend class vtkMRMLParser;
     friend class vtkMRMLScene;
     friend class vtkMRMLSceneViewNode;
 
@@ -190,23 +191,9 @@ public:
   /// Call this method in the subclass implementation.
   virtual void ReadXMLAttributes(const char** atts);
 
-  /// \brief The method should remove all pointers and observations to all nodes
-  /// that are not in the scene anymore.
-  ///
-  /// This method is called when one or more referenced nodes are deleted from the scene.
-  virtual void UpdateReferences();
-
   /// \brief Set dependencies between this node and a child node
   /// when parsing XML file.
   virtual void ProcessChildNode(vtkMRMLNode *){};
-
-  /// Updates other nodes in the scene depending on this node
-  /// or updates this node if it depends on other nodes when the scene is read in
-  /// This method is called automatically by XML parser after all nodes are created
-  virtual void UpdateScene(vtkMRMLScene *)
-  {
-    this->UpdateNodeReferences();
-  };
 
   /// Updates this node if it depends on other nodes when the scene is read in
   /// This method is called by scene when a node added to a scene.
@@ -250,22 +237,6 @@ public:
   /// Existing references will be replaced if found in node, or removed if not
   /// in node.
   virtual void CopyReferences(vtkMRMLNode* node);
-
-  /// \brief Copy everything (including Scene and ID) from another node of
-  /// the same type.
-  ///
-  /// \note The node is **not** added into the scene of \a node. You must do it
-  /// manually **after** calling CopyWithScene(vtkMRMLNode*) using
-  /// vtkMRMLScene::AddNode(vtkMRMLNode*).
-  /// Only one vtkCommand::ModifiedEvent is invoked, after the copy is fully completed.
-  ///
-  /// \bug Calling vtkMRMLScene::AddNode(vtkMRMLNode*) **before**
-  /// CopyWithScene(vtkMRMLNode*) is **NOT** supported, it will unsynchronize
-  /// the node internal caches.
-  /// See [#4078](https://github.com/Slicer/Slicer/issues/4078)
-  ///
-  /// \sa vtkMRMLScene::AddNode(vtkMRMLNode*)
-  void CopyWithScene(vtkMRMLNode *node);
 
   /// \brief Reset node attributes to the initial state as defined in the
   /// constructor or the passed default node.
@@ -377,15 +348,6 @@ public:
 
   /// Propagate events generated in mrml.
   virtual void ProcessMRMLEvents ( vtkObject *caller, unsigned long event, void *callData );
-
-  /// \brief Flags to avoid event loops.
-  ///
-  /// \warning Do NOT use the SetMacro or it call modified on itself and
-  /// generate even more events!
-  vtkGetMacro(InMRMLCallbackFlag, int);
-  void SetInMRMLCallbackFlag (int flag) {
-    this->InMRMLCallbackFlag = flag;
-  }
 
   /// Text description of this node, to be set by the user.
   vtkSetStringMacro(Description);
@@ -583,22 +545,6 @@ public:
 
   /// Get the scene this node has been added to.
   virtual vtkMRMLScene* GetScene();
-
-  /// \brief This method is for internal use only.
-  /// Use AddNode method of vtkMRMLScene to add a node to the scene.
-  ///
-  /// Internally calls SetSceneReferences()
-  /// \sa SetSceneReferences()
-  virtual void SetScene(vtkMRMLScene* scene);
-
-  /// \brief Update the references of the node to the scene.
-  ///
-  /// \note You must unsure that a valid scene is set before calling
-  /// SetSceneReferences().
-  virtual void SetSceneReferences();
-
-  /// Update the stored reference to another node in the scene.
-  virtual void UpdateReferenceID(const char *oldID, const char *newID);
 
   /// Return list of events that indicate that content of the node is modified.
   /// For example, it is not enough to observe vtkCommand::ModifiedEvent to get
@@ -939,6 +885,61 @@ protected:
   /// Parse references in the form "role1:id1 id2;role2:id3;"
   /// map contains existing role-id pairs, so we don't repeat them
   void ParseReferencesAttribute(const char *attValue, std::set<std::string> &references);
+
+  /// \brief This method is for internal use only.
+  /// Use AddNode method of vtkMRMLScene to add a node to the scene.
+  ///
+  /// Internally calls SetSceneReferences()
+  /// \sa SetSceneReferences()
+  virtual void SetScene(vtkMRMLScene* scene);
+
+  /// \brief Update the references of the node to the scene.
+  ///
+  /// \note You must unsure that a valid scene is set before calling
+  /// SetSceneReferences().
+  virtual void SetSceneReferences();
+
+  /// Update the stored reference to another node in the scene.
+  virtual void UpdateReferenceID(const char *oldID, const char *newID);
+
+  /// \brief Flags to avoid event loops.
+  ///
+  /// \warning Do NOT use the SetMacro or it call modified on itself and
+  /// generate even more events!
+  vtkGetMacro(InMRMLCallbackFlag, int);
+  void SetInMRMLCallbackFlag (int flag) {
+    this->InMRMLCallbackFlag = flag;
+  }
+
+    /// \brief Copy everything (including Scene and ID) from another node of
+  /// the same type.
+  ///
+  /// \note The node is **not** added into the scene of \a node. You must do it
+  /// manually **after** calling CopyWithScene(vtkMRMLNode*) using
+  /// vtkMRMLScene::AddNode(vtkMRMLNode*).
+  /// Only one vtkCommand::ModifiedEvent is invoked, after the copy is fully completed.
+  ///
+  /// \bug Calling vtkMRMLScene::AddNode(vtkMRMLNode*) **before**
+  /// CopyWithScene(vtkMRMLNode*) is **NOT** supported, it will unsynchronize
+  /// the node internal caches.
+  /// See [#4078](https://github.com/Slicer/Slicer/issues/4078)
+  ///
+  /// \sa vtkMRMLScene::AddNode(vtkMRMLNode*)
+  void CopyWithScene(vtkMRMLNode *node);
+
+  /// Updates other nodes in the scene depending on this node
+  /// or updates this node if it depends on other nodes when the scene is read in
+  /// This method is called automatically by XML parser after all nodes are created
+  virtual void UpdateScene(vtkMRMLScene *)
+  {
+    this->UpdateNodeReferences();
+  };
+
+  /// \brief The method should remove all pointers and observations to all nodes
+  /// that are not in the scene anymore.
+  ///
+  /// This method is called when one or more referenced nodes are deleted from the scene.
+  virtual void UpdateReferences();
 
   /// Holders for MRML callbacks
   vtkCallbackCommand *MRMLCallbackCommand;

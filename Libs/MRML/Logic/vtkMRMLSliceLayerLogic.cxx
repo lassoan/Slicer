@@ -368,7 +368,6 @@ void vtkMRMLSliceLayerLogic::UpdateNodeReferences ()
         displayNode.TakeReference(vtkMRMLScalarVolumeDisplayNode::New());
         }
 
-      displayNode->SetScene(this->GetMRMLScene());
       if (this->GetMRMLScene())
         {
         this->GetMRMLScene()->AddNode(displayNode);
@@ -376,7 +375,6 @@ void vtkMRMLSliceLayerLogic::UpdateNodeReferences ()
 
       if (dtPropNode)
         {
-        dtPropNode->SetScene(this->GetMRMLScene());
         if (this->GetMRMLScene())
           {
           this->GetMRMLScene()->AddNode(dtPropNode);
@@ -440,7 +438,10 @@ void vtkMRMLSliceLayerLogic::UpdateVolumeDisplayNode()
 
   int wasDisabling = this->VolumeDisplayNode->StartModify();
   // copy the scene first because Copy() might need the scene
-  this->VolumeDisplayNode->SetScene(this->VolumeDisplayNodeObserved->GetScene());
+  if (this->VolumeDisplayNodeObserved->GetScene())
+    {
+    this->VolumeDisplayNodeObserved->GetScene()->AddNode(this->VolumeDisplayNode);
+    }
   this->VolumeDisplayNode->Copy(this->VolumeDisplayNodeObserved);
   if (vtkMRMLScalarVolumeDisplayNode::SafeDownCast(this->VolumeDisplayNode))
     {
@@ -452,7 +453,10 @@ void vtkMRMLSliceLayerLogic::UpdateVolumeDisplayNode()
 
   int wasDisablingUVW = this->VolumeDisplayNodeUVW->StartModify();
   // copy the scene first because Copy() might need the scene
-  this->VolumeDisplayNodeUVW->SetScene(this->VolumeDisplayNodeObserved->GetScene());
+  if (this->VolumeDisplayNodeObserved->GetScene())
+    {
+    this->VolumeDisplayNodeObserved->GetScene()->AddNode(this->VolumeDisplayNodeUVW);
+    }
   this->VolumeDisplayNodeUVW->Copy(this->VolumeDisplayNodeObserved);
   if (vtkMRMLScalarVolumeDisplayNode::SafeDownCast(this->VolumeDisplayNodeUVW))
     {

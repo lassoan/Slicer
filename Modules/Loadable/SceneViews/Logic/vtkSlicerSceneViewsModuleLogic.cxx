@@ -119,7 +119,6 @@ void vtkSlicerSceneViewsModuleLogic::CreateSceneView(const char* name, const cha
   vtkStdString nameString = vtkStdString(name);
 
   vtkNew<vtkMRMLSceneViewNode> newSceneViewNode;
-  newSceneViewNode->SetScene(this->GetMRMLScene());
   if (strcmp(nameString,""))
     {
     // a name was specified
@@ -140,7 +139,7 @@ void vtkSlicerSceneViewsModuleLogic::CreateSceneView(const char* name, const cha
   vtkNew<vtkImageData> copyScreenShot;
   copyScreenShot->DeepCopy(screenshot);
   newSceneViewNode->SetScreenShot(copyScreenShot.GetPointer());
-  newSceneViewNode->StoreScene();
+  newSceneViewNode->StoreScene(this->GetMRMLScene());
   //newSceneViewNode->HideFromEditorsOff();
   // mark it modified since read so that the screen shot will get saved to disk
 

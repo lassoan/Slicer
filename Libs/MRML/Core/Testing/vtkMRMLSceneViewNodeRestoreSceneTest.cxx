@@ -59,7 +59,6 @@ vtkMRMLScene* createScene()
   scene->AddNode(displayNode.GetPointer());
 
   vtkNew<vtkMRMLScalarVolumeNode> volumeNode;
-  volumeNode->SetScene(scene);
   volumeNode->SetAndObserveDisplayNodeID(displayNode->GetID());
   scene->AddNode(volumeNode.GetPointer());
 

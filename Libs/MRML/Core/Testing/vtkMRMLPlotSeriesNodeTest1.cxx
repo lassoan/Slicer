@@ -72,7 +72,7 @@ int vtkMRMLPlotSeriesNodeTest1(int , char * [] )
 
   // Verify that Copy method creates a true independent copy
   vtkSmartPointer<vtkMRMLPlotSeriesNode> nodeCopy = vtkSmartPointer<vtkMRMLPlotSeriesNode>::New();
-  nodeCopy->CopyWithScene(plotSeriesNode.GetPointer());
+  nodeCopy->Copy(plotSeriesNode.GetPointer());
 
   CHECK_STD_STRING(plotSeriesNode->GetName(), nodeCopy->GetName());
   CHECK_STD_STRING(plotSeriesNode->GetXColumnName(), arrX->GetName());

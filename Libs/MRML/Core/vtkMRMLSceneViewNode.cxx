@@ -339,9 +339,9 @@ void vtkMRMLSceneViewNode::UpdateStoredScene()
 }
 
 //----------------------------------------------------------------------------
-void vtkMRMLSceneViewNode::StoreScene()
+void vtkMRMLSceneViewNode::StoreScene(vtkMRMLScene* scene)
 {
-  if (this->Scene == nullptr)
+  if (scene == nullptr)
     {
     return;
     }
@@ -355,16 +355,13 @@ void vtkMRMLSceneViewNode::StoreScene()
     this->SnapshotScene->Clear(1);
     }
 
-  if (this->GetScene())
-    {
-    this->SnapshotScene->SetRootDirectory(this->GetScene()->GetRootDirectory());
-    }
+  this->SnapshotScene->SetRootDirectory(scene->GetRootDirectory());
 
   // make sure that any storable nodes in the scene have storage nodes before
   // saving them to the scene view, this prevents confusion on scene view
   // restore with mismatched nodes.
   std::vector<vtkMRMLNode *> nodes;
-  int nnodes = this->GetScene()->GetNodesByClass("vtkMRMLStorableNode", nodes);
+  int nnodes = scene->GetNodesByClass("vtkMRMLStorableNode", nodes);
   for (int i = 0; i < nnodes; ++i)
     {
     vtkMRMLStorableNode *storableNode = vtkMRMLStorableNode::SafeDownCast(nodes[i]);
@@ -417,8 +414,8 @@ void vtkMRMLSceneViewNode::StoreScene()
       assert(newNode->GetScene() == this->SnapshotScene);
       }
     }
-  this->SnapshotScene->CopyNodeReferences(this->GetScene());
-  this->SnapshotScene->CopyNodeChangedIDs(this->GetScene());
+  this->SnapshotScene->CopyNodeReferences(scene);
+  this->SnapshotScene->CopyNodeChangedIDs(scene);
 }
 
 //----------------------------------------------------------------------------

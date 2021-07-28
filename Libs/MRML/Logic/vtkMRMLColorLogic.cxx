@@ -643,7 +643,6 @@ vtkMRMLColorTableNode* vtkMRMLColorLogic::CreateFileNode(const char* fileName)
   ctnode->SetTypeToFile();
   ctnode->SaveWithSceneOff();
   ctnode->HideFromEditorsOn();
-  ctnode->SetScene(this->GetMRMLScene());
 
   // make a storage node
   vtkNew<vtkMRMLColorTableStorageNode> colorStorageNode;
@@ -654,8 +653,8 @@ vtkMRMLColorTableNode* vtkMRMLColorLogic::CreateFileNode(const char* fileName)
     ctnode->SetAndObserveStorageNodeID(colorStorageNode->GetID());
     }
 
-  ctnode->GetStorageNode()->SetFileName(fileName);
-  std::string basename = ctnode->GetStorageNode()->GetFileNameWithoutExtension(fileName);
+  colorStorageNode->SetFileName(fileName);
+  std::string basename = colorStorageNode->GetFileNameWithoutExtension(fileName);
   if (this->GetMRMLScene())
     {
     std::string uname(this->GetMRMLScene()->GetUniqueNameByString(basename.c_str()));
@@ -667,14 +666,13 @@ vtkMRMLColorTableNode* vtkMRMLColorLogic::CreateFileNode(const char* fileName)
     }
   vtkDebugMacro("CreateFileNode: About to read user file " << fileName);
 
-  if (ctnode->GetStorageNode()->ReadData(ctnode) == 0)
+  if (colorStorageNode->ReadData(ctnode) == 0)
     {
     vtkErrorMacro("Unable to read file as color table " << (ctnode->GetFileName() ? ctnode->GetFileName() : ""));
 
     if (this->GetMRMLScene())
       {
       ctnode->SetAndObserveStorageNodeID(nullptr);
-      ctnode->SetScene(nullptr);
       this->GetMRMLScene()->RemoveNode(colorStorageNode.GetPointer());
       }
 
@@ -695,7 +693,6 @@ vtkMRMLProceduralColorNode* vtkMRMLColorLogic::CreateProceduralFileNode(const ch
   cpnode->SetTypeToFile();
   cpnode->SaveWithSceneOff();
   cpnode->HideFromEditorsOn();
-  cpnode->SetScene(this->GetMRMLScene());
 
   // make a storage node
   vtkMRMLProceduralColorStorageNode *colorStorageNode = vtkMRMLProceduralColorStorageNode::New();
@@ -707,8 +704,8 @@ vtkMRMLProceduralColorNode* vtkMRMLColorLogic::CreateProceduralFileNode(const ch
     }
   colorStorageNode->Delete();
 
-  cpnode->GetStorageNode()->SetFileName(fileName);
-  std::string basename = cpnode->GetStorageNode()->GetFileNameWithoutExtension(fileName);
+  colorStorageNode->SetFileName(fileName);
+  std::string basename = colorStorageNode->GetFileNameWithoutExtension(fileName);
   if (this->GetMRMLScene())
     {
     std::string uname(this->GetMRMLScene()->GetUniqueNameByString(basename.c_str()));
@@ -721,13 +718,12 @@ vtkMRMLProceduralColorNode* vtkMRMLColorLogic::CreateProceduralFileNode(const ch
 
   vtkDebugMacro("CreateProceduralFileNode: About to read user file " << fileName);
 
-  if (cpnode->GetStorageNode()->ReadData(cpnode) == 0)
+  if (colorStorageNode->ReadData(cpnode) == 0)
     {
     vtkErrorMacro("Unable to read procedural color file " << (cpnode->GetFileName() ? cpnode->GetFileName() : ""));
     if (this->GetMRMLScene())
       {
       cpnode->SetAndObserveStorageNodeID(nullptr);
-      cpnode->SetScene(nullptr);
       this->GetMRMLScene()->RemoveNode(colorStorageNode);
       }
       cpnode->Delete();

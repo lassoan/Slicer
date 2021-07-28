@@ -71,7 +71,6 @@ void populateScene(vtkMRMLScene* scene)
   scene->AddNode(displayNode.GetPointer());
 
   vtkNew<vtkMRMLScalarVolumeNode> volumeNode;
-  volumeNode->SetScene(scene);
   scene->AddNode(volumeNode.GetPointer());
   volumeNode->SetAndObserveDisplayNodeID(displayNode->GetID());
 }
@@ -83,9 +82,8 @@ int store()
   populateScene(scene.GetPointer());
 
   vtkNew<vtkMRMLSceneViewNode> sceneViewNode;
+  sceneViewNode->StoreScene(scene);
   scene->AddNode(sceneViewNode.GetPointer());
-
-  sceneViewNode->StoreScene();
 
   CHECK_NOT_NULL(sceneViewNode->GetStoredScene()->GetNodeByID("vtkMRMLScalarVolumeNode1"));
 

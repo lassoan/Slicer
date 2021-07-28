@@ -34,7 +34,6 @@ int vtkMRMLAnnotationROINodeTest1(int , char * [] )
   vtkNew<vtkMRMLAnnotationROINode> node1;
   mrmlScene->AddNode(node1.GetPointer());
 
-  node1->UpdateReferences();
   node2->Copy(node1.GetPointer());
 
   mrmlScene->RegisterNodeClass(node1.GetPointer());

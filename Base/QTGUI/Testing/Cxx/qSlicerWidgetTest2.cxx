@@ -72,11 +72,7 @@ vtkMRMLSliceLogic *setupSliceDisplay(vtkMRMLScene *scene, vtkRenderWindow *rw, c
   vtkMRMLVolumeArchetypeStorageNode *storageNode = vtkMRMLVolumeArchetypeStorageNode::New();
   vtkMRMLColorTableNode *colorNode = vtkMRMLColorTableNode::New();
 
-  volumeNode->SetScene( scene );
-  displayNode->SetScene( scene );
-  colorNode->SetScene( scene );
   colorNode->SetTypeToGrey();
-  storageNode->SetScene( scene );
 
   scene->AddNode( volumeNode );
   scene->AddNode( colorNode );

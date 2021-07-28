@@ -464,9 +464,7 @@ void vtkSlicerVolumesLogic::InitializeStorageNode(
   if (useURI)
     {
     vtkDebugMacro("AddArchetypeVolume: input filename '" << filename << "' is a URI");
-    // need to set the scene on the storage node so that it can look for file handlers
     storageNode->SetURI(filename);
-    storageNode->SetScene(mrmlScene);
     if (fileList != nullptr)
       {
       // it's a list of uris
@@ -682,17 +680,6 @@ int vtkSlicerVolumesLogic::SaveArchetypeVolume (const char* filename, vtkMRMLVol
     return 0;
     }
 
-  vtkMRMLNRRDStorageNode *storageNode1 = nullptr;
-  vtkMRMLVolumeArchetypeStorageNode *storageNode2 = nullptr;
-  vtkMRMLStorageNode *storageNode = nullptr;
-  vtkMRMLStorageNode *snode = volumeNode->GetStorageNode();
-
-  if (snode != nullptr)
-    {
-    storageNode2 = vtkMRMLVolumeArchetypeStorageNode::SafeDownCast(snode);
-    storageNode1 = vtkMRMLNRRDStorageNode::SafeDownCast(snode);
-    }
-
   bool useURI = false;
   if (this->GetMRMLScene() &&
       this->GetMRMLScene()->GetCacheManager())
@@ -701,52 +688,37 @@ int vtkSlicerVolumesLogic::SaveArchetypeVolume (const char* filename, vtkMRMLVol
     }
 
   // Use NRRD writer if we are dealing with DWI, DTI or vector volumes
-
+  vtkMRMLStorageNode *storageNode = nullptr;
   if (volumeNode->IsA("vtkMRMLDiffusionWeightedVolumeNode") ||
 //      volumeNode->IsA("vtkMRMLDiffusionTensorVolumeNode") ||
       volumeNode->IsA("vtkMRMLVectorVolumeNode"))
     {
-
-    if (storageNode1 == nullptr)
+    storageNode = vtkMRMLNRRDStorageNode::SafeDownCast(volumeNode->GetStorageNode());
+    if (storageNode == nullptr)
       {
-      storageNode1 = vtkMRMLNRRDStorageNode::New();
-      storageNode1->SetScene(this->GetMRMLScene());
-      this->GetMRMLScene()->AddNode(storageNode1);
-      volumeNode->SetAndObserveStorageNodeID(storageNode1->GetID());
-      storageNode1->Delete();
+      vtkNew<vtkMRMLNRRDStorageNode> storageNode1;
+      storageNode = vtkMRMLStorageNode::SafeDownCast(this->GetMRMLScene()->AddNode(storageNode1));
       }
-    if (useURI)
-      {
-      storageNode1->SetURI(filename);
-      }
-    else
-      {
-      storageNode1->SetFileName(filename);
-      }
-    storageNode = storageNode1;
     }
   else
     {
-    if (storageNode2 == nullptr)
+    storageNode = vtkMRMLVolumeArchetypeStorageNode::SafeDownCast(volumeNode->GetStorageNode());
+    if (storageNode == nullptr)
       {
-      storageNode2 = vtkMRMLVolumeArchetypeStorageNode::New();
-      storageNode2->SetScene(this->GetMRMLScene());
-      this->GetMRMLScene()->AddNode(storageNode2);
-      volumeNode->SetAndObserveStorageNodeID(storageNode2->GetID());
-      storageNode2->Delete();
+      vtkNew<vtkMRMLVolumeArchetypeStorageNode> storageNode1;
+      storageNode = vtkMRMLStorageNode::SafeDownCast(this->GetMRMLScene()->AddNode(storageNode1));
       }
-
-    if (useURI)
-      {
-      storageNode2->SetURI(filename);
-      }
-    else
-      {
-      storageNode2->SetFileName(filename);
-      }
-    storageNode = storageNode2;
     }
 
+  volumeNode->SetAndObserveStorageNodeID(storageNode->GetID());
+  if (useURI)
+    {
+    storageNode->SetURI(filename);
+    }
+  else
+    {
+    storageNode->SetFileName(filename);
+    }
   int res = storageNode->WriteData(volumeNode);
   return res;
 }
@@ -1149,7 +1121,7 @@ CloneVolumeGeneric (vtkMRMLScene *scene, vtkMRMLVolumeNode *volumeNode, const ch
     vtkErrorWithObjectMacro(volumeNode, "Could not clone volume");
     return nullptr;
     }
-  clonedVolumeNode->CopyWithScene(volumeNode);
+  clonedVolumeNode->CopyContent(volumeNode);
 
   // remove storage nodes
   clonedVolumeNode->SetAndObserveStorageNodeID(nullptr);
@@ -1169,7 +1141,7 @@ CloneVolumeGeneric (vtkMRMLScene *scene, vtkMRMLVolumeNode *volumeNode, const ch
     }
   if (clonedDisplayNode.GetPointer())
     {
-    clonedDisplayNode->CopyWithScene(originalDisplayNode);
+    clonedDisplayNode->CopyContent(originalDisplayNode);
     scene->AddNode(clonedDisplayNode);
     clonedVolumeNode->SetAndObserveDisplayNodeID(clonedDisplayNode->GetID());
     }

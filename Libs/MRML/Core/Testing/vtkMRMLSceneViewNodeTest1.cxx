@@ -25,7 +25,7 @@ int vtkMRMLSceneViewNodeTest1(int , char * [] )
   vtkNew<vtkMRMLSceneViewNode> node1;
 
   // test with null scene
-  node1->StoreScene();
+  node1->StoreScene(nullptr);
   node1->SetAbsentStorageFileNames();
   vtkCollection *col = node1->GetNodesByClass(nullptr);
   CHECK_NULL(col);
@@ -34,7 +34,7 @@ int vtkMRMLSceneViewNodeTest1(int , char * [] )
   vtkNew<vtkMRMLScene> scene;
   scene->AddNode(node1.GetPointer());
   EXERCISE_ALL_BASIC_MRML_METHODS(node1.GetPointer());
-  node1->StoreScene();
+  node1->StoreScene(scene);
 
   vtkMRMLScene *storedScene = node1->GetStoredScene();
   std::cout << "GetStoredScene returned " << (storedScene == nullptr ? "null" : "not null") << std::endl;

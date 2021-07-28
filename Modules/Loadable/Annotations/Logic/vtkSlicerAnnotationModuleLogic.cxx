@@ -232,7 +232,6 @@ char *vtkSlicerAnnotationModuleLogic::LoadAnnotation(const char *filename, const
 
     // add the storage node to the scene
     this->GetMRMLScene()->AddNode(fStorageNode.GetPointer());
-    fnode->SetScene(this->GetMRMLScene());
 
     this->GetMRMLScene()->AddNode(fnode.GetPointer());
     fnode->SetAndObserveStorageNodeID(fStorageNode->GetID());
@@ -2884,8 +2883,6 @@ char * vtkSlicerAnnotationModuleLogic::GetTopLevelHierarchyNodeIDForNodeClass(vt
     vtkMRMLAnnotationHierarchyNode* hierarchyNode =
         vtkMRMLAnnotationHierarchyNode::New();
 
-    //hierarchyNode->SetScene(this->GetMRMLScene());
-
     if (!annotationNode)
       {
       // this is a user created hierarchy!
@@ -3024,7 +3021,6 @@ vtkMRMLAnnotationHierarchyNode *vtkSlicerAnnotationModuleLogic::GetActiveHierarc
 
     vtkMRMLAnnotationSnapshotNode * newSnapshotNode =
         vtkMRMLAnnotationSnapshotNode::New();
-    newSnapshotNode->SetScene(this->GetMRMLScene());
     if (strcmp(nameString, ""))
       {
       // a name was specified
