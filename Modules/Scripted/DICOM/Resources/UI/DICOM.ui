@@ -34,7 +34,7 @@
         <string>    Import DICOM files</string>
        </property>
        <property name="icon">
-        <iconset resource="../../../../../Base/QTGUI/Resources/qSlicerBaseQTGUI.qrc">
+        <iconset resource="../../../../../../../S4/Base/QTGUI/Resources/qSlicerBaseQTGUI.qrc">
          <normaloff>:/Icons/Medium/SlicerImportDICOM.png</normaloff>:/Icons/Medium/SlicerImportDICOM.png</iconset>
        </property>
        <property name="iconSize">
@@ -54,7 +54,7 @@
         <string>    Show DICOM database</string>
        </property>
        <property name="icon">
-        <iconset resource="../../../../../Base/QTGUI/Resources/qSlicerBaseQTGUI.qrc">
+        <iconset resource="../../../../../../../S4/Base/QTGUI/Resources/qSlicerBaseQTGUI.qrc">
          <normaloff>:/Icons/Medium/SlicerDatabase.png</normaloff>:/Icons/Medium/SlicerDatabase.png</iconset>
        </property>
        <property name="iconSize">
@@ -209,38 +209,35 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_8">
         <property name="text">
-         <string>Database location:</string>
+         <string>Storage:</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="ctkDirectoryButton" name="directoryButton"/>
-      </item>
-      <item row="1" column="0">
+      <item row="4" column="0">
        <widget class="QLabel" name="label_9">
         <property name="text">
-         <string>Auto-hide browser window:</string>
+         <string>Auto-hide browser:</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
+      <item row="5" column="0">
        <widget class="QLabel" name="label_10">
         <property name="text">
          <string>Maintenance:</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item row="4" column="1">
        <widget class="QCheckBox" name="browserAutoHideCheckBox">
         <property name="toolTip">
-         <string>Hide DICOM database browser after data loaded</string>
+         <string>Hide DICOM database browser window (and show viewers instead) after data loaded.</string>
         </property>
         <property name="text">
-         <string/>
+         <string> </string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="5" column="1">
        <widget class="QPushButton" name="repairDatabaseButton">
         <property name="toolTip">
          <string>Remove all items from the DICOM database if referenced DICOM file is not found on disk.</string>
@@ -250,13 +247,73 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
+      <item row="6" column="1">
        <widget class="QPushButton" name="clearDatabaseButton">
         <property name="toolTip">
          <string>Removes all data from the database and all files that were copied into the database during import.</string>
         </property>
         <property name="text">
          <string>Remove all data sets</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_3">
+        <item>
+         <widget class="QRadioButton" name="diskStorageRadioButton">
+          <property name="toolTip">
+           <string>Imported DICOM data sets are preserved on disk. Copy of files that are imported with &quot;Copy imported files&quot; enabled will be preserved in the database.</string>
+          </property>
+          <property name="text">
+           <string>Disk</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="memoryStorageRadioButton">
+          <property name="toolTip">
+           <string>Imported DICOM metadata stored in the database will be discarded when the application quits. Imported files are not affected.</string>
+          </property>
+          <property name="text">
+           <string>Memory</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_11">
+        <property name="text">
+         <string>Database location:</string>
+        </property>
+        <property name="indent">
+         <number>10</number>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="ctkDirectoryButton" name="directoryButton"/>
+      </item>
+      <item row="3" column="1">
+       <widget class="QCheckBox" name="copyFilesOnImportCheckBox">
+        <property name="toolTip">
+         <string>Preserve a copy of the imported DICOM files in the DICOM database (useful when importing from removable media, such as DVD or USB drive).</string>
+        </property>
+        <property name="text">
+         <string> </string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_12">
+        <property name="text">
+         <string>Copy imported files:</string>
+        </property>
+        <property name="indent">
+         <number>10</number>
         </property>
        </widget>
       </item>
@@ -275,6 +332,11 @@
  </widget>
  <customwidgets>
   <customwidget>
+   <class>qMRMLSubjectHierarchyTreeView</class>
+   <extends>QTreeView</extends>
+   <header>qMRMLSubjectHierarchyTreeView.h</header>
+  </customwidget>
+  <customwidget>
    <class>ctkCollapsibleButton</class>
    <extends>QWidget</extends>
    <header>ctkCollapsibleButton.h</header>
@@ -285,14 +347,42 @@
    <extends>QWidget</extends>
    <header>ctkDirectoryButton.h</header>
   </customwidget>
-  <customwidget>
-   <class>qMRMLSubjectHierarchyTreeView</class>
-   <extends>QTreeView</extends>
-   <header>qMRMLSubjectHierarchyTreeView.h</header>
-  </customwidget>
  </customwidgets>
  <resources>
-  <include location="../../../../../Base/QTGUI/Resources/qSlicerBaseQTGUI.qrc"/>
+  <include location="../../../../../../../S4/Base/QTGUI/Resources/qSlicerBaseQTGUI.qrc"/>
  </resources>
- <connections/>
+ <connections>
+  <connection>
+   <sender>diskStorageRadioButton</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>directoryButton</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>271</x>
+     <y>452</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>269</x>
+     <y>483</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>diskStorageRadioButton</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>copyFilesOnImportCheckBox</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>308</x>
+     <y>450</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>133</x>
+     <y>515</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
 </ui>

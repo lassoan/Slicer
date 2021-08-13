@@ -641,6 +641,9 @@ class DICOMWidget(ScriptedLoadableModuleWidget):
     self.ui.directoryButton.directoryChanged.connect(self.updateDatabaseDirectoryFromWidget)
     self.browserWidget.dicomBrowser.databaseDirectoryChanged.connect(self.updateDatabaseDirectoryFromBrowser)
 
+    self.ui.copyFilesOnImportCheckBox.checked = not settingsValue('DICOM/CopyFilesOnImport', False, converter=toBool)
+    self.ui.copyFilesOnImportCheckBox.stateChanged.connect(self.onCopyFilesOnImportChanged)
+
     self.ui.browserAutoHideCheckBox.checked = not settingsValue('DICOM/BrowserPersistent', False, converter=toBool)
     self.ui.browserAutoHideCheckBox.stateChanged.connect(self.onBrowserAutoHideStateChanged)
 
@@ -883,6 +886,11 @@ class DICOMWidget(ScriptedLoadableModuleWidget):
     wasBlocked = self.ui.directoryButton.blockSignals(True)
     self.ui.directoryButton.directory = databaseDirectory
     self.ui.directoryButton.blockSignals(wasBlocked)
+
+
+  def onCopyFilesOnImportChanged(self, copyFilesOnImportState):
+    if self.browserWidget:
+      self.browserWidget.setCopyFilesOnImport(copyFilesOnImportState == qt.Qt.Checked)
 
 
   def onBrowserAutoHideStateChanged(self, autoHideState):
