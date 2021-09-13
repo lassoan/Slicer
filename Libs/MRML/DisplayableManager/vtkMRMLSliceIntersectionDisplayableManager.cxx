@@ -11,44 +11,46 @@
 
 ==============================================================================*/
 
-
 // MRMLDisplayableManager includes
 #include "vtkMRMLSliceIntersectionDisplayableManager.h"
-#include <vtkMRMLSliceIntersectionInteractionWidget.h>
-
-// MRMLDM includes
-#include <vtkMRMLInteractionEventData.h>
 
 // MRML includes
-#include <vtkMRMLProceduralColorNode.h>
+#include <vtkMRMLApplicationLogic.h>
+#include <vtkMRMLColorNode.h>
+#include <vtkMRMLCrosshairNode.h>
+#include <vtkMRMLDisplayNode.h>
+#include <vtkMRMLInteractionNode.h>
+#include <vtkMRMLLightBoxRendererManagerProxy.h>
 #include <vtkMRMLScene.h>
 #include <vtkMRMLSliceCompositeNode.h>
+#include <vtkMRMLSliceIntersectionInteractionWidget.h>
+#include <vtkMRMLSliceLogic.h>
 #include <vtkMRMLSliceNode.h>
-#include <vtkMRMLTransformDisplayNode.h>
-#include <vtkMRMLTransformNode.h>
 
 // VTK includes
 #include <vtkActor2D.h>
 #include <vtkCallbackCommand.h>
-#include <vtkColorTransferFunction.h>
+#include <vtkCellArray.h>
 #include <vtkEventBroker.h>
 #include <vtkMatrix4x4.h>
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
+#include <vtkPickingManager.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
 #include <vtkPolyDataMapper2D.h>
+#include <vtkProp.h>
 #include <vtkProperty2D.h>
 #include <vtkRenderer.h>
+#include <vtkRenderWindow.h>
+#include <vtkRenderWindowInteractor.h>
 #include <vtkSmartPointer.h>
-#include <vtkTransform.h>
-#include <vtkTransformPolyDataFilter.h>
 #include <vtkWeakPointer.h>
-#include <vtkPointLocator.h>
+#include <vtkVersion.h>
 
 // STD includes
 #include <algorithm>
 #include <cassert>
-#include <set>
-#include <map>
 
 //---------------------------------------------------------------------------
 vtkStandardNewMacro(vtkMRMLSliceIntersectionDisplayableManager);
@@ -56,79 +58,100 @@ vtkStandardNewMacro(vtkMRMLSliceIntersectionDisplayableManager);
 //---------------------------------------------------------------------------
 class vtkMRMLSliceIntersectionDisplayableManager::vtkInternal
 {
-public:
+  public:
+    vtkInternal(vtkMRMLSliceIntersectionDisplayableManager* external);
+    ~vtkInternal();
 
-  vtkInternal(vtkMRMLSliceIntersectionDisplayableManager* external);
-  ~vtkInternal();
+    vtkObserverManager* GetMRMLNodesObserverManager();
+    void Modified();
 
-  typedef std::map < vtkMRMLSliceNode*, vtkSmartPointer<vtkMRMLSliceIntersectionInteractionWidget> > InteractionPipelinesCacheType;
-  InteractionPipelinesCacheType InteractionPipelines;
+    // Slice
+    vtkMRMLSliceNode* GetSliceNode();
+    void UpdateIntersectingSliceNodes();
+    // Crosshair
+    void SetCrosshairNode(vtkMRMLCrosshairNode* crosshairNode);
 
-  // Slice Nodes
-  void SetSliceNode(vtkMRMLSliceNode* sliceNode);
-  void AddSliceNode(vtkMRMLSliceNode* sliceNode);
-  void RemoveSliceNode(vtkMRMLSliceNode* sliceNode);
+    // Actors
+    void SetActor(vtkActor2D* prop) { Actor = prop; };
 
-  vtkWeakPointer<vtkMRMLSliceIntersectionInteractionWidget> LastActiveWidget;
-  vtkMRMLSliceIntersectionInteractionWidget* FindClosestWidget(vtkMRMLInteractionEventData* callData, double& closestDistance2);
+    // Build the crosshair representation
+    void BuildCrosshair();
 
-private:
-  vtkMRMLSliceIntersectionDisplayableManager* External;
-  bool AddingTransformNode;
-  vtkSmartPointer<vtkMRMLSliceNode> SliceNode;
+    // Add a line to the crosshair in display coordinates (needs to be
+    // passed the points and cellArray to manipulate).
+    void AddCrosshairLine(vtkPoints* pts, vtkCellArray* cellArray,
+      int p1x, int p1y, int p2x, int p2y);
+
+    // Did crosshair position change?
+    bool DidCrosshairPositionChange();
+
+    // Did crosshair property change?
+    bool DidCrosshairPropertyChange();
+
+    vtkMRMLSliceIntersectionDisplayableManager* External;
+    int                                        PickState;
+    int                                        ActionState;
+    vtkSmartPointer<vtkActor2D>                Actor;
+    vtkWeakPointer<vtkRenderer>                LightBoxRenderer;
+
+    vtkWeakPointer<vtkMRMLCrosshairNode>       CrosshairNode;
+    int CrosshairMode;
+    int CrosshairThickness;
+    double CrosshairPosition[3];
+
+    vtkSmartPointer<vtkMRMLSliceIntersectionInteractionWidget> SliceIntersectionInteractionWidget;
 };
+
 
 //---------------------------------------------------------------------------
 // vtkInternal methods
 
 //---------------------------------------------------------------------------
-vtkMRMLSliceIntersectionDisplayableManager::vtkInternal::vtkInternal(vtkMRMLSliceIntersectionDisplayableManager* external)
-  : External(external)
-  , AddingTransformNode(false)
+vtkMRMLSliceIntersectionDisplayableManager::vtkInternal
+::vtkInternal(vtkMRMLSliceIntersectionDisplayableManager* external)
 {
+  this->External = external;
+  this->SliceIntersectionInteractionWidget = vtkSmartPointer<vtkMRMLSliceIntersectionInteractionWidget>::New();
 }
 
 //---------------------------------------------------------------------------
 vtkMRMLSliceIntersectionDisplayableManager::vtkInternal::~vtkInternal()
 {
-  this->SliceNode = nullptr;
+  if (this->SliceIntersectionInteractionWidget)
+    {
+    this->SliceIntersectionInteractionWidget->SetMRMLApplicationLogic(nullptr);
+    this->SliceIntersectionInteractionWidget->SetRenderer(nullptr);
+    this->SliceIntersectionInteractionWidget->SetSliceNode(nullptr);
+    }
 }
 
 //---------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionDisplayableManager::vtkInternal::SetSliceNode(vtkMRMLSliceNode* sliceNode)
+vtkMRMLSliceNode* vtkMRMLSliceIntersectionDisplayableManager::vtkInternal::GetSliceNode()
 {
-  if (!sliceNode || this->SliceNode == sliceNode)
-  {
-    return;
-  }
-  this->SliceNode = sliceNode;
+  return this->External->GetMRMLSliceNode();
 }
 
 //---------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionDisplayableManager::vtkInternal::RemoveSliceNode(vtkMRMLSliceNode* sliceNode)
+void vtkMRMLSliceIntersectionDisplayableManager::vtkInternal::UpdateIntersectingSliceNodes()
 {
-  this->InteractionPipelines.erase(sliceNode);
-}
-
-//---------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionDisplayableManager::vtkInternal::AddSliceNode(vtkMRMLSliceNode* sliceNode)
-{
-  if (!sliceNode)
-  {
+  if (this->External->GetMRMLScene() == nullptr)
+    {
+    this->SliceIntersectionInteractionWidget->SetSliceNode(nullptr);
     return;
-  }
+    }
 
-  // Do not add the slice node if it is already associated with a pipeline object.
-  InteractionPipelinesCacheType::iterator it;
-  it = this->InteractionPipelines.find(sliceNode);
-  if (it != this->InteractionPipelines.end())
-  {
-    return;
-  }
-
-  vtkNew<vtkMRMLSliceIntersectionInteractionWidget> interactionWidget;
-  interactionWidget->CreateDefaultRepresentation(sliceNode, this->External->GetMRMLSliceNode(), this->External->GetRenderer());
-  this->InteractionPipelines.insert(std::make_pair(sliceNode, interactionWidget.GetPointer()));
+  if (!this->SliceIntersectionInteractionWidget->GetRenderer())
+    {
+    vtkMRMLApplicationLogic* mrmlAppLogic = this->External->GetMRMLApplicationLogic();
+    this->SliceIntersectionInteractionWidget->SetMRMLApplicationLogic(mrmlAppLogic);
+    this->SliceIntersectionInteractionWidget->CreateDefaultRepresentation();
+    this->SliceIntersectionInteractionWidget->SetRenderer(this->External->GetRenderer());
+    this->SliceIntersectionInteractionWidget->SetSliceNode(this->GetSliceNode());
+    }
+  else
+    {
+    this->SliceIntersectionInteractionWidget->SetSliceNode(this->GetSliceNode());
+    }
 }
 
 //---------------------------------------------------------------------------
@@ -144,55 +167,12 @@ vtkMRMLSliceIntersectionDisplayableManager::vtkMRMLSliceIntersectionDisplayableM
 vtkMRMLSliceIntersectionDisplayableManager::~vtkMRMLSliceIntersectionDisplayableManager()
 {
   delete this->Internal;
-  this->Internal = nullptr;
 }
 
 //---------------------------------------------------------------------------
 void vtkMRMLSliceIntersectionDisplayableManager::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
-  os << indent << "vtkMRMLSliceIntersectionDisplayableManager: " << this->GetClassName() << "\n";
-}
-
-//---------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionDisplayableManager::OnMRMLSceneNodeAdded(vtkMRMLNode* node)
-{
-  if (!node->IsA("vtkMRMLSliceNode"))
-  {
-    return;
-  }
-
-  // Escape if the scene a scene is being closed, imported or connected
-  if (this->GetMRMLScene()->IsBatchProcessing())
-  {
-    this->SetUpdateFromMRMLRequested(true);
-    return;
-  }
-
-  this->Internal->AddSliceNode(vtkMRMLSliceNode::SafeDownCast(node));
-  this->RequestRender();
-}
-
-//---------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionDisplayableManager::OnMRMLSceneNodeRemoved(vtkMRMLNode* node)
-{
-  if (node && (!node->IsA("vtkMRMLSliceNode")))
-  {
-    return;
-  }
-
-  vtkMRMLSliceNode* sliceNode = nullptr;
-
-  bool modified = false;
-  if ((sliceNode = vtkMRMLSliceNode::SafeDownCast(node)))
-  {
-    this->Internal->RemoveSliceNode(sliceNode);
-    modified = true;
-  }
-  if (modified)
-  {
-    this->RequestRender();
-  }
 }
 
 //---------------------------------------------------------------------------
@@ -201,132 +181,107 @@ void vtkMRMLSliceIntersectionDisplayableManager::ProcessMRMLNodesEvents(vtkObjec
   vtkMRMLScene* scene = this->GetMRMLScene();
 
   if (scene == nullptr || scene->IsBatchProcessing())
-  {
+    {
     return;
-  }
+    }
 
-  if (vtkMRMLSliceNode::SafeDownCast(caller))
-  {
+  vtkMRMLSliceCompositeNode* compositeNode = vtkMRMLSliceCompositeNode::SafeDownCast(caller);
+  if (compositeNode && event == vtkCommand::ModifiedEvent)
+    {
     this->RequestRender();
-
-    for (auto interactionPipeline : this->Internal->InteractionPipelines)
-    {
-      interactionPipeline.second->UpdateFromMRML(this->GetMRMLSliceNode(), event, callData);
     }
-  }
-  else
-  {
-    this->Superclass::ProcessMRMLNodesEvents(caller, event, callData);
-  }
 }
 
 //---------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionDisplayableManager::Create()
+void vtkMRMLSliceIntersectionDisplayableManager::ObserveMRMLScene()
 {
-  //this->Internal->SetSliceNode(this->GetMRMLSliceNode());
-  this->Internal->AddSliceNode(this->GetMRMLSliceNode());
-}
+  this->Superclass::ObserveMRMLScene();
 
-//---------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionDisplayableManager::OnMRMLDisplayableNodeModifiedEvent(vtkObject* vtkNotUsed(caller))
-{
-  vtkErrorMacro("vtkMRMLSliceIntersectionDisplayableManager::OnMRMLDisplayableNodeModifiedEvent: Not implemented!");
-}
-
-//---------------------------------------------------------------------------
-vtkMRMLSliceIntersectionInteractionWidget* vtkMRMLSliceIntersectionDisplayableManager::vtkInternal::FindClosestWidget(vtkMRMLInteractionEventData* callData,
-  double& closestDistance2)
-{
-  vtkMRMLSliceIntersectionInteractionWidget* closestWidget = nullptr;
-  closestDistance2 = VTK_DOUBLE_MAX;
-
-  for (auto widgetIterator : this->InteractionPipelines)
-  {
-    vtkMRMLSliceIntersectionInteractionWidget* widget = widgetIterator.second;
-    if (!widget)
+  // Observe all the slice composite nodes in the scene to trigger rendering when the interactive slice intersection
+  // is turned on or off.
+  //TODO: This is a hack, and should be done differently. The reasons this workaround was applied are:
+  // - There is no way to get the composite node for a given slice node without the slice logic, which cannot be accessed from here
+  // - The composite node is known from the widget representation, but the RequestRender function in this class seems to be the only
+  //   way to get re-render, and there is no way to trigger calling that function from the representation
+  // - Note: The reason update works in the traditional slice intersection is that the slice model node is modified in that case,
+  //   and the model slice displayable manager handles that and calls RequestRender. But for the interactive slice intersection the
+  //   slice model is not modified.
+  // ! A possible way to make this nicer (and not observe three nodes instead of one) could be to get the slice composite node
+  //   in vtkMRMLSliceIntersectionInteractionRepresentation::SetSliceNode, get the corresponding slice node there, and observe
+  //   the composite node, which would call a Modified on the slice node, which in turn can be observed from this class directly.
+  vtkEventBroker* broker = vtkEventBroker::GetInstance();
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  std::vector<vtkMRMLNode*> sliceCompositeNodes;
+  int numOfSegmentationNodes = scene->GetNodesByClass("vtkMRMLSliceCompositeNode", sliceCompositeNodes);
+  for (int i = 0; i < numOfSegmentationNodes; i++)
     {
-      continue;
-    }
-    double distance2FromWidget = VTK_DOUBLE_MAX;
-    if (widget->CanProcessInteractionEvent(callData, distance2FromWidget))
-    {
-      if (!closestWidget || distance2FromWidget < closestDistance2)
+    vtkMRMLSliceCompositeNode* sliceCompositeNode = vtkMRMLSliceCompositeNode::SafeDownCast(sliceCompositeNodes[i]);
+    if (!broker->GetObservationExist(sliceCompositeNode, vtkCommand::ModifiedEvent, this, this->GetMRMLNodesCallbackCommand()))
       {
-        closestDistance2 = distance2FromWidget;
-        closestWidget = widget;
+      broker->AddObservation(sliceCompositeNode, vtkCommand::ModifiedEvent, this, this->GetMRMLNodesCallbackCommand());
       }
     }
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLSliceIntersectionDisplayableManager::UpdateFromMRMLScene()
+{
+  this->Internal->UpdateIntersectingSliceNodes();
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLSliceIntersectionDisplayableManager::UnobserveMRMLScene()
+{
+  this->Superclass::UnobserveMRMLScene();
+
+  this->Internal->SliceIntersectionInteractionWidget->SetSliceNode(nullptr);
+
+  vtkEventBroker* broker = vtkEventBroker::GetInstance();
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  std::vector<vtkMRMLNode*> sliceCompositeNodes;
+  int numOfSegmentationNodes = scene->GetNodesByClass("vtkMRMLSliceCompositeNode", sliceCompositeNodes);
+  for (int i = 0; i < numOfSegmentationNodes; i++)
+    {
+    vtkMRMLSliceCompositeNode* sliceCompositeNode = vtkMRMLSliceCompositeNode::SafeDownCast(sliceCompositeNodes[i]);
+    vtkEventBroker::ObservationVector observations;
+    observations = broker->GetObservations(sliceCompositeNode, vtkCommand::ModifiedEvent, this, this->GetMRMLNodesCallbackCommand());
+    broker->RemoveObservations(observations);
+    }
   }
-  return closestWidget;
+
+//---------------------------------------------------------------------------
+void vtkMRMLSliceIntersectionDisplayableManager::OnMRMLNodeModified(
+  vtkMRMLNode* vtkNotUsed(node))
+{
+    // test
 }
 
 //---------------------------------------------------------------------------
 bool vtkMRMLSliceIntersectionDisplayableManager::CanProcessInteractionEvent(vtkMRMLInteractionEventData* eventData, double& closestDistance2)
 {
-  // New point can be placed anywhere
-  int eventid = eventData->GetType();
-
-  if (eventid == vtkCommand::LeaveEvent && this->Internal->LastActiveWidget != nullptr)
-  {
-    if (this->Internal->LastActiveWidget->GetSliceNode()
-      && this->Internal->LastActiveWidget->GetSliceNode()->GetActiveInteractionType() > vtkMRMLSliceIntersectionInteractionWidget::InteractionNone)
-    {
-      // this widget has active component, therefore leave event is relevant
-      closestDistance2 = 0.0;
-      return this->Internal->LastActiveWidget;
-    }
-  }
-
-  // Other interactions
-  bool canProcess = (this->Internal->FindClosestWidget(eventData, closestDistance2) != nullptr);
-
-  if (!canProcess && this->Internal->LastActiveWidget != nullptr
-    && (eventid == vtkCommand::MouseMoveEvent || eventid == vtkCommand::Move3DEvent))
-  {
-    // TODO: handle multiple contexts
-    this->Internal->LastActiveWidget->Leave(eventData);
-    this->Internal->LastActiveWidget = nullptr;
-  }
-
-  return canProcess;
+  return this->Internal->SliceIntersectionInteractionWidget->CanProcessInteractionEvent(eventData, closestDistance2);
 }
 
 //---------------------------------------------------------------------------
 bool vtkMRMLSliceIntersectionDisplayableManager::ProcessInteractionEvent(vtkMRMLInteractionEventData* eventData)
 {
-  int eventid = eventData->GetType();
+  return this->Internal->SliceIntersectionInteractionWidget->ProcessInteractionEvent(eventData);
+}
 
-  if (eventid == vtkCommand::LeaveEvent)
-  {
-    if (this->Internal->LastActiveWidget != nullptr)
-    {
-      this->Internal->LastActiveWidget->Leave(eventData);
-      this->Internal->LastActiveWidget = nullptr;
-    }
-  }
+//---------------------------------------------------------------------------
+void vtkMRMLSliceIntersectionDisplayableManager::SetActionsEnabled(int actions)
+{
+  this->Internal->SliceIntersectionInteractionWidget->SetActionsEnabled(actions);
+}
 
-  // Find/create active widget
-  vtkMRMLSliceIntersectionInteractionWidget* activeWidget = nullptr;
-  double closestDistance2 = VTK_DOUBLE_MAX;
-  activeWidget = this->Internal->FindClosestWidget(eventData, closestDistance2);
+//---------------------------------------------------------------------------
+int vtkMRMLSliceIntersectionDisplayableManager::GetActionsEnabled()
+{
+  return this->Internal->SliceIntersectionInteractionWidget->GetActionsEnabled();
+}
 
-  // Deactivate previous widget
-  if (this->Internal->LastActiveWidget != nullptr && this->Internal->LastActiveWidget != activeWidget)
-  {
-    this->Internal->LastActiveWidget->Leave(eventData);
-  }
-  this->Internal->LastActiveWidget = activeWidget;
-  if (!activeWidget)
-  {
-    // deactivate widget if we move far from it
-    if (eventid == vtkCommand::MouseMoveEvent && this->Internal->LastActiveWidget != nullptr)
-    {
-      this->Internal->LastActiveWidget->Leave(eventData);
-      this->Internal->LastActiveWidget = nullptr;
-    }
-    return false;
-  }
-
-  // Pass on the interaction event to the active widget
-  return activeWidget->ProcessInteractionEvent(eventData);
+//---------------------------------------------------------------------------
+vtkMRMLSliceIntersectionInteractionWidget* vtkMRMLSliceIntersectionDisplayableManager::GetSliceIntersectionInteractionWidget()
+{
+  return this->Internal->SliceIntersectionInteractionWidget;
 }

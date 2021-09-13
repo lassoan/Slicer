@@ -206,7 +206,7 @@ void qSlicerViewersToolBarPrivate::init()
   this->CrosshairInteractiveSliceIntersectionsAction->setText(tr("Interactive slice intersections"));
   this->CrosshairInteractiveSliceIntersectionsAction->setToolTip(tr("Show handles for slice interaction."));
   this->CrosshairInteractiveSliceIntersectionsAction->setCheckable(true);
-  this->CrosshairInteractiveSliceIntersectionsAction->setVisible(false);
+  this->CrosshairInteractiveSliceIntersectionsAction->setVisible(true);
   QObject::connect(this->CrosshairInteractiveSliceIntersectionsAction, SIGNAL(triggered(bool)),
       this, SLOT(setSliceIntersectionHandlesVisible(bool)));
 
@@ -519,8 +519,6 @@ void qSlicerViewersToolBarPrivate::updateWidgetFromMRML()
       {
       this->CrosshairToggleAction->setChecked( crosshairNode->GetCrosshairMode() != vtkMRMLCrosshairNode::NoCrosshair );
       }
-    // visibility interactive slice intersection checkbox
-    this->CrosshairInteractiveSliceIntersectionsAction->setVisible(this->CrosshairSliceIntersectionsAction->isChecked());
     }
 
   // toggle the slice intersections. this is harder to manage as there
@@ -537,6 +535,7 @@ void qSlicerViewersToolBarPrivate::updateWidgetFromMRML()
       if (node)
         {
         this->CrosshairSliceIntersectionsAction->setChecked(node->GetSliceIntersectionVisibility());
+        this->CrosshairInteractiveSliceIntersectionsAction->setChecked(node->GetSliceIntersectionHandlesVisibility());
         }
       }
     }
