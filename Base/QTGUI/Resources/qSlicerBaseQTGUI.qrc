@@ -1,14 +1,14 @@
 <RCC>
     <qresource prefix="/Icons">
         <file alias="ExtensionDefaultIcon.png">Icons/ExtensionDefaultIcon.png</file>
+        <file alias="ExtensionDefaultIcon.svg">Icons/ExtensionDefaultIcon.svg</file>
         <file alias="Go.png">Icons/Go.png</file>
         <file alias="ExtensionUpdateAvailable.svg">Icons/ExtensionUpdateAvailable.svg</file>
         <file alias="MouseSinglePickMode.png">Icons/MouseSinglePickMode.png</file>
         <file alias="DownloadExtension.png">Icons/DownloadExtension.png</file>
         <file alias="CheckModifiedData.png">Icons/CheckModifiedData.png</file>
         <file alias="Extension.png">Icons/Extension.png</file>
-        <file alias="Search.png">Icons/Search.png</file>
-        <file alias="Search@2x.png">Icons/Search@2x.png</file>
+        <file alias="Search.svg">Icons/Search.svg</file>
         <file alias="MouseSinglePlaceMode.png">Icons/MouseSinglePlaceMode.png</file>
         <file alias="MouseRotateMode.png">Icons/MouseRotateMode.png</file>
         <file alias="MousePlaceMode.png">Icons/MousePlaceMode.png</file>
@@ -21,18 +21,12 @@
         <file alias="CheckModified.png">Icons/CheckModified.png</file>
         <file alias="ExtensionError.svg">Icons/ExtensionError.svg</file>
         <file alias="MousePickMode.png">Icons/MousePickMode.png</file>
-        <file alias="ModuleHistory.png">Icons/ModuleHistory.png</file>
-        <file alias="ModuleHistory@2x.png">Icons/ModuleHistory@2x.png</file>
-        <file alias="ModuleNext.png">Icons/ModuleNext.png</file>
-        <file alias="ModuleNext@2x.png">Icons/ModuleNext@2x.png</file>
-        <file alias="ModulePrevious.png">Icons/ModulePrevious.png</file>
-        <file alias="ModulePrevious@2x.png">Icons/ModulePrevious@2x.png</file>
-        <file alias="SlicerLoadData.png">Icons/SlicerLoadData.png</file>
-        <file alias="SlicerLoadData@2x.png">Icons/SlicerLoadData@2x.png</file>
-        <file alias="SlicerLoadDICOM.png">Icons/SlicerLoadDICOM.png</file>
-        <file alias="SlicerLoadDICOM@2x.png">Icons/SlicerLoadDICOM@2x.png</file>
-        <file alias="SlicerSave.png">Icons/SlicerSave.png</file>
-        <file alias="SlicerSave@2x.png">Icons/SlicerSave@2x.png</file>
+        <file alias="ModuleHistory.svg">Icons/ModuleHistory.svg</file>
+        <file alias="ModuleNext.svg">Icons/ModuleNext.svg</file>
+        <file alias="ModulePrevious.svg">Icons/ModulePrevious.svg</file>
+        <file alias="SlicerLoadData.svg">Icons/SlicerLoadData.svg</file>
+        <file alias="SlicerLoadDICOM.svg">Icons/SlicerLoadDICOM.svg</file>
+        <file alias="SlicerSave.svg">Icons/SlicerSave.svg</file>
         <file alias="MarkupsGenericMouseModePlace.png">Icons/MarkupsGenericMouseModePlace.png</file>
     </qresource>
     <qresource prefix="/Icons/Large">
@@ -156,8 +150,6 @@
     </qresource>
     <qresource prefix="/Icons/Small">
         <file alias="SlicerVisible.png">Icons/Small/SlicerVisible.png</file>
-        <file alias="SlicerVisible@2x.png">Icons/Small/SlicerVisible@2x.png</file>
-        <file alias="SlicerVisible@3x.png">Icons/Small/SlicerVisible@3x.png</file>
         <file alias="SlicerSave.png">Icons/Small/SlicerSave.png</file>
         <file alias="SlicerCloseScene.png">Icons/Small/SlicerCloseScene.png</file>
         <file alias="SlicerEditPaste.png">Icons/Small/SlicerEditPaste.png</file>
@@ -167,7 +159,6 @@
         <file alias="SlicerAddData.png">Icons/Small/SlicerAddData.png</file>
         <file alias="SlicerUndo.png">Icons/Small/SlicerUndo.png</file>
         <file alias="SlicerLoadData.png">Icons/Small/SlicerLoadData.png</file>
-        <file alias="SlicerLoadData@2x.png">Icons/Small/SlicerLoadData@2x.png</file>
         <file alias="SlicerLoadDICOM.png">Icons/Small/SlicerLoadDICOM.png</file>
         <file alias="SlicerHierarchy.png">Icons/Small/SlicerHierarchy.png</file>
         <file alias="SlicerAddHierarchy.png">Icons/Small/SlicerAddHierarchy.png</file>

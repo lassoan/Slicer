@@ -369,7 +369,7 @@
   <action name="FileLoadDataAction">
    <property name="icon">
     <iconset resource="../../../QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-     <normaloff>:/Icons/SlicerLoadData.png</normaloff>:/Icons/SlicerLoadData.png</iconset>
+     <normaloff>:/Icons/SlicerLoadData.svg</normaloff>:/Icons/SlicerLoadData.svg</iconset>
    </property>
    <property name="text">
     <string>Load Data</string>
@@ -381,7 +381,7 @@
   <action name="LoadDICOMAction">
    <property name="icon">
     <iconset resource="../../../QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-     <normaloff>:/Icons/SlicerLoadDICOM.png</normaloff>:/Icons/SlicerLoadDICOM.png</iconset>
+     <normaloff>:/Icons/SlicerLoadDICOM.svg</normaloff>:/Icons/SlicerLoadDICOM.svg</iconset>
    </property>
    <property name="text">
     <string>Load DICOM</string>
@@ -405,7 +405,7 @@
   <action name="FileAddDataAction">
    <property name="icon">
     <iconset resource="../../../QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-     <normaloff>:/Icons/SlicerLoadData.png</normaloff>:/Icons/SlicerLoadData.png</iconset>
+     <normaloff>:/Icons/SlicerLoadData.svg</normaloff>:/Icons/SlicerLoadData.svg</iconset>
    </property>
    <property name="text">
     <string>&amp;Add Data</string>
@@ -444,7 +444,7 @@
   <action name="FileSaveSceneAction">
    <property name="icon">
     <iconset resource="../../../QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-     <normaloff>:/Icons/SlicerSave.png</normaloff>:/Icons/SlicerSave.png</iconset>
+     <normaloff>:/Icons/SlicerSave.svg</normaloff>:/Icons/SlicerSave.svg</iconset>
    </property>
    <property name="text">
     <string>Save</string>
@@ -459,7 +459,7 @@
   <action name="SDBSaveToDirectoryAction">
    <property name="icon">
     <iconset resource="../../../QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-     <normaloff>:/Icons/SlicerSave.png</normaloff>:/Icons/SlicerSave.png</iconset>
+     <normaloff>:/Icons/SlicerSave.svg</normaloff>:/Icons/SlicerSave.svg</iconset>
    </property>
    <property name="text">
     <string>Save Scene To Directory</string>
@@ -471,7 +471,7 @@
   <action name="SDBSaveToMRBAction">
    <property name="icon">
     <iconset resource="../../../QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-     <normaloff>:/Icons/SlicerSave.png</normaloff>:/Icons/SlicerSave.png</iconset>
+     <normaloff>:/Icons/SlicerSave.svg</normaloff>:/Icons/SlicerSave.svg</iconset>
    </property>
    <property name="text">
     <string>Save Scene to MRB File</string>
@@ -558,7 +558,7 @@
   <action name="ViewExtensionsManagerAction">
    <property name="icon">
     <iconset resource="../../../QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-     <normaloff>:/Icons/ExtensionDefaultIcon.png</normaloff>:/Icons/ExtensionDefaultIcon.png</iconset>
+     <normaloff>:/Icons/ExtensionDefaultIcon.svg</normaloff>:/Icons/ExtensionDefaultIcon.svg</iconset>
    </property>
    <property name="text">
     <string>Extensions Manager</string>

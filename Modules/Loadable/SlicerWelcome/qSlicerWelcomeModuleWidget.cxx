@@ -85,7 +85,8 @@ void qSlicerWelcomeModuleWidgetPrivate::setupUi(qSlicerWidget* widget)
 
   // QLabel's pixmap property loads the base image (ignores high-resolution @2x versions),
   // therefore we need to retrieve and set the best icon version manually.
-  this->label->setPixmap(qMRMLWidget::pixmapFromIcon(QIcon(":/Images/WelcomeLogo.png")));
+  //this->label->setPixmap(qMRMLWidget::pixmapFromIcon(QIcon(":/Images/WelcomeLogo.png")));
+  this->label->setPixmap(qMRMLWidget::pixmapFromIcon(QIcon(":/Icons/Chat.svg")));
 
   // Create the button group ensuring that only one collabsibleWidgetButton will be open at a time
   ctkButtonGroup * group = new ctkButtonGroup(widget);

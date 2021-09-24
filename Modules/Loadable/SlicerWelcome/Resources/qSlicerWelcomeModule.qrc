@@ -1,24 +1,20 @@
 <RCC>
   <qresource>
-    <file>Icons/Chat.png</file> <!-- Adapted from Google material icons (https://fonts.google.com/icons)  -->
-    <file>Icons/Chat@2x.png</file> <!-- Adapted from Google material icons (https://fonts.google.com/icons)  -->
-    <file>Icons/SlicerWelcome.png</file>
+    <file>Icons/Chat.svg</file>  <!-- Adapted from Google material icons (https://fonts.google.com/icons)  -->
+    <file>Icons/Chat.png</file>  <!-- Adapted from Google material icons (https://fonts.google.com/icons)  -->
+    <file>Icons/Chat@2x.png</file>  <!-- Adapted from Google material icons (https://fonts.google.com/icons)  -->
   </qresource>
   <qresource>
     <file>HTML/stylesheet.css</file>
     <file>HTML/About.html</file>
-    <file>Images/WelcomeLogo.png</file>
-    <file>Images/WelcomeLogo@2x.png</file>
+    <file>Images/WelcomeLogo.png</file>  <!-- Contains "Welcome" text. Not SVG because it contains text.  -->
+    <file>Images/WelcomeLogo@2x.png</file>  <!-- Contains "Welcome" text. Not SVG because it contains text.  -->
     <file>HTML/OtherUsefulHints.html</file>
     <file>HTML/Feedback.html</file>
-    <file>Images/SlicerLoadDicom-Wide.png</file>
-    <file>Images/SlicerLoadDicom-Wide@2x.png</file>
-    <file>Images/SlicerLoadData-Wide.png</file>
-    <file>Images/SlicerLoadData-Wide@2x.png</file>
-    <file>Images/SlicerWWW.png</file>
-    <file>Images/SlicerWWW@2x.png</file>
-    <file>Images/SlicerAdvancedGear.png</file>
-    <file>Images/SlicerAdvancedGear@2x.png</file>
+    <file>Images/SlicerLoadDicom-Wide.svg</file>
+    <file>Images/SlicerLoadData-Wide.svg</file>
+    <file>Images/SlicerWWW.svg</file>
+    <file>Images/SlicerAdvancedGear.svg</file>
     <file>Images/WelcomeSubjectHierarchy.png</file>
     <file>HTML/Acknowledgment.html</file>
   </qresource>

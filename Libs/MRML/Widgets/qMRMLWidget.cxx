@@ -153,7 +153,7 @@ void qMRMLWidget::postInitializeApplication()
 }
 
 //-----------------------------------------------------------------------------
-QPixmap qMRMLWidget::pixmapFromIcon(const QIcon& icon)
+QPixmap qMRMLWidget::pixmapFromIcon(const QIcon& icon, QSize size/*=QSize()*/)
 {
   // QIcon stores multiple versions of the image (in different sizes) and uses the
   // most suitable one (depending on DevicePixelRatio).
@@ -162,8 +162,30 @@ QPixmap qMRMLWidget::pixmapFromIcon(const QIcon& icon)
 
   // To achieve this, we first determine the pixmap size in device independent units,
   // which is the size of the base image (icon.availableSizes().first(), because for that
-  // DevicePixelRatio=1.0), and then we retieve the pixmap for this size.
+  // DevicePixelRatio=1.0), and then we retrieve the pixmap for this size.
 
-  QPixmap pixmap = icon.pixmap(icon.availableSizes().first());
-  return pixmap;
+  QList<QSize> iconSizes = icon.availableSizes();
+  if (!iconSizes.empty())
+    {
+    return icon.pixmap(icon.availableSizes().first());
+    }
+  else
+    {
+    // SVG (or bitmap not found), we retrieve pixmap with the requested size.
+    if (size.isNull())
+      {
+      // No size is provided, use the default icon size (in device independent pixel unit)
+      size.setWidth(24);
+      size.setHeight(24);
+      }
+    double devicePixelRatio = 1.0;
+    QGuiApplication* app = qobject_cast<QGuiApplication*>(QApplication::instance());
+    if (app)
+      {
+      size *= devicePixelRatio;
+      }
+    QPixmap pixmap = icon.pixmap(size);
+    pixmap.setDevicePixelRatio(devicePixelRatio);
+    return pixmap;
+    }
 }

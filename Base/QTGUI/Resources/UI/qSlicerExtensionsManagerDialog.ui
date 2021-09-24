@@ -15,7 +15,7 @@
   </property>
   <property name="windowIcon">
    <iconset resource="../qSlicerBaseQTGUI.qrc">
-    <normaloff>:/Icons/ExtensionDefaultIcon.png</normaloff>:/Icons/ExtensionDefaultIcon.png</iconset>
+    <normaloff>:/Icons/ExtensionDefaultIcon.svg</normaloff>:/Icons/ExtensionDefaultIcon.svg</iconset>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>

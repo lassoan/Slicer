@@ -53,7 +53,10 @@ public:
 
   // Get the pixmap from the icon that is the most suitable for current screen resolution.
   // Useful for cases when a widget cannot take a QIcon as input only as QPixmap.
-  Q_INVOKABLE static QPixmap pixmapFromIcon(const QIcon& icon);
+  // If the icon contains only an SVG then the size argument can be used to specify
+  // device-independent pixel size (if not specified then 24x24 is used, which is the
+  // default icon size).
+  Q_INVOKABLE static QPixmap pixmapFromIcon(const QIcon& icon, QSize size=QSize());
 
 public slots:
   /// Set the MRML \a scene associated with the widget

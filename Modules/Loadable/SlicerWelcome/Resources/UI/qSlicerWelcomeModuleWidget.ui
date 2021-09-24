@@ -61,12 +61,12 @@
         </property>
         <property name="icon">
          <iconset resource="../../../../../Base/QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-          <normaloff>:/Icons/SlicerLoadDICOM.png</normaloff>:/Icons/SlicerLoadDICOM.png</iconset>
+          <normaloff>:/Icons/SlicerLoadDICOM.svg</normaloff>:/Icons/SlicerLoadDICOM.svg</iconset>
         </property>
         <property name="iconSize">
          <size>
-          <width>45</width>
-          <height>22</height>
+          <width>24</width>
+          <height>24</height>
          </size>
         </property>
        </widget>
@@ -78,12 +78,12 @@
         </property>
         <property name="icon">
          <iconset resource="../../../../../Base/QTGUI/Resources/qSlicerBaseQTGUI.qrc">
-          <normaloff>:/Icons/SlicerLoadData.png</normaloff>:/Icons/SlicerLoadData.png</iconset>
+          <normaloff>:/Icons/SlicerLoadData.svg</normaloff>:/Icons/SlicerLoadData.svg</iconset>
         </property>
         <property name="iconSize">
          <size>
-          <width>45</width>
-          <height>22</height>
+          <width>24</width>
+          <height>24</height>
          </size>
         </property>
        </widget>
@@ -95,12 +95,12 @@
         </property>
         <property name="icon">
          <iconset resource="../qSlicerWelcomeModule.qrc">
-          <normaloff>:/Images/SlicerWWW.png</normaloff>:/Images/SlicerWWW.png</iconset>
+          <normaloff>:/Images/SlicerWWW.svg</normaloff>:/Images/SlicerWWW.svg</iconset>
         </property>
         <property name="iconSize">
          <size>
-          <width>29</width>
-          <height>22</height>
+          <width>24</width>
+          <height>24</height>
          </size>
         </property>
        </widget>
@@ -119,8 +119,8 @@
         </property>
         <property name="iconSize">
          <size>
-          <width>22</width>
-          <height>22</height>
+          <width>24</width>
+          <height>24</height>
          </size>
         </property>
        </widget>
@@ -132,12 +132,13 @@
         </property>
         <property name="icon">
          <iconset resource="../qSlicerWelcomeModule.qrc">
-          <normaloff>:/Images/SlicerAdvancedGear.png</normaloff>:/Images/SlicerAdvancedGear.png</iconset>
+          <!-- <normaloff>:/Images/SlicerAdvancedGear.svg</normaloff>:/Images/SlicerAdvancedGear.svg</iconset> -->
+          <normaloff>:/Icons/Search.svg</normaloff>:/Icons/Search.svg</iconset>
         </property>
         <property name="iconSize">
          <size>
-          <width>22</width>
-          <height>22</height>
+          <width>24</width>
+          <height>24</height>
          </size>
         </property>
        </widget>
@@ -153,8 +154,8 @@
         </property>
         <property name="iconSize">
          <size>
-          <width>22</width>
-          <height>21</height>
+          <width>24</width>
+          <height>24</height>
          </size>
         </property>
        </widget>
