@@ -89,6 +89,8 @@ public:
   // Set number of columns for organization of create markups buttons
   void setCreateMarkupsButtonsColumns(unsigned int columns);
 
+  /// Control point index can be specified by setting role to "ControlPointIndex"
+  /// and context to control point index as a string.
   bool setEditedNode(vtkMRMLNode* node, QString role = QString(), QString context = QString()) override;
   double nodeEditable(vtkMRMLNode* node) override;
 

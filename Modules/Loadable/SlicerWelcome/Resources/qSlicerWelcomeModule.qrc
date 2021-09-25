@@ -3,6 +3,7 @@
     <file>Icons/Chat.svg</file>  <!-- Adapted from Google material icons (https://fonts.google.com/icons)  -->
     <file>Icons/Chat.png</file>  <!-- Adapted from Google material icons (https://fonts.google.com/icons)  -->
     <file>Icons/Chat@2x.png</file>  <!-- Adapted from Google material icons (https://fonts.google.com/icons)  -->
+    <file>Icons/SlicerWelcome.png</file>
   </qresource>
   <qresource>
     <file>HTML/stylesheet.css</file>
