@@ -397,6 +397,10 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessStartMouseDrag(vtkMRMLInt
   this->PreviousEventPosition[1] = this->StartEventPosition[1];
 
   this->ProcessMouseMove(eventData);
+  
+  // Indicate interaction in the slice node to make behavior similar to the 3D reformat widget
+  this->SliceLogic->StartSliceNodeInteraction(vtkMRMLSliceNode::MultiplanarReformatFlag);
+  
   return true;
 }
 
@@ -444,6 +448,9 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessEndMouseDrag(vtkMRMLInter
     {
     this->SetWidgetState(WidgetStateOnWidget);
     }
+
+  // Indicate interaction in the slice node to make behavior similar to the 3D reformat widget
+  this->SliceLogic->EndSliceNodeInteraction();
 
   return true;
 }
