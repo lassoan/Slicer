@@ -418,8 +418,8 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessEndMouseDrag(vtkMRMLInter
     return false;
     }
 
-  if ((this->WidgetState != vtkMRMLInteractionWidget::WidgetStateTranslate
-    && this->WidgetState != vtkMRMLInteractionWidget::WidgetStateRotate
+  if ((this->WidgetState != WidgetStateTranslate
+    && this->WidgetState != WidgetStateRotate
     && this->WidgetState != WidgetStateTranslateSlice
     ) || !this->WidgetRep)
     {

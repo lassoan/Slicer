@@ -33,7 +33,6 @@
 #include <vtkSmartPointer.h>
 #include <vtkWeakPointer.h>
 
-#include "vtkMRMLInteractionWidget.h"
 #include "vtkWidgetCallbackMapper.h"
 
 class vtkSliceIntersectionRepresentation2D;
