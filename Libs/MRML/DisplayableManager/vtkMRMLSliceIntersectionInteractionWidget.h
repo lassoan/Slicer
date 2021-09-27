@@ -195,8 +195,6 @@ protected:
     bool ProcessTouchRotate(vtkMRMLInteractionEventData* eventData);
     bool ProcessTouchTranslate(vtkMRMLInteractionEventData* eventData);
 
-    bool ProcessWidgetMenu(vtkMRMLInteractionEventData* eventData);
-
     /// Rotate the message by the specified amount. Used for touchpad events.
     bool Rotate(double sliceRotationAngleRad);
 

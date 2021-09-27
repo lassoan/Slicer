@@ -123,9 +123,6 @@ void vtkMRMLSliceIntersectionInteractionWidget::UpdateInteractionEventMapping()
   this->SetEventTranslation(WidgetStateOnSliceTranslationHandle, vtkCommand::Move3DEvent, vtkEvent::NoModifier, WidgetEventMouseMove);
   this->SetEventTranslation(WidgetStateOnIntersectionLine, vtkCommand::MouseMoveEvent, vtkEvent::NoModifier, WidgetEventMouseMove);
   this->SetEventTranslation(WidgetStateOnIntersectionLine, vtkCommand::Move3DEvent, vtkEvent::NoModifier, WidgetEventMouseMove);
-
-  // Context menu
-  this->SetEventTranslation(WidgetStateIdle, vtkMRMLInteractionEventData::RightButtonClickEvent, vtkEvent::NoModifier, WidgetEventMenu);
 }
 
 //----------------------------------------------------------------------
@@ -794,31 +791,4 @@ void vtkMRMLSliceIntersectionInteractionWidget::SetActionsEnabled(int actions)
 {
   this->ActionsEnabled = actions;
   this->UpdateInteractionEventMapping();
-}
-
-//-------------------------------------------------------------------------
-bool vtkMRMLSliceIntersectionInteractionWidget::ProcessWidgetMenu(vtkMRMLInteractionEventData* eventData)
-{
-  if (this->WidgetState != WidgetStateIdle)
-    {
-    return false;
-    }
-  if (!this->SliceNode)
-    {
-    return false;
-    }
-  vtkMRMLInteractionNode* interactionNode = this->SliceNode->GetInteractionNode();
-  if (!interactionNode)
-    {
-    return false;
-    }
-  vtkNew<vtkMRMLInteractionEventData> pickEventData;
-  pickEventData->SetType(vtkMRMLInteractionNode::ShowViewContextMenuEvent);
-  pickEventData->SetViewNode(this->SliceNode);
-  if (pickEventData->IsDisplayPositionValid())
-    {
-    pickEventData->SetDisplayPosition(eventData->GetDisplayPosition());
-    }
-  interactionNode->ShowViewContextMenu(pickEventData);
-  return true;
 }
