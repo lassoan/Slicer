@@ -60,13 +60,17 @@
 #include <vtkMRMLInteractionEventData.h>
 
 static const double ROTATION_HANDLE_RADIUS = 10.0;
-static const double TRANSLATION_HANDLE_RADIUS = 10.0;
+static const double TRANSLATION_HANDLE_OUTER_RADIUS = 9.0;
+static const double TRANSLATION_HANDLE_INNER_RADIUS = 7.0;
 static const double SLICETRANSLATION_HANDLE_RADIUS = 7.0;
+static const double SPHERICAL_HANDLES_THETA_RESOLUTION = 100; // default = 8
+static const double SPHERICAL_HANDLES_PHI_RESOLUTION = 100; // default = 8
+static const double INTERSECTION_LINE_RESOLUTION = 50; // default = 8
 static const double FOV_HANDLES_MARGIN = 0.03; // 3% margin
 static const double LINE_POINTS_FILTERING_THRESHOLD = 15.0;
 static const bool HANDLES_ALWAYS_VISIBLE = false;
-static const double INTERACTION_SIZE_PIXELS = 30.0;
-static const double   OPACITY_RANGE = 2000.0;
+static const double INTERACTION_SIZE_PIXELS = 20.0;
+static const double   OPACITY_RANGE = 1000.0;
 
 vtkStandardNewMacro(vtkMRMLSliceIntersectionInteractionRepresentation);
 vtkCxxSetObjectMacro(vtkMRMLSliceIntersectionInteractionRepresentation, MRMLApplicationLogic, vtkMRMLApplicationLogic);
@@ -80,6 +84,8 @@ class SliceIntersectionInteractionDisplayPipeline
     {
       // Intersection line
       this->IntersectionLine = vtkSmartPointer<vtkLineSource>::New();
+      this->IntersectionLine->SetResolution(INTERSECTION_LINE_RESOLUTION);
+      this->IntersectionLine->Update();
       this->IntersectionLineMapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
       this->IntersectionLineProperty = vtkSmartPointer<vtkProperty2D>::New();
       this->IntersectionLineActor = vtkSmartPointer<vtkActor2D>::New();
@@ -89,19 +95,37 @@ class SliceIntersectionInteractionDisplayPipeline
       this->IntersectionLineActor->SetProperty(this->IntersectionLineProperty);
 
       // Center sphere
-      this->TranslationHandle = vtkSmartPointer<vtkSphereSource>::New();
-      this->TranslationHandle->SetRadius(TRANSLATION_HANDLE_RADIUS);
-      this->TranslationHandleMapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
-      this->TranslationHandleProperty = vtkSmartPointer<vtkProperty2D>::New();
-      this->TranslationHandleActor = vtkSmartPointer<vtkActor2D>::New();
-      this->TranslationHandleActor->SetVisibility(false); // invisible until slice node is set
-      this->TranslationHandleMapper->SetInputConnection(this->TranslationHandle->GetOutputPort());
-      this->TranslationHandleActor->SetMapper(this->TranslationHandleMapper);
-      this->TranslationHandleActor->SetProperty(this->TranslationHandleProperty);
+      this->TranslationOuterHandle = vtkSmartPointer<vtkSphereSource>::New();
+      this->TranslationOuterHandle->SetRadius(TRANSLATION_HANDLE_OUTER_RADIUS);
+      this->TranslationOuterHandle->SetThetaResolution(SPHERICAL_HANDLES_THETA_RESOLUTION);
+      this->TranslationOuterHandle->SetPhiResolution(SPHERICAL_HANDLES_PHI_RESOLUTION);
+      this->TranslationOuterHandle->Update();
+      this->TranslationOuterHandleMapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+      this->TranslationOuterHandleProperty = vtkSmartPointer<vtkProperty2D>::New();
+      this->TranslationOuterHandleActor = vtkSmartPointer<vtkActor2D>::New();
+      this->TranslationOuterHandleActor->SetVisibility(false); // invisible until slice node is set
+      this->TranslationOuterHandleMapper->SetInputConnection(this->TranslationOuterHandle->GetOutputPort());
+      this->TranslationOuterHandleActor->SetMapper(this->TranslationOuterHandleMapper);
+      this->TranslationOuterHandleActor->SetProperty(this->TranslationOuterHandleProperty);
+      this->TranslationInnerHandle = vtkSmartPointer<vtkSphereSource>::New();
+      this->TranslationInnerHandle->SetRadius(TRANSLATION_HANDLE_INNER_RADIUS);
+      this->TranslationInnerHandle->SetThetaResolution(SPHERICAL_HANDLES_THETA_RESOLUTION);
+      this->TranslationInnerHandle->SetPhiResolution(SPHERICAL_HANDLES_PHI_RESOLUTION);
+      this->TranslationInnerHandle->Update();
+      this->TranslationInnerHandleMapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+      this->TranslationInnerHandleProperty = vtkSmartPointer<vtkProperty2D>::New();
+      this->TranslationInnerHandleActor = vtkSmartPointer<vtkActor2D>::New();
+      this->TranslationInnerHandleActor->SetVisibility(false); // invisible until slice node is set
+      this->TranslationInnerHandleMapper->SetInputConnection(this->TranslationInnerHandle->GetOutputPort());
+      this->TranslationInnerHandleActor->SetMapper(this->TranslationInnerHandleMapper);
+      this->TranslationInnerHandleActor->SetProperty(this->TranslationInnerHandleProperty);
 
       // Rotation sphere 1
       this->RotationHandle1 = vtkSmartPointer<vtkSphereSource>::New();
       this->RotationHandle1->SetRadius(ROTATION_HANDLE_RADIUS);
+      this->RotationHandle1->SetThetaResolution(SPHERICAL_HANDLES_THETA_RESOLUTION);
+      this->RotationHandle1->SetPhiResolution(SPHERICAL_HANDLES_PHI_RESOLUTION);
+      this->RotationHandle1->Update();
       this->RotationHandle1Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
       this->RotationHandle1Property = vtkSmartPointer<vtkProperty2D>::New();
       this->RotationHandle1Actor = vtkSmartPointer<vtkActor2D>::New();
@@ -113,6 +137,9 @@ class SliceIntersectionInteractionDisplayPipeline
       // Rotation sphere 2
       this->RotationHandle2 = vtkSmartPointer<vtkSphereSource>::New();
       this->RotationHandle2->SetRadius(ROTATION_HANDLE_RADIUS);
+      this->RotationHandle2->SetThetaResolution(SPHERICAL_HANDLES_THETA_RESOLUTION);
+      this->RotationHandle2->SetPhiResolution(SPHERICAL_HANDLES_PHI_RESOLUTION);
+      this->RotationHandle2->Update();
       this->RotationHandle2Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
       this->RotationHandle2Property = vtkSmartPointer<vtkProperty2D>::New();
       this->RotationHandle2Actor = vtkSmartPointer<vtkActor2D>::New();
@@ -124,6 +151,9 @@ class SliceIntersectionInteractionDisplayPipeline
       // Translation sphere 1
       this->SliceOffsetHandle1 = vtkSmartPointer<vtkSphereSource>::New();
       this->SliceOffsetHandle1->SetRadius(SLICETRANSLATION_HANDLE_RADIUS);
+      this->SliceOffsetHandle1->SetThetaResolution(SPHERICAL_HANDLES_THETA_RESOLUTION);
+      this->SliceOffsetHandle1->SetPhiResolution(SPHERICAL_HANDLES_PHI_RESOLUTION);
+      this->SliceOffsetHandle1->Update();
       this->SliceOffsetHandle1Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
       this->SliceOffsetHandle1Property = vtkSmartPointer<vtkProperty2D>::New();
       this->SliceOffsetHandle1Actor = vtkSmartPointer<vtkActor2D>::New();
@@ -135,6 +165,9 @@ class SliceIntersectionInteractionDisplayPipeline
       // Translation sphere 2
       this->SliceOffsetHandle2 = vtkSmartPointer<vtkSphereSource>::New();
       this->SliceOffsetHandle2->SetRadius(SLICETRANSLATION_HANDLE_RADIUS);
+      this->SliceOffsetHandle2->SetThetaResolution(SPHERICAL_HANDLES_THETA_RESOLUTION);
+      this->SliceOffsetHandle2->SetPhiResolution(SPHERICAL_HANDLES_PHI_RESOLUTION);
+      this->SliceOffsetHandle2->Update();
       this->SliceOffsetHandle2Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
       this->SliceOffsetHandle2Property = vtkSmartPointer<vtkProperty2D>::New();
       this->SliceOffsetHandle2Actor = vtkSmartPointer<vtkActor2D>::New();
@@ -180,7 +213,8 @@ class SliceIntersectionInteractionDisplayPipeline
     void GetActors2D(vtkPropCollection* pc)
     {
       pc->AddItem(this->IntersectionLineActor);
-      pc->AddItem(this->TranslationHandleActor);
+      pc->AddItem(this->TranslationOuterHandleActor);
+      pc->AddItem(this->TranslationInnerHandleActor);
       pc->AddItem(this->RotationHandle1Actor);
       pc->AddItem(this->RotationHandle2Actor);
       pc->AddItem(this->SliceOffsetHandle1Actor);
@@ -195,7 +229,8 @@ class SliceIntersectionInteractionDisplayPipeline
         return;
         }
       renderer->AddViewProp(this->IntersectionLineActor);
-      renderer->AddViewProp(this->TranslationHandleActor);
+      renderer->AddViewProp(this->TranslationOuterHandleActor);
+      renderer->AddViewProp(this->TranslationInnerHandleActor);
       renderer->AddViewProp(this->RotationHandle1Actor);
       renderer->AddViewProp(this->RotationHandle2Actor);
       renderer->AddViewProp(this->SliceOffsetHandle1Actor);
@@ -206,7 +241,8 @@ class SliceIntersectionInteractionDisplayPipeline
     void ReleaseGraphicsResources(vtkWindow* win)
     {
       this->IntersectionLineActor->ReleaseGraphicsResources(win);
-      this->TranslationHandleActor->ReleaseGraphicsResources(win);
+      this->TranslationOuterHandleActor->ReleaseGraphicsResources(win);
+      this->TranslationInnerHandleActor->ReleaseGraphicsResources(win);
       this->RotationHandle1Actor->ReleaseGraphicsResources(win);
       this->RotationHandle2Actor->ReleaseGraphicsResources(win);
       this->SliceOffsetHandle1Actor->ReleaseGraphicsResources(win);
@@ -217,9 +253,9 @@ class SliceIntersectionInteractionDisplayPipeline
     int RenderOverlay(vtkViewport* viewport)
     {
       int count = 0;
-      if (this->TranslationHandleActor->GetVisibility())
+      if (this->TranslationInnerHandleActor->GetVisibility())
         {
-        count += this->TranslationHandleActor->RenderOverlay(viewport);
+        count += this->TranslationInnerHandleActor->RenderOverlay(viewport);
         }
       return count;
     }
@@ -232,7 +268,8 @@ class SliceIntersectionInteractionDisplayPipeline
         return;
         }
       renderer->RemoveViewProp(this->IntersectionLineActor);
-      renderer->RemoveViewProp(this->TranslationHandleActor);
+      renderer->RemoveViewProp(this->TranslationOuterHandleActor);
+      renderer->RemoveViewProp(this->TranslationInnerHandleActor);
       renderer->RemoveViewProp(this->RotationHandle1Actor);
       renderer->RemoveViewProp(this->RotationHandle2Actor);
       renderer->RemoveViewProp(this->SliceOffsetHandle1Actor);
@@ -245,7 +282,8 @@ class SliceIntersectionInteractionDisplayPipeline
       this->IntersectionLineActor->SetVisibility(visibility);
       if (HANDLES_ALWAYS_VISIBLE)
         {
-        this->TranslationHandleActor->SetVisibility(visibility);
+        this->TranslationOuterHandleActor->SetVisibility(visibility);
+        this->TranslationInnerHandleActor->SetVisibility(visibility);
         this->RotationHandle1Actor->SetVisibility(visibility);
         this->RotationHandle2Actor->SetVisibility(visibility);
         this->SliceOffsetHandle1Actor->SetVisibility(visibility);
@@ -256,7 +294,8 @@ class SliceIntersectionInteractionDisplayPipeline
     //----------------------------------------------------------------------
     void SetHandlesVisibility(bool visibility)
       {
-      this->TranslationHandleActor->SetVisibility(visibility);
+      this->TranslationOuterHandleActor->SetVisibility(visibility);
+      this->TranslationInnerHandleActor->SetVisibility(visibility);
       this->RotationHandle1Actor->SetVisibility(visibility);
       this->RotationHandle2Actor->SetVisibility(visibility);
       this->SliceOffsetHandle1Actor->SetVisibility(visibility);
@@ -266,7 +305,8 @@ class SliceIntersectionInteractionDisplayPipeline
     //----------------------------------------------------------------------
     void SetHandlesOpacity(double opacity)
       {
-      this->TranslationHandleProperty->SetOpacity(opacity);
+      this->TranslationOuterHandleProperty->SetOpacity(opacity);
+      this->TranslationInnerHandleProperty->SetOpacity(opacity);
       this->RotationHandle1Property->SetOpacity(opacity);
       this->RotationHandle2Property->SetOpacity(opacity);
       this->SliceOffsetHandle1Property->SetOpacity(opacity);
@@ -284,10 +324,14 @@ class SliceIntersectionInteractionDisplayPipeline
     vtkSmartPointer<vtkProperty2D> IntersectionLineProperty;
     vtkSmartPointer<vtkActor2D> IntersectionLineActor;
 
-    vtkSmartPointer<vtkSphereSource> TranslationHandle;
-    vtkSmartPointer<vtkPolyDataMapper2D> TranslationHandleMapper;
-    vtkSmartPointer<vtkProperty2D> TranslationHandleProperty;
-    vtkSmartPointer<vtkActor2D> TranslationHandleActor;
+    vtkSmartPointer<vtkSphereSource> TranslationOuterHandle;
+    vtkSmartPointer<vtkPolyDataMapper2D> TranslationOuterHandleMapper;
+    vtkSmartPointer<vtkProperty2D> TranslationOuterHandleProperty;
+    vtkSmartPointer<vtkActor2D> TranslationOuterHandleActor;
+    vtkSmartPointer<vtkSphereSource> TranslationInnerHandle;
+    vtkSmartPointer<vtkPolyDataMapper2D> TranslationInnerHandleMapper;
+    vtkSmartPointer<vtkProperty2D> TranslationInnerHandleProperty;
+    vtkSmartPointer<vtkActor2D> TranslationInnerHandleActor;
 
     vtkSmartPointer<vtkSphereSource> RotationHandle1;
     vtkSmartPointer<vtkPolyDataMapper2D> RotationHandle1Mapper;
@@ -522,7 +566,8 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
 
   // Set color of handles
   pipeline->IntersectionLineProperty->SetColor(intersectingSliceNode->GetLayoutColor());
-  pipeline->TranslationHandleProperty->SetColor(255, 255, 255); // white color
+  pipeline->TranslationOuterHandleProperty->SetColor(0, 0, 0); // black color
+  pipeline->TranslationInnerHandleProperty->SetColor(255, 255, 255); // white color
   pipeline->RotationHandle1Property->SetColor(intersectingSliceNode->GetLayoutColor());
   pipeline->RotationHandle2Property->SetColor(intersectingSliceNode->GetLayoutColor());
   pipeline->SliceOffsetHandle1Property->SetColor(intersectingSliceNode->GetLayoutColor());
@@ -604,7 +649,8 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   // Set translation handle position
   vtkNew<vtkPoints> translationHandlePoints;
   double translationHandlePosition[3] = { sliceIntersectionPoint_XY[0], sliceIntersectionPoint_XY[1], 0.0 };
-  pipeline->TranslationHandle->SetCenter(translationHandlePosition[0], translationHandlePosition[1], translationHandlePosition[2]);
+  pipeline->TranslationOuterHandle->SetCenter(translationHandlePosition[0], translationHandlePosition[1], translationHandlePosition[2]);
+  pipeline->TranslationInnerHandle->SetCenter(translationHandlePosition[0], translationHandlePosition[1], translationHandlePosition[2]);
   translationHandlePoints->InsertNextPoint(translationHandlePosition);
   pipeline->TranslationHandlePoints->SetPoints(translationHandlePoints);
 
@@ -637,10 +683,6 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   handlePoints->InsertNextPoint(rotationHandle2Position);
   handlePoints->InsertNextPoint(sliceOffsetHandle1Position);
   handlePoints->InsertNextPoint(sliceOffsetHandle2Position);
-
-  // Line resolution
-  pipeline->IntersectionLine->SetResolution(50);
-  pipeline->IntersectionLine->Update();
 
   // Define points along intersection line for interaction
   vtkPoints* linePointsDefault;
