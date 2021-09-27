@@ -191,6 +191,18 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
     sliceNode->Modified();
     }
 
+  // Update mouse cursor according to interaction
+  if (foundComponentType == InteractionTranslationHandle ||
+      foundComponentType == InteractionRotationHandle ||
+      foundComponentType == InteractionSliceOffsetHandle)
+    {
+    rep->GetRenderer()->GetRenderWindow()->SetCurrentCursor(VTK_CURSOR_HAND); // set cursor to hand mode
+    }
+  else
+    {
+    rep->GetRenderer()->GetRenderWindow()->SetCurrentCursor(VTK_CURSOR_DEFAULT); // reset cursor to default mode
+    }
+
   // Verify interaction
   if (foundComponentType == InteractionNone)
     {
