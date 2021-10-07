@@ -170,6 +170,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
     || this->WidgetState == WidgetStateTranslateSlice)
     {
     distance2 = 0.0;
+    rep->SetPipelinesHandlesVisibility(false); // hide handles during interaction
     return true;
     }
 
