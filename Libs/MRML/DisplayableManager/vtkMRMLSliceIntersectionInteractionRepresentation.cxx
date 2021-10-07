@@ -619,9 +619,9 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   double intersectionPointLineTip1[2] = { 0.0,0.0 };
   bool intersectionFoundLineTip2 = false;
   double intersectionPointLineTip2[2] = { 0.0,0.0 };
-  if ((sliceIntersectionPoint_XY[0] > sliceViewBounds[0]) || // If intersection point is within FOV
-    (sliceIntersectionPoint_XY[0] < sliceViewBounds[1]) ||
-    (sliceIntersectionPoint_XY[1] > sliceViewBounds[2]) ||
+  if ((sliceIntersectionPoint_XY[0] > sliceViewBounds[0]) && // If intersection point is within FOV
+    (sliceIntersectionPoint_XY[0] < sliceViewBounds[1]) &&
+    (sliceIntersectionPoint_XY[1] > sliceViewBounds[2]) &&
     (sliceIntersectionPoint_XY[1] < sliceViewBounds[3]))
     {
     if ((intersectionLineTip1[0] < sliceViewBounds[0]) || // If line tip 1 is outside the FOV
