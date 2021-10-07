@@ -1691,7 +1691,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SetPipelinesHandlesVisib
 
 //----------------------------------------------------------------------
 void vtkMRMLSliceIntersectionInteractionRepresentation::SetPipelinesHandlesOpacity(double opacity)
-  {
+{
   // Force visible handles in the "handles always visible" mode is activated
   if (HANDLES_ALWAYS_VISIBLE)
     {
@@ -1705,4 +1705,28 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SetPipelinesHandlesOpaci
     {
     (*sliceIntersectionIt)->SetHandlesOpacity(opacity);
     }
-  }
+}
+
+//----------------------------------------------------------------------
+bool vtkMRMLSliceIntersectionInteractionRepresentation::IsMouseCursorInSliceView(double cursorPosition[2])
+{
+  // Get current slice view bounds
+  vtkMRMLSliceNode* currentSliceNode = this->GetSliceNode();
+  double sliceViewBounds[4] = {};
+  this->GetSliceViewBoundariesXY(currentSliceNode, sliceViewBounds);
+
+  // Check mouse cursor position
+  bool inSliceView;
+  if ((cursorPosition[0] > sliceViewBounds[0]) &&
+    (cursorPosition[0] < sliceViewBounds[1]) &&
+    (cursorPosition[1] > sliceViewBounds[2]) &&
+    (cursorPosition[1] < sliceViewBounds[3]))
+    {
+    inSliceView = true;
+    }
+  else
+    {
+    inSliceView = false;
+    }
+  return inSliceView;
+}

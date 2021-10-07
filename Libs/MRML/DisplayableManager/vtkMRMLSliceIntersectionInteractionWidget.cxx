@@ -378,14 +378,30 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessMouseMove(vtkMRMLInteract
         static_cast<double>(eventData->GetDisplayPosition()[1]),
       };
 
+    bool inSliceView;
+
     if (state == WidgetStateTranslate)
       {
-      const double* worldPos = eventData->GetWorldPosition();
-      this->GetSliceNode()->JumpAllSlices(worldPos[0], worldPos[1], worldPos[2]);
+      // Stop interaction if mouse cursor is outside of the slice view
+      inSliceView = rep->IsMouseCursorInSliceView(eventPos);
+
+      // Process translation
+      if (inSliceView)
+        {
+        const double* worldPos = eventData->GetWorldPosition();
+        this->GetSliceNode()->JumpAllSlices(worldPos[0], worldPos[1], worldPos[2]);
+        }
       }
     else if (state == WidgetStateTranslateSlice)
       {
-      this->ProcessTranslateSlice(eventData);
+      // Stop interaction if mouse cursor is outside of the slice view
+      inSliceView = rep->IsMouseCursorInSliceView(eventPos);
+
+      // Process translation
+      if (inSliceView)
+        {
+        this->ProcessTranslateSlice(eventData);
+        }
       }
     else if (state == WidgetStateRotate)
       {

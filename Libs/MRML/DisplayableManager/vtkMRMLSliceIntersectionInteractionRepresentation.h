@@ -93,6 +93,9 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     // Get boundaries of the slice view associated with a given vtkMRMLSliceNode
     void GetSliceViewBoundariesXY(vtkMRMLSliceNode* sliceNode, double* sliceViewBounds);
 
+    // Check whether the mouse cursor is within the slice view or not
+    bool IsMouseCursorInSliceView(double cursorPosition[2]);
+
     // Get index for slice node: red = 0, green = 1, and yellow = 2
     int GetSliceNodeIndex(vtkMRMLSliceNode* sliceNode);
 
