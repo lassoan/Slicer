@@ -148,17 +148,21 @@ void vtkMRMLSliceIntersectionInteractionWidget::CreateDefaultRepresentation()
 //-----------------------------------------------------------------------------
 bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMRMLInteractionEventData* eventData, double& distance2)
 {
-  unsigned long widgetEvent = this->TranslateInteractionEventToWidgetEvent(eventData);
-  if (widgetEvent == WidgetEventNone)
-    {
-    return false;
-    }
+  // Representation
   vtkMRMLSliceIntersectionInteractionRepresentation* rep = vtkMRMLSliceIntersectionInteractionRepresentation::SafeDownCast(this->GetRepresentation());
   if (!rep)
     {
     return false;
     }
   int eventid = eventData->GetType();
+
+  // Get widget event
+  unsigned long widgetEvent = this->TranslateInteractionEventToWidgetEvent(eventData);
+  if (widgetEvent == WidgetEventNone)
+    {
+    rep->SetPipelinesHandlesVisibility(false); // Hide handles if mouse not in slice view
+    return false;
+    }
 
   // Currently interacting
   if (this->WidgetState == WidgetStateTranslate
