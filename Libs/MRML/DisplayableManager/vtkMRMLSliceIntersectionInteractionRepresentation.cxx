@@ -59,6 +59,16 @@
 // MRML includes
 #include <vtkMRMLInteractionEventData.h>
 
+// Visualization modes
+enum
+  {
+  ShowIntersection = 0,
+  HideIntersection = 1,
+  };
+
+// Settings
+static const double VISUALIZATION_MODE = HideIntersection;
+static const double HIDE_INTERSECTION_GAP_SIZE = 0.05; // 5.0% of the slice view width
 static const double ROTATION_HANDLE_RADIUS = 10.0;
 static const double TRANSLATION_HANDLE_OUTER_RADIUS = 9.0;
 static const double TRANSLATION_HANDLE_INNER_RADIUS = 7.0;
@@ -82,17 +92,29 @@ class SliceIntersectionInteractionDisplayPipeline
     //----------------------------------------------------------------------
     SliceIntersectionInteractionDisplayPipeline()
     {
-      // Intersection line
-      this->IntersectionLine = vtkSmartPointer<vtkLineSource>::New();
-      this->IntersectionLine->SetResolution(INTERSECTION_LINE_RESOLUTION);
-      this->IntersectionLine->Update();
-      this->IntersectionLineMapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
-      this->IntersectionLineProperty = vtkSmartPointer<vtkProperty2D>::New();
-      this->IntersectionLineActor = vtkSmartPointer<vtkActor2D>::New();
-      this->IntersectionLineActor->SetVisibility(false); // invisible until slice node is set
-      this->IntersectionLineMapper->SetInputConnection(this->IntersectionLine->GetOutputPort());
-      this->IntersectionLineActor->SetMapper(this->IntersectionLineMapper);
-      this->IntersectionLineActor->SetProperty(this->IntersectionLineProperty);
+      // Intersection line 1
+      this->IntersectionLine1 = vtkSmartPointer<vtkLineSource>::New();
+      this->IntersectionLine1->SetResolution(INTERSECTION_LINE_RESOLUTION);
+      this->IntersectionLine1->Update();
+      this->IntersectionLine1Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+      this->IntersectionLine1Property = vtkSmartPointer<vtkProperty2D>::New();
+      this->IntersectionLine1Actor = vtkSmartPointer<vtkActor2D>::New();
+      this->IntersectionLine1Actor->SetVisibility(false); // invisible until slice node is set
+      this->IntersectionLine1Mapper->SetInputConnection(this->IntersectionLine1->GetOutputPort());
+      this->IntersectionLine1Actor->SetMapper(this->IntersectionLine1Mapper);
+      this->IntersectionLine1Actor->SetProperty(this->IntersectionLine1Property);
+
+      // Intersection line 2
+      this->IntersectionLine2 = vtkSmartPointer<vtkLineSource>::New();
+      this->IntersectionLine2->SetResolution(INTERSECTION_LINE_RESOLUTION);
+      this->IntersectionLine2->Update();
+      this->IntersectionLine2Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+      this->IntersectionLine2Property = vtkSmartPointer<vtkProperty2D>::New();
+      this->IntersectionLine2Actor = vtkSmartPointer<vtkActor2D>::New();
+      this->IntersectionLine2Actor->SetVisibility(false); // invisible until slice node is set
+      this->IntersectionLine2Mapper->SetInputConnection(this->IntersectionLine2->GetOutputPort());
+      this->IntersectionLine2Actor->SetMapper(this->IntersectionLine2Mapper);
+      this->IntersectionLine2Actor->SetProperty(this->IntersectionLine2Property);
 
       // Center sphere
       this->TranslationOuterHandle = vtkSmartPointer<vtkSphereSource>::New();
@@ -177,7 +199,8 @@ class SliceIntersectionInteractionDisplayPipeline
       this->SliceOffsetHandle2Actor->SetProperty(this->SliceOffsetHandle2Property);
 
       // Handle points
-      this->IntersectionLinePoints = vtkSmartPointer<vtkPolyData>::New();
+      this->IntersectionLine1Points = vtkSmartPointer<vtkPolyData>::New();
+      this->IntersectionLine2Points = vtkSmartPointer<vtkPolyData>::New();
       this->RotationHandlePoints = vtkSmartPointer<vtkPolyData>::New();
       this->TranslationHandlePoints = vtkSmartPointer<vtkPolyData>::New();
       this->SliceOffsetHandlePoints = vtkSmartPointer<vtkPolyData>::New();
@@ -212,7 +235,8 @@ class SliceIntersectionInteractionDisplayPipeline
     //----------------------------------------------------------------------
     void GetActors2D(vtkPropCollection* pc)
     {
-      pc->AddItem(this->IntersectionLineActor);
+      pc->AddItem(this->IntersectionLine1Actor);
+      pc->AddItem(this->IntersectionLine2Actor);
       pc->AddItem(this->TranslationOuterHandleActor);
       pc->AddItem(this->TranslationInnerHandleActor);
       pc->AddItem(this->RotationHandle1Actor);
@@ -228,7 +252,8 @@ class SliceIntersectionInteractionDisplayPipeline
         {
         return;
         }
-      renderer->AddViewProp(this->IntersectionLineActor);
+      renderer->AddViewProp(this->IntersectionLine1Actor);
+      renderer->AddViewProp(this->IntersectionLine2Actor);
       renderer->AddViewProp(this->TranslationOuterHandleActor);
       renderer->AddViewProp(this->TranslationInnerHandleActor);
       renderer->AddViewProp(this->RotationHandle1Actor);
@@ -240,7 +265,8 @@ class SliceIntersectionInteractionDisplayPipeline
     //----------------------------------------------------------------------
     void ReleaseGraphicsResources(vtkWindow* win)
     {
-      this->IntersectionLineActor->ReleaseGraphicsResources(win);
+      this->IntersectionLine1Actor->ReleaseGraphicsResources(win);
+      this->IntersectionLine2Actor->ReleaseGraphicsResources(win);
       this->TranslationOuterHandleActor->ReleaseGraphicsResources(win);
       this->TranslationInnerHandleActor->ReleaseGraphicsResources(win);
       this->RotationHandle1Actor->ReleaseGraphicsResources(win);
@@ -267,7 +293,8 @@ class SliceIntersectionInteractionDisplayPipeline
         {
         return;
         }
-      renderer->RemoveViewProp(this->IntersectionLineActor);
+      renderer->RemoveViewProp(this->IntersectionLine1Actor);
+      renderer->RemoveViewProp(this->IntersectionLine2Actor);
       renderer->RemoveViewProp(this->TranslationOuterHandleActor);
       renderer->RemoveViewProp(this->TranslationInnerHandleActor);
       renderer->RemoveViewProp(this->RotationHandle1Actor);
@@ -279,7 +306,8 @@ class SliceIntersectionInteractionDisplayPipeline
     //----------------------------------------------------------------------
     void SetVisibility(bool visibility)
       {
-      this->IntersectionLineActor->SetVisibility(visibility);
+      this->IntersectionLine1Actor->SetVisibility(visibility);
+      this->IntersectionLine2Actor->SetVisibility(visibility);
       if (HANDLES_ALWAYS_VISIBLE)
         {
         this->TranslationOuterHandleActor->SetVisibility(visibility);
@@ -294,8 +322,11 @@ class SliceIntersectionInteractionDisplayPipeline
     //----------------------------------------------------------------------
     void SetHandlesVisibility(bool visibility)
       {
-      this->TranslationOuterHandleActor->SetVisibility(visibility);
-      this->TranslationInnerHandleActor->SetVisibility(visibility);
+      if (VISUALIZATION_MODE == ShowIntersection)
+        {
+        this->TranslationOuterHandleActor->SetVisibility(visibility);
+        this->TranslationInnerHandleActor->SetVisibility(visibility);
+        }
       this->RotationHandle1Actor->SetVisibility(visibility);
       this->RotationHandle2Actor->SetVisibility(visibility);
       this->SliceOffsetHandle1Actor->SetVisibility(visibility);
@@ -316,13 +347,18 @@ class SliceIntersectionInteractionDisplayPipeline
     //----------------------------------------------------------------------
     bool GetVisibility()
     {
-      return this->IntersectionLineActor->GetVisibility();
+      return this->IntersectionLine1Actor->GetVisibility();
     }
 
-    vtkSmartPointer<vtkLineSource> IntersectionLine;
-    vtkSmartPointer<vtkPolyDataMapper2D> IntersectionLineMapper;
-    vtkSmartPointer<vtkProperty2D> IntersectionLineProperty;
-    vtkSmartPointer<vtkActor2D> IntersectionLineActor;
+    vtkSmartPointer<vtkLineSource> IntersectionLine1;
+    vtkSmartPointer<vtkPolyDataMapper2D> IntersectionLine1Mapper;
+    vtkSmartPointer<vtkProperty2D> IntersectionLine1Property;
+    vtkSmartPointer<vtkActor2D> IntersectionLine1Actor;
+
+    vtkSmartPointer<vtkLineSource> IntersectionLine2;
+    vtkSmartPointer<vtkPolyDataMapper2D> IntersectionLine2Mapper;
+    vtkSmartPointer<vtkProperty2D> IntersectionLine2Property;
+    vtkSmartPointer<vtkActor2D> IntersectionLine2Actor;
 
     vtkSmartPointer<vtkSphereSource> TranslationOuterHandle;
     vtkSmartPointer<vtkPolyDataMapper2D> TranslationOuterHandleMapper;
@@ -356,7 +392,8 @@ class SliceIntersectionInteractionDisplayPipeline
     vtkWeakPointer<vtkMRMLSliceLogic> SliceLogic;
     vtkWeakPointer<vtkCallbackCommand> Callback;
 
-    vtkSmartPointer<vtkPolyData> IntersectionLinePoints;
+    vtkSmartPointer<vtkPolyData> IntersectionLine1Points;
+    vtkSmartPointer<vtkPolyData> IntersectionLine2Points;
     vtkSmartPointer<vtkPolyData> RotationHandlePoints;
     vtkSmartPointer<vtkPolyData> TranslationHandlePoints;
     vtkSmartPointer<vtkPolyData> SliceOffsetHandlePoints;
@@ -561,11 +598,13 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
       pipeline->SetHandlesVisibility(false);
       return;
       }
-    pipeline->IntersectionLineProperty->SetLineWidth(displayNode->GetLineWidth()+1.0);
+    pipeline->IntersectionLine1Property->SetLineWidth(displayNode->GetLineWidth() + 1.0);
+    pipeline->IntersectionLine2Property->SetLineWidth(displayNode->GetLineWidth() + 1.0);
     }
 
   // Set color of handles
-  pipeline->IntersectionLineProperty->SetColor(intersectingSliceNode->GetLayoutColor());
+  pipeline->IntersectionLine1Property->SetColor(intersectingSliceNode->GetLayoutColor());
+  pipeline->IntersectionLine2Property->SetColor(intersectingSliceNode->GetLayoutColor());
   pipeline->TranslationOuterHandleProperty->SetColor(0, 0, 0); // black color
   pipeline->TranslationInnerHandleProperty->SetColor(255, 255, 255); // white color
   pipeline->RotationHandle1Property->SetColor(intersectingSliceNode->GetLayoutColor());
@@ -583,8 +622,9 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   double sliceIntersectionPoint_XY[4] = { this->SliceIntersectionPoint[0], this->SliceIntersectionPoint[1], this->SliceIntersectionPoint[2], 1 };
   rasToXY->MultiplyPoint(sliceIntersectionPoint_XY, sliceIntersectionPoint_XY); // Get slice intersection point XY
   double sliceIntersectionPoint_XY_2D[2] = { sliceIntersectionPoint_XY[0], sliceIntersectionPoint_XY[1] };
+  double sliceIntersectionPoint_XY_3D[3] = { sliceIntersectionPoint_XY[0], sliceIntersectionPoint_XY[1], 0.0 };
 
-  // Get intersection line tips
+  // Get outer intersection line tips
   vtkMatrix4x4* intersectingXYToRAS = intersectingSliceNode->GetXYToRAS();
   vtkNew<vtkMatrix4x4> intersectingXYToXY;
   vtkMatrix4x4::Multiply4x4(rasToXY, intersectingXYToRAS, intersectingXYToXY);
@@ -642,16 +682,53 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
       }
     }
 
+  // Get inner intersection line tips according to the selected visualization mode
+  double intersectionInnerLineTip1[3] = { 0.0, 0.0, 0.0 };
+  double intersectionInnerLineTip2[3] = { 0.0, 0.0, 0.0 };
+  double sliceViewWidth = sliceViewBounds[1] - sliceViewBounds[0];
+  if (VISUALIZATION_MODE == ShowIntersection)
+    {
+    intersectionInnerLineTip1[0] = sliceIntersectionPoint_XY[0];
+    intersectionInnerLineTip1[1] = sliceIntersectionPoint_XY[1];
+    intersectionInnerLineTip2[0] = sliceIntersectionPoint_XY[0];
+    intersectionInnerLineTip2[1] = sliceIntersectionPoint_XY[1];
+    }
+  else if (VISUALIZATION_MODE == HideIntersection)
+    {
+    double intersectionPointToOuterLineTip1[3] = { 0.0, 0.0, 0.0 };
+    double intersectionPointToOuterLineTip2[3] = { 0.0, 0.0, 0.0 };
+    intersectionPointToOuterLineTip1[0] = intersectionLineTip1[0] - sliceIntersectionPoint_XY_3D[0];
+    intersectionPointToOuterLineTip1[1] = intersectionLineTip1[1] - sliceIntersectionPoint_XY_3D[1];
+    intersectionPointToOuterLineTip1[2] = intersectionLineTip1[2] - sliceIntersectionPoint_XY_3D[2];
+    intersectionPointToOuterLineTip2[0] = intersectionLineTip2[0] - sliceIntersectionPoint_XY_3D[0];
+    intersectionPointToOuterLineTip2[1] = intersectionLineTip2[1] - sliceIntersectionPoint_XY_3D[1];
+    intersectionPointToOuterLineTip2[2] = intersectionLineTip2[2] - sliceIntersectionPoint_XY_3D[2];
+    vtkMath::Normalize(intersectionPointToOuterLineTip1);
+    vtkMath::Normalize(intersectionPointToOuterLineTip2);
+    double gapSize = sliceViewWidth * HIDE_INTERSECTION_GAP_SIZE; // gap size computed according to slice view size
+    intersectionInnerLineTip1[0] = sliceIntersectionPoint_XY_3D[0] + intersectionPointToOuterLineTip1[0] * gapSize;
+    intersectionInnerLineTip1[1] = sliceIntersectionPoint_XY_3D[1] + intersectionPointToOuterLineTip1[1] * gapSize;
+    intersectionInnerLineTip2[0] = sliceIntersectionPoint_XY_3D[0] + intersectionPointToOuterLineTip2[0] * gapSize;
+    intersectionInnerLineTip2[1] = sliceIntersectionPoint_XY_3D[1] + intersectionPointToOuterLineTip2[1] * gapSize;
+    }
+  else
+    {
+    vtkWarningMacro("vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionDisplay failed: unknown visualization mode.");
+    return;
+    }
+
   // Define intersection lines
-  pipeline->IntersectionLine->SetPoint1(intersectionLineTip1);
-  pipeline->IntersectionLine->SetPoint2(intersectionLineTip2);
+  pipeline->IntersectionLine1->SetPoint1(intersectionLineTip1);
+  pipeline->IntersectionLine1->SetPoint2(intersectionInnerLineTip1);
+  pipeline->IntersectionLine2->SetPoint1(intersectionLineTip2);
+  pipeline->IntersectionLine2->SetPoint2(intersectionInnerLineTip2);
 
   // Set translation handle position
   vtkNew<vtkPoints> translationHandlePoints;
   double translationHandlePosition[3] = { sliceIntersectionPoint_XY[0], sliceIntersectionPoint_XY[1], 0.0 };
   pipeline->TranslationOuterHandle->SetCenter(translationHandlePosition[0], translationHandlePosition[1], translationHandlePosition[2]);
   pipeline->TranslationInnerHandle->SetCenter(translationHandlePosition[0], translationHandlePosition[1], translationHandlePosition[2]);
-  translationHandlePoints->InsertNextPoint(translationHandlePosition);
+  translationHandlePoints->InsertNextPoint(sliceIntersectionPoint_XY_3D);
   pipeline->TranslationHandlePoints->SetPoints(translationHandlePoints);
 
   // Set position of rotation handles
@@ -685,26 +762,35 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   handlePoints->InsertNextPoint(sliceOffsetHandle2Position);
 
   // Define points along intersection line for interaction
-  vtkPoints* linePointsDefault;
-  linePointsDefault = pipeline->IntersectionLine->GetOutput()->GetPoints();
+  vtkPoints* line1PointsDefault;
+  vtkPoints* line2PointsDefault;
+  line1PointsDefault = pipeline->IntersectionLine1->GetOutput()->GetPoints();
+  line2PointsDefault = pipeline->IntersectionLine2->GetOutput()->GetPoints();
 
   // Filter out those line points near interaction handles
   // If this is not done, when clicking over the handle, interaction with line (right below) could occur instead.
-  vtkNew<vtkPoints> linePointsFiltered;
-  vtkIdType numLinePoints = linePointsDefault->GetNumberOfPoints();
-  vtkIdType numHandlePoints = handlePoints->GetNumberOfPoints();
+  vtkIdType numLinePoints;
+  vtkIdType numHandlePoints;
   double linePoint[3] = { 0.0, 0.0, 0.0 };
   double handlePoint[3] = { 0.0, 0.0, 0.0 };
   bool closeToHandle;
+  double linePointToHandlePoint[3] = { 0.0, 0.0, 0.0 };
+  double distanceLinePointToHandlePoint;
+  // Intersection line 1
+  vtkNew<vtkPoints> line1PointsFiltered;
+  numLinePoints = line1PointsDefault->GetNumberOfPoints();
+  numHandlePoints = handlePoints->GetNumberOfPoints();
   for (int i = 0; i < numLinePoints; i++)
     {
-    linePointsDefault->GetPoint(i, linePoint);
+    line1PointsDefault->GetPoint(i, linePoint);
     closeToHandle = false;
     for (int j = 0; j < numHandlePoints; j++)
       {
       handlePoints->GetPoint(j, handlePoint);
-      double linePointToHandlePoint[3] = { handlePoint[0] - linePoint[0], handlePoint[1] - linePoint[1] , handlePoint[2] - linePoint[2] };
-      double distanceLinePointToHandlePoint = vtkMath::Norm(linePointToHandlePoint);
+      linePointToHandlePoint[0] = handlePoint[0] - linePoint[0];
+      linePointToHandlePoint[1] = handlePoint[1] - linePoint[1];
+      linePointToHandlePoint[2] = handlePoint[2] - linePoint[2];
+      distanceLinePointToHandlePoint = vtkMath::Norm(linePointToHandlePoint);
       if (distanceLinePointToHandlePoint < LINE_POINTS_FILTERING_THRESHOLD)
         {
         closeToHandle = true;
@@ -713,11 +799,38 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
       }
     if (!closeToHandle)
       {
-      linePointsFiltered->InsertNextPoint(linePoint);
+      line1PointsFiltered->InsertNextPoint(linePoint);
       }
     }
-  vtkIdType numPoints = linePointsFiltered->GetNumberOfPoints();
-  pipeline->IntersectionLinePoints->SetPoints(linePointsFiltered);
+  pipeline->IntersectionLine1Points->SetPoints(line1PointsFiltered);
+
+  // Intersection line 2
+  vtkNew<vtkPoints> line2PointsFiltered;
+  numLinePoints = line2PointsDefault->GetNumberOfPoints();
+  numHandlePoints = handlePoints->GetNumberOfPoints();
+  for (int i = 0; i < numLinePoints; i++)
+    {
+    line2PointsDefault->GetPoint(i, linePoint);
+    closeToHandle = false;
+    for (int j = 0; j < numHandlePoints; j++)
+      {
+      handlePoints->GetPoint(j, handlePoint);
+      linePointToHandlePoint[0] = handlePoint[0] - linePoint[0];
+      linePointToHandlePoint[1] = handlePoint[1] - linePoint[1];
+      linePointToHandlePoint[2] = handlePoint[2] - linePoint[2];
+      distanceLinePointToHandlePoint = vtkMath::Norm(linePointToHandlePoint);
+      if (distanceLinePointToHandlePoint < LINE_POINTS_FILTERING_THRESHOLD)
+        {
+        closeToHandle = true;
+        break;
+        }
+      }
+    if (!closeToHandle)
+      {
+      line2PointsFiltered->InsertNextPoint(linePoint);
+      }
+    }
+  pipeline->IntersectionLine2Points->SetPoints(line2PointsFiltered);
 
   // Visibility
   pipeline->SetVisibility(true);
@@ -1376,13 +1489,31 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
     handleInfoList.push_back(info);
     }
 
-  for (int i = 0; i < pipeline->IntersectionLinePoints->GetNumberOfPoints(); ++i)
+  for (int i = 0; i < pipeline->IntersectionLine1Points->GetNumberOfPoints(); ++i)
     {
     double handlePositionLocal[3] = { 0 };
     double handlePositionLocal_h[4] = { 0.0,0.0,0.0,1.0 };
     double handlePositionWorld[3] = { 0 };
     double handlePositionWorld_h[4] = { 0.0,0.0,0.0,1.0 };
-    pipeline->IntersectionLinePoints->GetPoint(i, handlePositionLocal);
+    pipeline->IntersectionLine1Points->GetPoint(i, handlePositionLocal);
+    handlePositionLocal_h[0] = handlePositionLocal[0];
+    handlePositionLocal_h[1] = handlePositionLocal[1];
+    handlePositionLocal_h[2] = handlePositionLocal[2];
+    currentXYToRAS->MultiplyPoint(handlePositionLocal_h, handlePositionWorld_h);
+    handlePositionWorld[0] = handlePositionWorld_h[0];
+    handlePositionWorld[1] = handlePositionWorld_h[1];
+    handlePositionWorld[2] = handlePositionWorld_h[2];
+    HandleInfo info(i, InteractionIntersectionLine, intersectingSliceNodeIndex, handlePositionWorld, handlePositionLocal);
+    handleInfoList.push_back(info);
+    }
+
+  for (int i = 0; i < pipeline->IntersectionLine2Points->GetNumberOfPoints(); ++i)
+    {
+    double handlePositionLocal[3] = { 0 };
+    double handlePositionLocal_h[4] = { 0.0,0.0,0.0,1.0 };
+    double handlePositionWorld[3] = { 0 };
+    double handlePositionWorld_h[4] = { 0.0,0.0,0.0,1.0 };
+    pipeline->IntersectionLine2Points->GetPoint(i, handlePositionLocal);
     handlePositionLocal_h[0] = handlePositionLocal[0];
     handlePositionLocal_h[1] = handlePositionLocal[1];
     handlePositionLocal_h[2] = handlePositionLocal[2];
