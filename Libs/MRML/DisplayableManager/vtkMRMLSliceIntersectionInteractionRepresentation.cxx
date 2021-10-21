@@ -107,8 +107,8 @@ static const double SLICEOFSSET_HANDLE_ARROW_TIP_ANGLE = 27; // degrees
 static const double ROTATION_HANDLE_DEFAULT_POSITION[3] = { 0.0,0.0,0.0 };
 static const double ROTATION_HANDLE_DEFAULT_ORIENTATION[3] = { 0.0,1.0,0.0 };
 static const double ROTATION_HANDLE_CIRCLE_RADIUS = 10.0;
-static const double ROTATION_HANDLE_ARROW_RADIUS = 10.0;
-static const double ROTATION_HANDLE_ARROW_LENGTH = 10.0;
+static const double ROTATION_HANDLE_ARROW_RADIUS = 3.0;
+static const double ROTATION_HANDLE_ARROW_LENGTH = 60.0;
 static const double ROTATION_HANDLE_ARROW_TIP_ANGLE = 27; // degrees
 static const double TRANSLATION_HANDLE_OUTER_RADIUS = 9.0;
 static const double TRANSLATION_HANDLE_INNER_RADIUS = 7.0;
@@ -463,11 +463,15 @@ class SliceIntersectionInteractionDisplayPipeline
         vtkMath::MultiplyScalar(coneBaseL, cylinderLength / 2);
 
         // Translation handle 1
-        vtkNew<vtkCylinderSource> sliceOffsetHandle1CylinderSource;
-        sliceOffsetHandle1CylinderSource->SetResolution(50);
-        sliceOffsetHandle1CylinderSource->SetHeight(cylinderLength);
-        sliceOffsetHandle1CylinderSource->SetRadius(cylinderRadius);
-        sliceOffsetHandle1CylinderSource->SetCenter(handleOriginDefault);
+        vtkNew<vtkLineSource> sliceOffsetHandle1LineSource;
+        sliceOffsetHandle1LineSource->SetResolution(50);
+        sliceOffsetHandle1LineSource->SetPoint1(coneBaseR);
+        sliceOffsetHandle1LineSource->SetPoint2(coneBaseL);
+        vtkNew<vtkTubeFilter> sliceOffsetHandle1LineTubeFilter;
+        sliceOffsetHandle1LineTubeFilter->SetInputConnection(sliceOffsetHandle1LineSource->GetOutputPort());
+        sliceOffsetHandle1LineTubeFilter->SetRadius(SLICEOFSSET_HANDLE_ARROW_RADIUS);
+        sliceOffsetHandle1LineTubeFilter->SetNumberOfSides(16);
+        sliceOffsetHandle1LineTubeFilter->SetCapping(true);
         vtkNew<vtkConeSource> sliceOffsetHandle1RightConeSource;
         sliceOffsetHandle1RightConeSource->SetResolution(50);
         sliceOffsetHandle1RightConeSource->SetRadius(coneRadius);
@@ -481,7 +485,7 @@ class SliceIntersectionInteractionDisplayPipeline
         sliceOffsetHandle1LeftConeSource->SetHeight(coneLength);
         sliceOffsetHandle1LeftConeSource->SetCenter(coneCenterL);
         this->SliceOffsetHandle1 = vtkSmartPointer<vtkAppendPolyData>::New();
-        this->SliceOffsetHandle1->AddInputConnection(sliceOffsetHandle1CylinderSource->GetOutputPort());
+        this->SliceOffsetHandle1->AddInputConnection(sliceOffsetHandle1LineTubeFilter->GetOutputPort());
         this->SliceOffsetHandle1->AddInputConnection(sliceOffsetHandle1RightConeSource->GetOutputPort());
         this->SliceOffsetHandle1->AddInputConnection(sliceOffsetHandle1LeftConeSource->GetOutputPort());
         this->SliceOffsetHandle1ToWorldTransform = vtkSmartPointer<vtkTransform>::New();
@@ -497,11 +501,15 @@ class SliceIntersectionInteractionDisplayPipeline
         this->SliceOffsetHandle1Actor->SetProperty(this->SliceOffsetHandle1Property);
 
         // Translation handle 2
-        vtkNew<vtkCylinderSource> sliceOffsetHandle2CylinderSource;
-        sliceOffsetHandle2CylinderSource->SetResolution(50);
-        sliceOffsetHandle2CylinderSource->SetHeight(cylinderLength);
-        sliceOffsetHandle2CylinderSource->SetRadius(cylinderRadius);
-        sliceOffsetHandle2CylinderSource->SetCenter(handleOriginDefault);
+        vtkNew<vtkLineSource> sliceOffsetHandle2LineSource;
+        sliceOffsetHandle2LineSource->SetResolution(50);
+        sliceOffsetHandle2LineSource->SetPoint1(coneBaseR);
+        sliceOffsetHandle2LineSource->SetPoint2(coneBaseL);
+        vtkNew<vtkTubeFilter> sliceOffsetHandle2LineTubeFilter;
+        sliceOffsetHandle2LineTubeFilter->SetInputConnection(sliceOffsetHandle2LineSource->GetOutputPort());
+        sliceOffsetHandle2LineTubeFilter->SetRadius(SLICEOFSSET_HANDLE_ARROW_RADIUS);
+        sliceOffsetHandle2LineTubeFilter->SetNumberOfSides(16);
+        sliceOffsetHandle2LineTubeFilter->SetCapping(true);
         vtkNew<vtkConeSource> sliceOffsetHandle2RightConeSource;
         sliceOffsetHandle2RightConeSource->SetResolution(50);
         sliceOffsetHandle2RightConeSource->SetRadius(coneRadius);
@@ -515,7 +523,7 @@ class SliceIntersectionInteractionDisplayPipeline
         sliceOffsetHandle2LeftConeSource->SetHeight(coneLength);
         sliceOffsetHandle2LeftConeSource->SetCenter(coneCenterL);
         this->SliceOffsetHandle2 = vtkSmartPointer<vtkAppendPolyData>::New();
-        this->SliceOffsetHandle2->AddInputConnection(sliceOffsetHandle2CylinderSource->GetOutputPort());
+        this->SliceOffsetHandle2->AddInputConnection(sliceOffsetHandle2LineTubeFilter->GetOutputPort());
         this->SliceOffsetHandle2->AddInputConnection(sliceOffsetHandle2RightConeSource->GetOutputPort());
         this->SliceOffsetHandle2->AddInputConnection(sliceOffsetHandle2LeftConeSource->GetOutputPort());
         this->SliceOffsetHandle2ToWorldTransform = vtkSmartPointer<vtkTransform>::New();
