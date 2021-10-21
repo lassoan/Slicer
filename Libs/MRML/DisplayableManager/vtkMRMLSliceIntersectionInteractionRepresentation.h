@@ -105,8 +105,8 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     int GetLineTipsFromIntersectingSliceNode(vtkMRMLSliceNode* intersectingSliceNode, vtkMatrix4x4* intersectingXYToXY,
         double intersectionLineTip1[3], double intersectionLineTip2[3]);
 
-    void ComputeHandleToWorldTransformMatrix(double handlePosition[3], double handleOrientation[3], vtkMatrix4x4* handleToWorldTransformMatrix);
-    void RotationMatrixFromVectors(double vector1[3], double vector2[3], vtkMatrix4x4* rotationMatrixHom);
+    void ComputeHandleToWorldTransformMatrix(double handlePosition[2], double handleOrientation[2], vtkMatrix4x4* handleToWorldTransformMatrix);
+    void RotationMatrixFromVectors(double vector1[2], double vector2[2], vtkMatrix4x4* rotationMatrixHom);
 
     void SetPipelinesHandlesVisibility(bool visible);
     void SetPipelinesHandlesOpacity(double opacity);

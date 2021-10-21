@@ -29,6 +29,7 @@
 #include "vtkMRMLSliceCompositeNode.h"
 
 #include "vtkActor2D.h"
+#include "vtkArcSource.h"
 #include "vtkAppendPolyData.h"
 #include "vtkAssemblyPath.h"
 #include "vtkCallbackCommand.h"
@@ -60,6 +61,7 @@
 #include "vtkTransformPolyDataFilter.h"
 #include "vtkTextMapper.h"
 #include "vtkTextProperty.h"
+#include "vtkTubeFilter.h"
 #include "vtkWindow.h"
 
 // MRML includes
@@ -164,33 +166,8 @@ class SliceIntersectionInteractionDisplayPipeline
       this->TranslationInnerHandleActor->SetMapper(this->TranslationInnerHandleMapper);
       this->TranslationInnerHandleActor->SetProperty(this->TranslationInnerHandleProperty);
 
-      // Rotation sphere 1
-      this->RotationHandle1 = vtkSmartPointer<vtkSphereSource>::New();
-      this->RotationHandle1->SetRadius(ROTATION_HANDLE_RADIUS);
-      this->RotationHandle1->SetThetaResolution(HANDLES_CIRCLE_THETA_RESOLUTION);
-      this->RotationHandle1->SetPhiResolution(HANDLES_CIRCLE_PHI_RESOLUTION);
-      this->RotationHandle1->Update();
-      this->RotationHandle1Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
-      this->RotationHandle1Property = vtkSmartPointer<vtkProperty2D>::New();
-      this->RotationHandle1Actor = vtkSmartPointer<vtkActor2D>::New();
-      this->RotationHandle1Actor->SetVisibility(false); // invisible until slice node is set
-      this->RotationHandle1Mapper->SetInputConnection(this->RotationHandle1->GetOutputPort());
-      this->RotationHandle1Actor->SetMapper(this->RotationHandle1Mapper);
-      this->RotationHandle1Actor->SetProperty(this->RotationHandle1Property);
-
-      // Rotation sphere 2
-      this->RotationHandle2 = vtkSmartPointer<vtkSphereSource>::New();
-      this->RotationHandle2->SetRadius(ROTATION_HANDLE_RADIUS);
-      this->RotationHandle2->SetThetaResolution(HANDLES_CIRCLE_THETA_RESOLUTION);
-      this->RotationHandle2->SetPhiResolution(HANDLES_CIRCLE_PHI_RESOLUTION);
-      this->RotationHandle2->Update();
-      this->RotationHandle2Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
-      this->RotationHandle2Property = vtkSmartPointer<vtkProperty2D>::New();
-      this->RotationHandle2Actor = vtkSmartPointer<vtkActor2D>::New();
-      this->RotationHandle2Actor->SetVisibility(false); // invisible until slice node is set
-      this->RotationHandle2Mapper->SetInputConnection(this->RotationHandle2->GetOutputPort());
-      this->RotationHandle2Actor->SetMapper(this->RotationHandle2Mapper);
-      this->RotationHandle2Actor->SetProperty(this->RotationHandle2Property);
+      // Rotation handles
+      this->CreateRotationHandles();
 
       // Slice offset handles
       this->CreateSliceOffsetHandles();
@@ -208,6 +185,232 @@ class SliceIntersectionInteractionDisplayPipeline
     {
       this->SetAndObserveSliceLogic(nullptr, nullptr);
     }
+
+    //----------------------------------------------------------------------
+    void CreateRotationHandles()
+      {
+      // Create list of points to store position of handles
+      this->RotationHandle1Points = vtkSmartPointer<vtkPoints>::New();
+      this->RotationHandle2Points = vtkSmartPointer<vtkPoints>::New();
+
+      // Handle default position and orientation
+      double handleOriginDefault[3] = { SLICEOFSSET_HANDLE_DEFAULT_POSITION[0],
+                                        SLICEOFSSET_HANDLE_DEFAULT_POSITION[1],
+                                        SLICEOFSSET_HANDLE_DEFAULT_POSITION[2] };
+      double handleOrientationDefault[3] = { SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[0],
+                                             SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[1],
+                                             SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[2] };
+      double handleOrientationDefaultInv[3] = { -SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[0],
+                                                -SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[1],
+                                                -SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[2] };
+      double handleOrientationPerpendicular[3] = { SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[1],
+                                                   -SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[0],
+                                                   SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[2] };
+
+      if (HANDLES_TYPE == Arrows)
+        {
+        // Define cone size
+        double coneAngleRad = (SLICEOFSSET_HANDLE_ARROW_TIP_ANGLE * M_PI) / 180.0;
+        double coneRadius = 2 * SLICEOFSSET_HANDLE_ARROW_RADIUS;
+        double coneLength = coneRadius / tan(coneAngleRad);
+
+        // Define arc points
+        double arcTipR[3] = { handleOrientationDefault[0], handleOrientationDefault[1], handleOrientationDefault[2] };
+        vtkMath::MultiplyScalar(arcTipR, SLICEOFSSET_HANDLE_ARROW_LENGTH / 2.0);
+        double arcTipL[3] = { handleOrientationDefaultInv[0], handleOrientationDefaultInv[1], handleOrientationDefaultInv[2] };
+        vtkMath::MultiplyScalar(arcTipL, SLICEOFSSET_HANDLE_ARROW_LENGTH / 2.0);
+        double arcCenter[3] = { handleOrientationPerpendicular[0], handleOrientationPerpendicular[1], handleOrientationPerpendicular[2] };
+        vtkMath::MultiplyScalar(arcCenter, -SLICEOFSSET_HANDLE_ARROW_LENGTH / 3.0);
+
+        // Translate arc to origin
+        double arcRadiusVector[3] = { arcTipR[0] - arcCenter[0], arcTipR[1] - arcCenter[1], arcTipR[2] - arcCenter[2] };
+        double arcRadius = vtkMath::Norm(arcRadiusVector);
+        double arcChordVector[3] = { arcTipR[0] - arcTipL[0], arcTipR[1] - arcTipL[1], arcTipR[2] - arcTipL[2] };
+        double arcChord = vtkMath::Norm(arcChordVector);
+        double arcSagitta1 = arcRadius + sqrt(pow(arcRadius,2) - pow(arcChord / 2, 2));
+        double arcSagitta2 = arcRadius - sqrt(pow(arcRadius, 2) - pow(arcChord / 2, 2));
+        double arcSagitta[3] = { handleOrientationPerpendicular[0], handleOrientationPerpendicular[1], handleOrientationPerpendicular[2] };
+        if (arcSagitta1 > arcSagitta2) // keep shortest sagitta
+          {
+          vtkMath::MultiplyScalar(arcSagitta, arcSagitta2);
+          }
+        else // keep shortest sagitta
+          {
+          vtkMath::MultiplyScalar(arcSagitta, arcSagitta1);
+          }
+        arcTipR[0] = arcTipR[0] - arcSagitta[0];
+        arcTipR[1] = arcTipR[1] - arcSagitta[1];
+        arcTipR[2] = arcTipR[2] - arcSagitta[2];
+        arcTipL[0] = arcTipL[0] - arcSagitta[0];
+        arcTipL[1] = arcTipL[1] - arcSagitta[1];
+        arcTipL[2] = arcTipL[2] - arcSagitta[2];
+        arcCenter[0] = arcCenter[0] - arcSagitta[0];
+        arcCenter[1] = arcCenter[1] - arcSagitta[1];
+        arcCenter[2] = arcCenter[2] - arcSagitta[2];
+
+        // Define intermediate points for interaction
+        double arcMidR[3] = { arcTipR[0] / 2.0, arcTipR[1] / 2.0, arcTipR[2] / 2.0 };
+        double arcMidL[3] = { arcMidL[0] / 2.0, arcMidL[1] / 2.0, arcMidL[2] / 2.0 };
+
+        // Define arc tangent vectors
+        double arcRadiusVectorR[3] = { arcTipR[0] - arcCenter[0], arcTipR[1] - arcCenter[1], arcTipR[2] - arcCenter[2] };
+        double arcRadiusVectorL[3] = { arcTipL[0] - arcCenter[0], arcTipL[1] - arcCenter[1], arcTipL[2] - arcCenter[2] };
+        double arcTangentVectorR[3] = { -arcRadiusVectorR[1], arcRadiusVectorR[0], 0.0 };
+        double arcTangentVectorL[3] = { arcRadiusVectorL[1], -arcRadiusVectorL[0], 0.0 };
+        vtkMath::Normalize(arcTangentVectorR);
+        vtkMath::Normalize(arcTangentVectorL);
+
+        // Define cone positions to construct arrows
+        double coneCenterR[3] = { arcTipR[0] + arcTangentVectorR[0] * (coneLength / 2.0),
+                                  arcTipR[1] + arcTangentVectorR[1] * (coneLength / 2.0),
+                                  arcTipR[2] + arcTangentVectorR[2] * (coneLength / 2.0) };
+        double coneCenterL[3] = { arcTipL[0] + arcTangentVectorL[0] * (coneLength / 2.0),
+                                  arcTipL[1] + arcTangentVectorL[1] * (coneLength / 2.0),
+                                  arcTipL[2] + arcTangentVectorL[2] * (coneLength / 2.0) };
+
+        // Rotation handle 1
+        vtkNew<vtkArcSource> rotationHandle1ArcSource;
+        rotationHandle1ArcSource->SetResolution(50);
+        rotationHandle1ArcSource->SetPoint1(arcTipR);
+        rotationHandle1ArcSource->SetPoint2(arcTipL);
+        rotationHandle1ArcSource->SetCenter(arcCenter);
+        vtkNew<vtkTubeFilter> rotationHandle1ArcTubeFilter;
+        rotationHandle1ArcTubeFilter->SetInputConnection(rotationHandle1ArcSource->GetOutputPort());
+        rotationHandle1ArcTubeFilter->SetRadius(SLICEOFSSET_HANDLE_ARROW_RADIUS);
+        rotationHandle1ArcTubeFilter->SetNumberOfSides(16);
+        rotationHandle1ArcTubeFilter->SetCapping(true);
+        vtkNew<vtkConeSource> rotationHandle1RightConeSource;
+        rotationHandle1RightConeSource->SetResolution(50);
+        rotationHandle1RightConeSource->SetRadius(coneRadius);
+        rotationHandle1RightConeSource->SetDirection(arcTangentVectorR);
+        rotationHandle1RightConeSource->SetHeight(coneLength);
+        rotationHandle1RightConeSource->SetCenter(coneCenterR);
+        vtkNew<vtkConeSource> rotationHandle1LeftConeSource;
+        rotationHandle1LeftConeSource->SetResolution(50);
+        rotationHandle1LeftConeSource->SetRadius(coneRadius);
+        rotationHandle1LeftConeSource->SetDirection(arcTangentVectorL);
+        rotationHandle1LeftConeSource->SetHeight(coneLength);
+        rotationHandle1LeftConeSource->SetCenter(coneCenterL);
+        this->RotationHandle1 = vtkSmartPointer<vtkAppendPolyData>::New();
+        this->RotationHandle1->AddInputConnection(rotationHandle1ArcTubeFilter->GetOutputPort());
+        this->RotationHandle1->AddInputConnection(rotationHandle1RightConeSource->GetOutputPort());
+        this->RotationHandle1->AddInputConnection(rotationHandle1LeftConeSource->GetOutputPort());
+        this->RotationHandle1ToWorldTransform = vtkSmartPointer<vtkTransform>::New();
+        this->RotationHandle1TransformFilter = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+        this->RotationHandle1TransformFilter->SetInputConnection(this->RotationHandle1->GetOutputPort());
+        this->RotationHandle1TransformFilter->SetTransform(this->RotationHandle1ToWorldTransform);
+        this->RotationHandle1Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+        this->RotationHandle1Property = vtkSmartPointer<vtkProperty2D>::New();
+        this->RotationHandle1Actor = vtkSmartPointer<vtkActor2D>::New();
+        this->RotationHandle1Actor->SetVisibility(false); // invisible until slice node is set
+        this->RotationHandle1Mapper->SetInputConnection(this->RotationHandle1TransformFilter->GetOutputPort());
+        this->RotationHandle1Actor->SetMapper(this->RotationHandle1Mapper);
+        this->RotationHandle1Actor->SetProperty(this->RotationHandle1Property);
+
+        // Rotation handle 2
+        vtkNew<vtkArcSource> rotationHandle2ArcSource;
+        rotationHandle2ArcSource->SetResolution(50);
+        rotationHandle2ArcSource->SetPoint1(arcTipR);
+        rotationHandle2ArcSource->SetPoint2(arcTipL);
+        rotationHandle2ArcSource->SetCenter(arcCenter);
+        vtkNew<vtkTubeFilter> rotationHandle2ArcTubeFilter;
+        rotationHandle2ArcTubeFilter->SetInputConnection(rotationHandle2ArcSource->GetOutputPort());
+        rotationHandle2ArcTubeFilter->SetRadius(SLICEOFSSET_HANDLE_ARROW_RADIUS);
+        rotationHandle2ArcTubeFilter->SetNumberOfSides(16);
+        rotationHandle2ArcTubeFilter->SetCapping(true);
+        vtkNew<vtkConeSource> rotationHandle2RightConeSource;
+        rotationHandle2RightConeSource->SetResolution(50);
+        rotationHandle2RightConeSource->SetRadius(coneRadius);
+        rotationHandle2RightConeSource->SetDirection(arcTangentVectorR);
+        rotationHandle2RightConeSource->SetHeight(coneLength);
+        rotationHandle2RightConeSource->SetCenter(coneCenterR);
+        vtkNew<vtkConeSource> rotationHandle2LeftConeSource;
+        rotationHandle2LeftConeSource->SetResolution(50);
+        rotationHandle2LeftConeSource->SetRadius(coneRadius);
+        rotationHandle2LeftConeSource->SetDirection(arcTangentVectorL);
+        rotationHandle2LeftConeSource->SetHeight(coneLength);
+        rotationHandle2LeftConeSource->SetCenter(coneCenterL);
+        this->RotationHandle2 = vtkSmartPointer<vtkAppendPolyData>::New();
+        this->RotationHandle2->AddInputConnection(rotationHandle2ArcTubeFilter->GetOutputPort());
+        this->RotationHandle2->AddInputConnection(rotationHandle2RightConeSource->GetOutputPort());
+        this->RotationHandle2->AddInputConnection(rotationHandle2LeftConeSource->GetOutputPort());
+        this->RotationHandle2ToWorldTransform = vtkSmartPointer<vtkTransform>::New();
+        this->RotationHandle2TransformFilter = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+        this->RotationHandle2TransformFilter->SetInputConnection(this->RotationHandle2->GetOutputPort());
+        this->RotationHandle2TransformFilter->SetTransform(this->RotationHandle2ToWorldTransform);
+        this->RotationHandle2Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+        this->RotationHandle2Property = vtkSmartPointer<vtkProperty2D>::New();
+        this->RotationHandle2Actor = vtkSmartPointer<vtkActor2D>::New();
+        this->RotationHandle2Actor->SetVisibility(false); // invisible until slice node is set
+        this->RotationHandle2Mapper->SetInputConnection(this->RotationHandle2TransformFilter->GetOutputPort());
+        this->RotationHandle2Actor->SetMapper(this->RotationHandle2Mapper);
+        this->RotationHandle2Actor->SetProperty(this->RotationHandle2Property);
+
+        // Handle points
+        this->RotationHandle1Points->InsertNextPoint(handleOriginDefault);
+        this->RotationHandle1Points->InsertNextPoint(arcTipR);
+        this->RotationHandle1Points->InsertNextPoint(arcMidR);
+        this->RotationHandle1Points->InsertNextPoint(coneCenterR);
+        this->RotationHandle1Points->InsertNextPoint(arcTipL);
+        this->RotationHandle1Points->InsertNextPoint(arcMidL);
+        this->RotationHandle1Points->InsertNextPoint(coneCenterL);
+        this->RotationHandle2Points->InsertNextPoint(handleOriginDefault);
+        this->RotationHandle2Points->InsertNextPoint(arcTipR);
+        this->RotationHandle2Points->InsertNextPoint(arcMidR);
+        this->RotationHandle2Points->InsertNextPoint(coneCenterR);
+        this->RotationHandle2Points->InsertNextPoint(arcTipL);
+        this->RotationHandle2Points->InsertNextPoint(arcMidL);
+        this->RotationHandle2Points->InsertNextPoint(coneCenterL);
+        }
+      else if (HANDLES_TYPE == Circles)
+        {
+        // Rotation sphere 1
+        vtkNew<vtkSphereSource> rotationHandle1SphereSource;
+        rotationHandle1SphereSource->SetRadius(ROTATION_HANDLE_RADIUS);
+        rotationHandle1SphereSource->SetThetaResolution(HANDLES_CIRCLE_THETA_RESOLUTION);
+        rotationHandle1SphereSource->SetPhiResolution(HANDLES_CIRCLE_PHI_RESOLUTION);
+        rotationHandle1SphereSource->SetCenter(handleOriginDefault);
+        rotationHandle1SphereSource->Update();
+        this->RotationHandle1 = vtkSmartPointer<vtkAppendPolyData>::New();
+        this->RotationHandle1->AddInputConnection(rotationHandle1SphereSource->GetOutputPort());
+        this->RotationHandle1ToWorldTransform = vtkSmartPointer<vtkTransform>::New();
+        this->RotationHandle1TransformFilter = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+        this->RotationHandle1TransformFilter->SetInputConnection(this->RotationHandle1->GetOutputPort());
+        this->RotationHandle1TransformFilter->SetTransform(this->RotationHandle1ToWorldTransform);
+        this->RotationHandle1Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+        this->RotationHandle1Property = vtkSmartPointer<vtkProperty2D>::New();
+        this->RotationHandle1Actor = vtkSmartPointer<vtkActor2D>::New();
+        this->RotationHandle1Actor->SetVisibility(false); // invisible until slice node is set
+        this->RotationHandle1Mapper->SetInputConnection(this->RotationHandle1TransformFilter->GetOutputPort());
+        this->RotationHandle1Actor->SetMapper(this->RotationHandle1Mapper);
+        this->RotationHandle1Actor->SetProperty(this->RotationHandle1Property);
+
+        // Rotation sphere 2
+        vtkNew<vtkSphereSource> rotationHandle2SphereSource;
+        rotationHandle2SphereSource->SetRadius(ROTATION_HANDLE_RADIUS);
+        rotationHandle2SphereSource->SetThetaResolution(HANDLES_CIRCLE_THETA_RESOLUTION);
+        rotationHandle2SphereSource->SetPhiResolution(HANDLES_CIRCLE_PHI_RESOLUTION);
+        rotationHandle2SphereSource->SetCenter(handleOriginDefault);
+        rotationHandle2SphereSource->Update();
+        this->RotationHandle2 = vtkSmartPointer<vtkAppendPolyData>::New();
+        this->RotationHandle2->AddInputConnection(rotationHandle2SphereSource->GetOutputPort());
+        this->RotationHandle2ToWorldTransform = vtkSmartPointer<vtkTransform>::New();
+        this->RotationHandle2TransformFilter = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+        this->RotationHandle2TransformFilter->SetInputConnection(this->RotationHandle2->GetOutputPort());
+        this->RotationHandle2TransformFilter->SetTransform(this->RotationHandle2ToWorldTransform);
+        this->RotationHandle2Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+        this->RotationHandle2Property = vtkSmartPointer<vtkProperty2D>::New();
+        this->RotationHandle2Actor = vtkSmartPointer<vtkActor2D>::New();
+        this->RotationHandle2Actor->SetVisibility(false); // invisible until slice node is set
+        this->RotationHandle2Mapper->SetInputConnection(this->RotationHandle2TransformFilter->GetOutputPort());
+        this->RotationHandle2Actor->SetMapper(this->RotationHandle2Mapper);
+        this->RotationHandle2Actor->SetProperty(this->RotationHandle2Property);
+
+        // Handle points
+        this->RotationHandle1Points->InsertNextPoint(handleOriginDefault);
+        this->RotationHandle2Points->InsertNextPoint(handleOriginDefault);
+        }
+      }
 
     //----------------------------------------------------------------------
     void CreateSliceOffsetHandles()
@@ -543,12 +746,16 @@ class SliceIntersectionInteractionDisplayPipeline
     vtkSmartPointer<vtkProperty2D> TranslationInnerHandleProperty;
     vtkSmartPointer<vtkActor2D> TranslationInnerHandleActor;
 
-    vtkSmartPointer<vtkSphereSource> RotationHandle1;
+    vtkSmartPointer<vtkAppendPolyData> RotationHandle1;
+    vtkSmartPointer<vtkTransform> RotationHandle1ToWorldTransform;
+    vtkSmartPointer<vtkTransformPolyDataFilter> RotationHandle1TransformFilter;
     vtkSmartPointer<vtkPolyDataMapper2D> RotationHandle1Mapper;
     vtkSmartPointer<vtkProperty2D> RotationHandle1Property;
     vtkSmartPointer<vtkActor2D> RotationHandle1Actor;
 
-    vtkSmartPointer<vtkSphereSource> RotationHandle2;
+    vtkSmartPointer<vtkAppendPolyData> RotationHandle2;
+    vtkSmartPointer<vtkTransform> RotationHandle2ToWorldTransform;
+    vtkSmartPointer<vtkTransformPolyDataFilter> RotationHandle2TransformFilter;
     vtkSmartPointer<vtkPolyDataMapper2D> RotationHandle2Mapper;
     vtkSmartPointer<vtkProperty2D> RotationHandle2Property;
     vtkSmartPointer<vtkActor2D> RotationHandle2Actor;
@@ -578,6 +785,8 @@ class SliceIntersectionInteractionDisplayPipeline
 
     vtkSmartPointer<vtkPoints> SliceOffsetHandle1Points;
     vtkSmartPointer<vtkPoints> SliceOffsetHandle2Points;
+    vtkSmartPointer<vtkPoints> RotationHandle1Points;
+    vtkSmartPointer<vtkPoints> RotationHandle2Points;
   };
 
 class vtkMRMLSliceIntersectionInteractionRepresentation::vtkInternal
@@ -913,25 +1122,62 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   pipeline->TranslationHandlePoints->SetPoints(translationHandlePoints);
 
   // Set position of rotation handles
+  double rotationHandle1Position2D[2] = { intersectionLineTip1_2D[0], intersectionLineTip1_2D[1] };
+  double rotationHandle2Position2D[2] = { intersectionLineTip2_2D[0], intersectionLineTip2_2D[1] };
+  double rotationHandle1Orientation2D[2] = { intersectionInnerLineTip1[1] - intersectionLineTip1[1],
+                                             intersectionLineTip1[0] - intersectionInnerLineTip1[0] }; // perpendicular to intersection line segment
+  double rotationHandle2Orientation2D[2] = { intersectionInnerLineTip2[1] - intersectionLineTip2[1],
+                                             intersectionLineTip2[0] - intersectionInnerLineTip2[0] }; // perpendicular to intersection line segment
+  vtkNew<vtkMatrix4x4> rotationHandle1ToWorldMatrix, rotationHandle2ToWorldMatrix; // Compute transformation matrix (rotation + translation)
+  this->ComputeHandleToWorldTransformMatrix(rotationHandle1Position2D, rotationHandle1Orientation2D, rotationHandle1ToWorldMatrix);
+  this->ComputeHandleToWorldTransformMatrix(rotationHandle2Position2D, rotationHandle2Orientation2D, rotationHandle2ToWorldMatrix);
+  pipeline->RotationHandle1ToWorldTransform->Identity();
+  pipeline->RotationHandle1ToWorldTransform->SetMatrix(rotationHandle1ToWorldMatrix); // Update handles to world transform
+  pipeline->RotationHandle2ToWorldTransform->Identity();
+  pipeline->RotationHandle2ToWorldTransform->SetMatrix(rotationHandle2ToWorldMatrix); // Update handles to world transform
+
+  // Update rotation handle points
   vtkNew<vtkPoints> rotationHandlePoints;
-  double rotationHandle1Position[3] = { intersectionLineTip1_2D[0], intersectionLineTip1_2D[1], 0.0};
-  double rotationHandle2Position[3] = { intersectionLineTip2_2D[0], intersectionLineTip2_2D[1], 0.0 };
-  rotationHandlePoints->InsertNextPoint(rotationHandle1Position);
-  rotationHandlePoints->InsertNextPoint(rotationHandle2Position);
-  pipeline->RotationHandle1->SetCenter(rotationHandle1Position[0], rotationHandle1Position[1], rotationHandle1Position[2]);
-  pipeline->RotationHandle2->SetCenter(rotationHandle2Position[0], rotationHandle2Position[1], rotationHandle2Position[2]);
+  double rotationHandle1Point[3] = { 0.0, 0.0, 0.0 };
+  double rotationHandle1Point_h[4] = { 0.0, 0.0, 0.0, 1.0 }; //homogeneous coordinates
+  for (int i = 0; i < pipeline->RotationHandle1Points->GetNumberOfPoints(); i++)
+    { // Handle 1
+    pipeline->RotationHandle1Points->GetPoint(i, rotationHandle1Point);
+    rotationHandle1Point_h[0] = rotationHandle1Point[0];
+    rotationHandle1Point_h[1] = rotationHandle1Point[1];
+    rotationHandle1Point_h[2] = rotationHandle1Point[2];
+    rotationHandle1ToWorldMatrix->MultiplyPoint(rotationHandle1Point_h, rotationHandle1Point_h);
+    rotationHandle1Point[0] = rotationHandle1Point_h[0];
+    rotationHandle1Point[1] = rotationHandle1Point_h[1];
+    rotationHandle1Point[2] = rotationHandle1Point_h[2];
+    rotationHandlePoints->InsertNextPoint(rotationHandle1Point);
+    }
+  double rotationHandle2Point[3] = { 0.0, 0.0, 0.0 };
+  double rotationHandle2Point_h[4] = { 0.0, 0.0, 0.0, 1.0 }; //homogeneous coordinates
+  for (int j = 0; j < pipeline->RotationHandle2Points->GetNumberOfPoints(); j++)
+    { // Handle 2
+    pipeline->RotationHandle2Points->GetPoint(j, rotationHandle2Point);
+    rotationHandle2Point_h[0] = rotationHandle2Point[0];
+    rotationHandle2Point_h[1] = rotationHandle2Point[1];
+    rotationHandle2Point_h[2] = rotationHandle2Point[2];
+    rotationHandle2ToWorldMatrix->MultiplyPoint(rotationHandle2Point_h, rotationHandle2Point_h);
+    rotationHandle2Point[0] = rotationHandle2Point_h[0];
+    rotationHandle2Point[1] = rotationHandle2Point_h[1];
+    rotationHandle2Point[2] = rotationHandle2Point_h[2];
+    rotationHandlePoints->InsertNextPoint(rotationHandle2Point);
+    }
   pipeline->RotationHandlePoints->SetPoints(rotationHandlePoints);
 
   // Set position of slice offset handles
-  double sliceOffsetHandle1Position[3] = { (rotationHandle1Position[0] + sliceIntersectionPoint_XY[0]) / 2 ,
-                                           (rotationHandle1Position[1] + sliceIntersectionPoint_XY[1]) / 2 , 0.0 };
-  double sliceOffsetHandle2Position[3] = { (rotationHandle2Position[0] + sliceIntersectionPoint_XY[0]) / 2 ,
-                                           (rotationHandle2Position[1] + sliceIntersectionPoint_XY[1]) / 2 , 0.0 };
-  double sliceOffsetHandleOrientation[3] = { intersectionLineTip2[1] - intersectionLineTip1[1],
-                                             intersectionLineTip1[0] - intersectionLineTip2[0] , 0.0 }; // perpendicular to intersection line
+  double sliceOffsetHandle1Position2D[2] = { (rotationHandle1Position2D[0] + sliceIntersectionPoint_XY[0]) / 2 ,
+                                             (rotationHandle1Position2D[1] + sliceIntersectionPoint_XY[1]) / 2 };
+  double sliceOffsetHandle2Position2D[2] = { (rotationHandle2Position2D[0] + sliceIntersectionPoint_XY[0]) / 2 ,
+                                             (rotationHandle2Position2D[1] + sliceIntersectionPoint_XY[1]) / 2 };
+  double sliceOffsetHandleOrientation2D[2] = { intersectionLineTip2[1] - intersectionLineTip1[1],
+                                               intersectionLineTip1[0] - intersectionLineTip2[0] }; // perpendicular to intersection line
   vtkNew<vtkMatrix4x4> sliceOffsetHandle1ToWorldMatrix, sliceOffsetHandle2ToWorldMatrix; // Compute transformation matrix (rotation + translation)
-  this->ComputeHandleToWorldTransformMatrix(sliceOffsetHandle1Position, sliceOffsetHandleOrientation, sliceOffsetHandle1ToWorldMatrix);
-  this->ComputeHandleToWorldTransformMatrix(sliceOffsetHandle2Position, sliceOffsetHandleOrientation, sliceOffsetHandle2ToWorldMatrix);
+  this->ComputeHandleToWorldTransformMatrix(sliceOffsetHandle1Position2D, sliceOffsetHandleOrientation2D, sliceOffsetHandle1ToWorldMatrix);
+  this->ComputeHandleToWorldTransformMatrix(sliceOffsetHandle2Position2D, sliceOffsetHandleOrientation2D, sliceOffsetHandle2ToWorldMatrix);
   pipeline->SliceOffsetHandle1ToWorldTransform->Identity();
   pipeline->SliceOffsetHandle1ToWorldTransform->SetMatrix(sliceOffsetHandle1ToWorldMatrix); // Update handles to world transform
   pipeline->SliceOffsetHandle2ToWorldTransform->Identity();
@@ -939,41 +1185,41 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
 
   // Update slice offset handle points
   vtkNew<vtkPoints> sliceOffsetHandlePoints;
-  double point[3] = { 0.0, 0.0, 0.0 };
-  double point_h[4] = {0.0, 0.0, 0.0, 1.0}; //homogeneous coordinates
+  double sliceOffsetHandlePoint[3] = { 0.0, 0.0, 0.0 };
+  double sliceOffsetHandlePoint_h[4] = { 0.0, 0.0, 0.0, 1.0 }; //homogeneous coordinates
   for (int i = 0; i < pipeline->SliceOffsetHandle1Points->GetNumberOfPoints(); i++)
     { // Handle 1
-    pipeline->SliceOffsetHandle1Points->GetPoint(i, point);
-    point_h[0] = point[0];
-    point_h[1] = point[1];
-    point_h[2] = point[2];
-    sliceOffsetHandle1ToWorldMatrix->MultiplyPoint(point_h, point_h);
-    point[0] = point_h[0];
-    point[1] = point_h[1];
-    point[2] = point_h[2];
-    sliceOffsetHandlePoints->InsertNextPoint(point);
+    pipeline->SliceOffsetHandle1Points->GetPoint(i, sliceOffsetHandlePoint);
+    sliceOffsetHandlePoint_h[0] = sliceOffsetHandlePoint[0];
+    sliceOffsetHandlePoint_h[1] = sliceOffsetHandlePoint[1];
+    sliceOffsetHandlePoint_h[2] = sliceOffsetHandlePoint[2];
+    sliceOffsetHandle1ToWorldMatrix->MultiplyPoint(sliceOffsetHandlePoint_h, sliceOffsetHandlePoint_h);
+    sliceOffsetHandlePoint[0] = sliceOffsetHandlePoint_h[0];
+    sliceOffsetHandlePoint[1] = sliceOffsetHandlePoint_h[1];
+    sliceOffsetHandlePoint[2] = sliceOffsetHandlePoint_h[2];
+    sliceOffsetHandlePoints->InsertNextPoint(sliceOffsetHandlePoint);
     }
-  for (int i = 0; i < pipeline->SliceOffsetHandle2Points->GetNumberOfPoints(); i++)
+  for (int j = 0; j < pipeline->SliceOffsetHandle2Points->GetNumberOfPoints(); j++)
     { // Handle 2
-    pipeline->SliceOffsetHandle2Points->GetPoint(i, point);
-    point_h[0] = point[0];
-    point_h[1] = point[1];
-    point_h[2] = point[2];
-    sliceOffsetHandle2ToWorldMatrix->MultiplyPoint(point_h, point_h);
-    point[0] = point_h[0];
-    point[1] = point_h[1];
-    point[2] = point_h[2];
-    sliceOffsetHandlePoints->InsertNextPoint(point);
+    pipeline->SliceOffsetHandle2Points->GetPoint(j, sliceOffsetHandlePoint);
+    sliceOffsetHandlePoint_h[0] = sliceOffsetHandlePoint[0];
+    sliceOffsetHandlePoint_h[1] = sliceOffsetHandlePoint[1];
+    sliceOffsetHandlePoint_h[2] = sliceOffsetHandlePoint[2];
+    sliceOffsetHandle2ToWorldMatrix->MultiplyPoint(sliceOffsetHandlePoint_h, sliceOffsetHandlePoint_h);
+    sliceOffsetHandlePoint[0] = sliceOffsetHandlePoint_h[0];
+    sliceOffsetHandlePoint[1] = sliceOffsetHandlePoint_h[1];
+    sliceOffsetHandlePoint[2] = sliceOffsetHandlePoint_h[2];
+    sliceOffsetHandlePoints->InsertNextPoint(sliceOffsetHandlePoint);
     }
   pipeline->SliceOffsetHandlePoints->SetPoints(sliceOffsetHandlePoints);
 
   // Store rotation and translation handle positions
   vtkNew<vtkPoints> handlePoints;
   handlePoints->InsertNextPoint(translationHandlePosition);
-  handlePoints->InsertNextPoint(rotationHandle1Position);
-  handlePoints->InsertNextPoint(rotationHandle2Position);
-  handlePoints->InsertNextPoint(sliceOffsetHandle1Position);
-  handlePoints->InsertNextPoint(sliceOffsetHandle2Position);
+  handlePoints->InsertNextPoint(rotationHandle1Position2D);
+  handlePoints->InsertNextPoint(rotationHandle2Position2D);
+  handlePoints->InsertNextPoint(sliceOffsetHandle1Position2D);
+  handlePoints->InsertNextPoint(sliceOffsetHandle2Position2D);
 
   // Define points along intersection line for interaction
   vtkPoints* line1PointsDefault;
@@ -1945,94 +2191,113 @@ bool vtkMRMLSliceIntersectionInteractionRepresentation::IsMouseCursorInSliceView
 }
 
 //----------------------------------------------------------------------
-void vtkMRMLSliceIntersectionInteractionRepresentation::ComputeHandleToWorldTransformMatrix(double handlePosition[3], double handleOrientation[3],
+void vtkMRMLSliceIntersectionInteractionRepresentation::ComputeHandleToWorldTransformMatrix(double handlePosition[2], double handleOrientation[2],
   vtkMatrix4x4* handleToWorldTransformMatrix)
 {
   // Reset handle to world transform
   handleToWorldTransformMatrix->Identity();
 
   // Get rotation matrix
-  double handleOrientationDefault[3] = { SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[0],
-                                         SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION [1],
-                                         SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION [2] };
+  double handleOrientationDefault[2] = { SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[0],
+                                         SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION [1]};
   this->RotationMatrixFromVectors(handleOrientationDefault, handleOrientation, handleToWorldTransformMatrix);
 
   // Add translation to matrix
-  double handleTranslation[3] = { handlePosition[0] - SLICEOFSSET_HANDLE_DEFAULT_POSITION[0],
-                                  handlePosition[1] - SLICEOFSSET_HANDLE_DEFAULT_POSITION[1],
-                                  handlePosition[2] - SLICEOFSSET_HANDLE_DEFAULT_POSITION[2] };
+  double handleTranslation[2] = { handlePosition[0] - SLICEOFSSET_HANDLE_DEFAULT_POSITION[0],
+                                  handlePosition[1] - SLICEOFSSET_HANDLE_DEFAULT_POSITION[1]};
   handleToWorldTransformMatrix->SetElement(0, 3, handleTranslation[0]); // Translation X
   handleToWorldTransformMatrix->SetElement(1, 3, handleTranslation[1]); // Translation Y
-  handleToWorldTransformMatrix->SetElement(2, 3, handleTranslation[2]); // Translation Z
 }
 
 //----------------------------------------------------------------------
-void vtkMRMLSliceIntersectionInteractionRepresentation::RotationMatrixFromVectors(double vector1[3], double vector2[3], vtkMatrix4x4* rotationMatrixHom)
+void vtkMRMLSliceIntersectionInteractionRepresentation::RotationMatrixFromVectors(double vector1[2], double vector2[2], vtkMatrix4x4* rotationMatrixHom)
 {
+  // 3D vectors
+  double vector1_3D[3] = { vector1[0], vector1[1], 0.0};
+  double vector2_3D[3] = { vector2[0], vector2[1], 0.0 };
+
   // Normalize input vectos
-  vtkMath::Normalize(vector1);
-  vtkMath::Normalize(vector2);
+  vtkMath::Normalize(vector1_3D);
+  vtkMath::Normalize(vector2_3D);
 
   // Cross and dot products
   double v[3];
-  vtkMath::Cross(vector1, vector2, v);
-  double c = vtkMath::Dot(vector1, vector2);
+  vtkMath::Cross(vector1_3D, vector2_3D, v);
+  double c = vtkMath::Dot(vector1_3D, vector2_3D);
   double s = vtkMath::Norm(v);
 
   // Compute rotation matrix
-  vtkNew<vtkMatrix3x3> rotationMatrix;
-  vtkNew<vtkMatrix3x3> identityMatrix;
-  vtkNew<vtkMatrix3x3> kmat;
-  kmat->SetElement(0, 0, 0.0);
-  kmat->SetElement(0, 1, -v[2]);
-  kmat->SetElement(0, 2, v[1]);
-  kmat->SetElement(1, 0, v[2]);
-  kmat->SetElement(1, 1, 0.0);
-  kmat->SetElement(1, 2, -v[0]);
-  kmat->SetElement(2, 0, -v[1]);
-  kmat->SetElement(2, 1, v[0]);
-  kmat->SetElement(2, 2, 0.0);
-  vtkNew<vtkMatrix3x3> kmat2;
-  vtkMatrix3x3::Multiply3x3(kmat, kmat, kmat2);
-  vtkNew<vtkMatrix3x3> kmat2x;
-  rotationMatrix->SetElement(0, 0, identityMatrix->GetElement(0, 0) + kmat->GetElement(0, 0) + kmat2->GetElement(0, 0) * ((1 - c) / (pow(s, 2.0))));
-  rotationMatrix->SetElement(0, 1, identityMatrix->GetElement(0, 1) + kmat->GetElement(0, 1) + kmat2->GetElement(0, 1) * ((1 - c) / (pow(s, 2.0))));
-  rotationMatrix->SetElement(0, 2, identityMatrix->GetElement(0, 2) + kmat->GetElement(0, 2) + kmat2->GetElement(0, 2) * ((1 - c) / (pow(s, 2.0))));
-  rotationMatrix->SetElement(1, 0, identityMatrix->GetElement(1, 0) + kmat->GetElement(1, 0) + kmat2->GetElement(1, 0) * ((1 - c) / (pow(s, 2.0))));
-  rotationMatrix->SetElement(1, 1, identityMatrix->GetElement(1, 1) + kmat->GetElement(1, 1) + kmat2->GetElement(1, 1) * ((1 - c) / (pow(s, 2.0))));
-  rotationMatrix->SetElement(1, 2, identityMatrix->GetElement(1, 2) + kmat->GetElement(1, 2) + kmat2->GetElement(1, 2) * ((1 - c) / (pow(s, 2.0))));
-  rotationMatrix->SetElement(2, 0, identityMatrix->GetElement(2, 0) + kmat->GetElement(2, 0) + kmat2->GetElement(2, 0) * ((1 - c) / (pow(s, 2.0))));
-  rotationMatrix->SetElement(2, 1, identityMatrix->GetElement(2, 1) + kmat->GetElement(2, 1) + kmat2->GetElement(2, 1) * ((1 - c) / (pow(s, 2.0))));
-  rotationMatrix->SetElement(2, 2, identityMatrix->GetElement(2, 2) + kmat->GetElement(2, 2) + kmat2->GetElement(2, 2) * ((1 - c) / (pow(s, 2.0))));
-
-  // Return identity matrix if any value is nan
-  for (int i = 0; i < 3; i++)
+  if (s == 0.0) // If vectors are aligned (i.e., cross product = 0)
     {
-    for (int j = 0; j < 3; j++)
+    if (c > 0.0) // Same direction
       {
-        if (isnan(rotationMatrix->GetElement(i, j)))
-          {
-          rotationMatrixHom->Identity();
-          return;
-          }
+      rotationMatrixHom->Identity();
+      }
+    else // Opposite direction
+      {
+      vtkNew<vtkTransform> transform;
+      transform->RotateZ(180); // invert direction
+      rotationMatrixHom->SetElement(0, 0, transform->GetMatrix()->GetElement(0, 0));
+      rotationMatrixHom->SetElement(0, 1, transform->GetMatrix()->GetElement(0, 1));
+      rotationMatrixHom->SetElement(0, 2, transform->GetMatrix()->GetElement(0, 2));
+      rotationMatrixHom->SetElement(0, 3, 0.0);
+      rotationMatrixHom->SetElement(1, 0, transform->GetMatrix()->GetElement(1, 0));
+      rotationMatrixHom->SetElement(1, 1, transform->GetMatrix()->GetElement(1, 1));
+      rotationMatrixHom->SetElement(1, 2, transform->GetMatrix()->GetElement(1, 2));
+      rotationMatrixHom->SetElement(1, 3, 0.0);
+      rotationMatrixHom->SetElement(2, 0, transform->GetMatrix()->GetElement(2, 0));
+      rotationMatrixHom->SetElement(2, 1, transform->GetMatrix()->GetElement(2, 1));
+      rotationMatrixHom->SetElement(2, 2, transform->GetMatrix()->GetElement(2, 2));
+      rotationMatrixHom->SetElement(2, 3, 0.0);
+      rotationMatrixHom->SetElement(3, 0, 0.0);
+      rotationMatrixHom->SetElement(3, 1, 0.0);
+      rotationMatrixHom->SetElement(3, 2, 0.0);
+      rotationMatrixHom->SetElement(3, 3, 1.0);
       }
     }
+  else // If vectors are not aligned
+    {
+    vtkNew<vtkMatrix3x3> rotationMatrix;
+    vtkNew<vtkMatrix3x3> identityMatrix;
+    vtkNew<vtkMatrix3x3> kmat;
+    kmat->SetElement(0, 0, 0.0);
+    kmat->SetElement(0, 1, -v[2]);
+    kmat->SetElement(0, 2, v[1]);
+    kmat->SetElement(1, 0, v[2]);
+    kmat->SetElement(1, 1, 0.0);
+    kmat->SetElement(1, 2, -v[0]);
+    kmat->SetElement(2, 0, -v[1]);
+    kmat->SetElement(2, 1, v[0]);
+    kmat->SetElement(2, 2, 0.0);
+    vtkNew<vtkMatrix3x3> kmat2;
+    vtkMatrix3x3::Multiply3x3(kmat, kmat, kmat2);
+    vtkNew<vtkMatrix3x3> kmat2x;
+    rotationMatrix->SetElement(0, 0, identityMatrix->GetElement(0, 0) + kmat->GetElement(0, 0) + kmat2->GetElement(0, 0) * ((1 - c) / (pow(s, 2.0))));
+    rotationMatrix->SetElement(0, 1, identityMatrix->GetElement(0, 1) + kmat->GetElement(0, 1) + kmat2->GetElement(0, 1) * ((1 - c) / (pow(s, 2.0))));
+    rotationMatrix->SetElement(0, 2, identityMatrix->GetElement(0, 2) + kmat->GetElement(0, 2) + kmat2->GetElement(0, 2) * ((1 - c) / (pow(s, 2.0))));
+    rotationMatrix->SetElement(1, 0, identityMatrix->GetElement(1, 0) + kmat->GetElement(1, 0) + kmat2->GetElement(1, 0) * ((1 - c) / (pow(s, 2.0))));
+    rotationMatrix->SetElement(1, 1, identityMatrix->GetElement(1, 1) + kmat->GetElement(1, 1) + kmat2->GetElement(1, 1) * ((1 - c) / (pow(s, 2.0))));
+    rotationMatrix->SetElement(1, 2, identityMatrix->GetElement(1, 2) + kmat->GetElement(1, 2) + kmat2->GetElement(1, 2) * ((1 - c) / (pow(s, 2.0))));
+    rotationMatrix->SetElement(2, 0, identityMatrix->GetElement(2, 0) + kmat->GetElement(2, 0) + kmat2->GetElement(2, 0) * ((1 - c) / (pow(s, 2.0))));
+    rotationMatrix->SetElement(2, 1, identityMatrix->GetElement(2, 1) + kmat->GetElement(2, 1) + kmat2->GetElement(2, 1) * ((1 - c) / (pow(s, 2.0))));
+    rotationMatrix->SetElement(2, 2, identityMatrix->GetElement(2, 2) + kmat->GetElement(2, 2) + kmat2->GetElement(2, 2) * ((1 - c) / (pow(s, 2.0))));
 
-  // Convert to 4x4 matrix
-  rotationMatrixHom->SetElement(0, 0, rotationMatrix->GetElement(0, 0));
-  rotationMatrixHom->SetElement(0, 1, rotationMatrix->GetElement(0, 1));
-  rotationMatrixHom->SetElement(0, 2, rotationMatrix->GetElement(0, 2));
-  rotationMatrixHom->SetElement(0, 3, 0.0);
-  rotationMatrixHom->SetElement(1, 0, rotationMatrix->GetElement(1, 0));
-  rotationMatrixHom->SetElement(1, 1, rotationMatrix->GetElement(1, 1));
-  rotationMatrixHom->SetElement(1, 2, rotationMatrix->GetElement(1, 2));
-  rotationMatrixHom->SetElement(1, 3, 0.0);
-  rotationMatrixHom->SetElement(2, 0, rotationMatrix->GetElement(2, 0));
-  rotationMatrixHom->SetElement(2, 1, rotationMatrix->GetElement(2, 1));
-  rotationMatrixHom->SetElement(2, 2, rotationMatrix->GetElement(2, 2));
-  rotationMatrixHom->SetElement(2, 3, 0.0);
-  rotationMatrixHom->SetElement(3, 0, 0.0);
-  rotationMatrixHom->SetElement(3, 1, 0.0);
-  rotationMatrixHom->SetElement(3, 2, 0.0);
-  rotationMatrixHom->SetElement(3, 3, 1.0);
+    // Convert to 4x4 matrix
+    rotationMatrixHom->SetElement(0, 0, rotationMatrix->GetElement(0, 0));
+    rotationMatrixHom->SetElement(0, 1, rotationMatrix->GetElement(0, 1));
+    rotationMatrixHom->SetElement(0, 2, rotationMatrix->GetElement(0, 2));
+    rotationMatrixHom->SetElement(0, 3, 0.0);
+    rotationMatrixHom->SetElement(1, 0, rotationMatrix->GetElement(1, 0));
+    rotationMatrixHom->SetElement(1, 1, rotationMatrix->GetElement(1, 1));
+    rotationMatrixHom->SetElement(1, 2, rotationMatrix->GetElement(1, 2));
+    rotationMatrixHom->SetElement(1, 3, 0.0);
+    rotationMatrixHom->SetElement(2, 0, rotationMatrix->GetElement(2, 0));
+    rotationMatrixHom->SetElement(2, 1, rotationMatrix->GetElement(2, 1));
+    rotationMatrixHom->SetElement(2, 2, rotationMatrix->GetElement(2, 2));
+    rotationMatrixHom->SetElement(2, 3, 0.0);
+    rotationMatrixHom->SetElement(3, 0, 0.0);
+    rotationMatrixHom->SetElement(3, 1, 0.0);
+    rotationMatrixHom->SetElement(3, 2, 0.0);
+    rotationMatrixHom->SetElement(3, 3, 1.0);
+    }
 }
