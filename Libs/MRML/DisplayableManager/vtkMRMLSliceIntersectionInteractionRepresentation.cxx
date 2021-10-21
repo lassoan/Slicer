@@ -85,15 +85,17 @@ enum
 static const double VISUALIZATION_MODE = HideIntersection;
 static const double HANDLES_TYPE = Arrows;
 static const bool HANDLES_ALWAYS_VISIBLE = false;
-static const double INTERACTION_SIZE_PIXELS = 20.0;
 static const double OPACITY_RANGE = 1000.0;
 static const double FOV_HANDLES_MARGIN = 0.03; // 3% margin
+static const double HIDE_INTERSECTION_GAP_SIZE = 0.05; // 5.0% of the slice view width
+static const double INTERACTION_SIZE_PIXELS = 20.0;
 
-// Visualization parameters
+// Intersection line
 static const double INTERSECTION_LINE_RESOLUTION = 50; // default = 8
 static const double INTERSECTION_LINE_EXTRA_THICKNESS = 1.0; // extra thickness with respect to normal slice intersection display
+
+// Handles
 static const double LINE_POINTS_FILTERING_THRESHOLD = 15.0;
-static const double HIDE_INTERSECTION_GAP_SIZE = 0.05; // 5.0% of the slice view width
 static const double HANDLES_CIRCLE_THETA_RESOLUTION = 100; // default = 8
 static const double HANDLES_CIRCLE_PHI_RESOLUTION = 100; // default = 8
 static const double SLICEOFSSET_HANDLE_DEFAULT_POSITION[3] = { 0.0,0.0,0.0 };
@@ -102,7 +104,12 @@ static const double SLICEOFSSET_HANDLE_CIRCLE_RADIUS = 7.0;
 static const double SLICEOFSSET_HANDLE_ARROW_RADIUS = 3.0;
 static const double SLICEOFSSET_HANDLE_ARROW_LENGTH = 60.0;
 static const double SLICEOFSSET_HANDLE_ARROW_TIP_ANGLE = 27; // degrees
-static const double ROTATION_HANDLE_RADIUS = 10.0;
+static const double ROTATION_HANDLE_DEFAULT_POSITION[3] = { 0.0,0.0,0.0 };
+static const double ROTATION_HANDLE_DEFAULT_ORIENTATION[3] = { 0.0,1.0,0.0 };
+static const double ROTATION_HANDLE_CIRCLE_RADIUS = 10.0;
+static const double ROTATION_HANDLE_ARROW_RADIUS = 10.0;
+static const double ROTATION_HANDLE_ARROW_LENGTH = 10.0;
+static const double ROTATION_HANDLE_ARROW_TIP_ANGLE = 27; // degrees
 static const double TRANSLATION_HANDLE_OUTER_RADIUS = 9.0;
 static const double TRANSLATION_HANDLE_INNER_RADIUS = 7.0;
 
@@ -194,33 +201,33 @@ class SliceIntersectionInteractionDisplayPipeline
       this->RotationHandle2Points = vtkSmartPointer<vtkPoints>::New();
 
       // Handle default position and orientation
-      double handleOriginDefault[3] = { SLICEOFSSET_HANDLE_DEFAULT_POSITION[0],
-                                        SLICEOFSSET_HANDLE_DEFAULT_POSITION[1],
-                                        SLICEOFSSET_HANDLE_DEFAULT_POSITION[2] };
-      double handleOrientationDefault[3] = { SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[0],
-                                             SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[1],
-                                             SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[2] };
-      double handleOrientationDefaultInv[3] = { -SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[0],
-                                                -SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[1],
-                                                -SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[2] };
-      double handleOrientationPerpendicular[3] = { SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[1],
-                                                   -SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[0],
-                                                   SLICEOFSSET_HANDLE_DEFAULT_ORIENTATION[2] };
+      double handleOriginDefault[3] = { ROTATION_HANDLE_DEFAULT_POSITION[0],
+                                        ROTATION_HANDLE_DEFAULT_POSITION[1],
+                                        ROTATION_HANDLE_DEFAULT_POSITION[2] };
+      double handleOrientationDefault[3] = { ROTATION_HANDLE_DEFAULT_ORIENTATION[0],
+                                             ROTATION_HANDLE_DEFAULT_ORIENTATION[1],
+                                             ROTATION_HANDLE_DEFAULT_ORIENTATION[2] };
+      double handleOrientationDefaultInv[3] = { -ROTATION_HANDLE_DEFAULT_ORIENTATION[0],
+                                                -ROTATION_HANDLE_DEFAULT_ORIENTATION[1],
+                                                -ROTATION_HANDLE_DEFAULT_ORIENTATION[2] };
+      double handleOrientationPerpendicular[3] = { ROTATION_HANDLE_DEFAULT_ORIENTATION[1],
+                                                   -ROTATION_HANDLE_DEFAULT_ORIENTATION[0],
+                                                   ROTATION_HANDLE_DEFAULT_ORIENTATION[2] };
 
       if (HANDLES_TYPE == Arrows)
         {
         // Define cone size
-        double coneAngleRad = (SLICEOFSSET_HANDLE_ARROW_TIP_ANGLE * M_PI) / 180.0;
-        double coneRadius = 2 * SLICEOFSSET_HANDLE_ARROW_RADIUS;
+        double coneAngleRad = (ROTATION_HANDLE_ARROW_TIP_ANGLE * M_PI) / 180.0;
+        double coneRadius = 2 * ROTATION_HANDLE_ARROW_RADIUS;
         double coneLength = coneRadius / tan(coneAngleRad);
 
         // Define arc points
         double arcTipR[3] = { handleOrientationDefault[0], handleOrientationDefault[1], handleOrientationDefault[2] };
-        vtkMath::MultiplyScalar(arcTipR, SLICEOFSSET_HANDLE_ARROW_LENGTH / 2.0);
+        vtkMath::MultiplyScalar(arcTipR, ROTATION_HANDLE_ARROW_LENGTH / 2.0);
         double arcTipL[3] = { handleOrientationDefaultInv[0], handleOrientationDefaultInv[1], handleOrientationDefaultInv[2] };
-        vtkMath::MultiplyScalar(arcTipL, SLICEOFSSET_HANDLE_ARROW_LENGTH / 2.0);
+        vtkMath::MultiplyScalar(arcTipL, ROTATION_HANDLE_ARROW_LENGTH / 2.0);
         double arcCenter[3] = { handleOrientationPerpendicular[0], handleOrientationPerpendicular[1], handleOrientationPerpendicular[2] };
-        vtkMath::MultiplyScalar(arcCenter, -SLICEOFSSET_HANDLE_ARROW_LENGTH / 3.0);
+        vtkMath::MultiplyScalar(arcCenter, -ROTATION_HANDLE_ARROW_LENGTH / 3.0);
 
         // Translate arc to origin
         double arcRadiusVector[3] = { arcTipR[0] - arcCenter[0], arcTipR[1] - arcCenter[1], arcTipR[2] - arcCenter[2] };
@@ -250,7 +257,7 @@ class SliceIntersectionInteractionDisplayPipeline
 
         // Define intermediate points for interaction
         double arcMidR[3] = { arcTipR[0] / 2.0, arcTipR[1] / 2.0, arcTipR[2] / 2.0 };
-        double arcMidL[3] = { arcMidL[0] / 2.0, arcMidL[1] / 2.0, arcMidL[2] / 2.0 };
+        double arcMidL[3] = { arcTipL[0] / 2.0, arcTipL[1] / 2.0, arcTipL[2] / 2.0 };
 
         // Define arc tangent vectors
         double arcRadiusVectorR[3] = { arcTipR[0] - arcCenter[0], arcTipR[1] - arcCenter[1], arcTipR[2] - arcCenter[2] };
@@ -276,7 +283,7 @@ class SliceIntersectionInteractionDisplayPipeline
         rotationHandle1ArcSource->SetCenter(arcCenter);
         vtkNew<vtkTubeFilter> rotationHandle1ArcTubeFilter;
         rotationHandle1ArcTubeFilter->SetInputConnection(rotationHandle1ArcSource->GetOutputPort());
-        rotationHandle1ArcTubeFilter->SetRadius(SLICEOFSSET_HANDLE_ARROW_RADIUS);
+        rotationHandle1ArcTubeFilter->SetRadius(ROTATION_HANDLE_ARROW_RADIUS);
         rotationHandle1ArcTubeFilter->SetNumberOfSides(16);
         rotationHandle1ArcTubeFilter->SetCapping(true);
         vtkNew<vtkConeSource> rotationHandle1RightConeSource;
@@ -315,7 +322,7 @@ class SliceIntersectionInteractionDisplayPipeline
         rotationHandle2ArcSource->SetCenter(arcCenter);
         vtkNew<vtkTubeFilter> rotationHandle2ArcTubeFilter;
         rotationHandle2ArcTubeFilter->SetInputConnection(rotationHandle2ArcSource->GetOutputPort());
-        rotationHandle2ArcTubeFilter->SetRadius(SLICEOFSSET_HANDLE_ARROW_RADIUS);
+        rotationHandle2ArcTubeFilter->SetRadius(ROTATION_HANDLE_ARROW_RADIUS);
         rotationHandle2ArcTubeFilter->SetNumberOfSides(16);
         rotationHandle2ArcTubeFilter->SetCapping(true);
         vtkNew<vtkConeSource> rotationHandle2RightConeSource;
@@ -366,7 +373,7 @@ class SliceIntersectionInteractionDisplayPipeline
         {
         // Rotation sphere 1
         vtkNew<vtkSphereSource> rotationHandle1SphereSource;
-        rotationHandle1SphereSource->SetRadius(ROTATION_HANDLE_RADIUS);
+        rotationHandle1SphereSource->SetRadius(ROTATION_HANDLE_CIRCLE_RADIUS);
         rotationHandle1SphereSource->SetThetaResolution(HANDLES_CIRCLE_THETA_RESOLUTION);
         rotationHandle1SphereSource->SetPhiResolution(HANDLES_CIRCLE_PHI_RESOLUTION);
         rotationHandle1SphereSource->SetCenter(handleOriginDefault);
@@ -387,7 +394,7 @@ class SliceIntersectionInteractionDisplayPipeline
 
         // Rotation sphere 2
         vtkNew<vtkSphereSource> rotationHandle2SphereSource;
-        rotationHandle2SphereSource->SetRadius(ROTATION_HANDLE_RADIUS);
+        rotationHandle2SphereSource->SetRadius(ROTATION_HANDLE_CIRCLE_RADIUS);
         rotationHandle2SphereSource->SetThetaResolution(HANDLES_CIRCLE_THETA_RESOLUTION);
         rotationHandle2SphereSource->SetPhiResolution(HANDLES_CIRCLE_PHI_RESOLUTION);
         rotationHandle2SphereSource->SetCenter(handleOriginDefault);
