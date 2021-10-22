@@ -83,23 +83,24 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     void SetMRMLApplicationLogic(vtkMRMLApplicationLogic*);
     vtkGetObjectMacro(MRMLApplicationLogic, vtkMRMLApplicationLogic);
 
-    // Get slice intersection point between red, green and yellow slice nodes
+    /// Get slice intersection point between red, green and yellow slice nodes
     double* GetSliceIntersectionPoint();
+
     int IntersectWithFinitePlane(double n[3], double o[3], double pOrigin[3], double px[3], double py[3], double x0[3], double x1[3]);
 
-    // Computes intersection between a 2D line and the slice view boundaries
+    /// Compute intersection between a 2D line and the slice view boundaries
     bool GetIntersectionWithSliceViewBoundaries(double* pointA, double* pointB, double* sliceViewBounds, double* intersectionPoint);
 
-    // Get boundaries of the slice view associated with a given vtkMRMLSliceNode
+    /// Get boundaries of the slice view associated with a given vtkMRMLSliceNode
     void GetSliceViewBoundariesXY(vtkMRMLSliceNode* sliceNode, double* sliceViewBounds);
 
-    // Check whether the mouse cursor is within the slice view or not
+    /// Check whether the mouse cursor is within the slice view or not
     bool IsMouseCursorInSliceView(double cursorPosition[2]);
 
-    // Get index for slice node: red = 0, green = 1, and yellow = 2
+    /// Get index for slice node: red = 0, green = 1, and yellow = 2
     int GetSliceNodeIndex(vtkMRMLSliceNode* sliceNode);
 
-    // Get slice node from index: red = 0, green = 1, and yellow = 2
+    /// Get slice node from index: red = 0, green = 1, and yellow = 2
     vtkMRMLSliceNode* GetSliceNodeFromIndex(vtkMRMLScene* scene, int sliceNodeIndex);
 
     int GetLineTipsFromIntersectingSliceNode(vtkMRMLSliceNode* intersectingSliceNode, vtkMatrix4x4* intersectingXYToXY,
@@ -174,7 +175,7 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
 
     double GetSliceRotationAngleRad(int eventPos[2]);
 
-    // The internal transformation matrix
+    /// The internal transformation matrix
     vtkTransform* CurrentTransform;
     vtkTransform* TotalTransform;
     double Origin[4]; //the current origin in world coordinates
@@ -182,16 +183,16 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     double CurrentTranslation[3]; //translation this movement
     double StartWorldPosition[4]; //Start event position converted to world
 
-    // Support picking
+    /// Support picking
     double LastEventPosition[2];
 
-    // Slice intersection point in XY
+    /// Slice intersection point in XY
     double SliceIntersectionPoint[4];
 
-    // Handle size, specified in renderer world coordinate system.
-    // For slice views, renderer world coordinate system is the display coordinate system, so it is measured in pixels.
-    // For 3D views, renderer world coordinate system is the Slicer world coordinate system, so it is measured in the
-    // scene length unit (typically millimeters).
+    /// Handle size, specified in renderer world coordinate system.
+    /// For slice views, renderer world coordinate system is the display coordinate system, so it is measured in pixels.
+    /// For 3D views, renderer world coordinate system is the Slicer world coordinate system, so it is measured in the
+    /// scene length unit (typically millimeters).
     double InteractionSize{ 3.0 };
 
     double GetViewScaleFactorAtPosition(double positionWorld[3]);

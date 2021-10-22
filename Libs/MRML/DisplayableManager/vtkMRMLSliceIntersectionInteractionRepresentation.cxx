@@ -96,7 +96,6 @@ static const double INTERSECTION_LINE_RESOLUTION = 50; // default = 8
 static const double INTERSECTION_LINE_EXTRA_THICKNESS = 1.0; // extra thickness with respect to normal slice intersection display
 
 // Handles
-static const double LINE_POINTS_FILTERING_THRESHOLD = 15.0;
 static const double HANDLES_CIRCLE_THETA_RESOLUTION = 100; // default = 8
 static const double HANDLES_CIRCLE_PHI_RESOLUTION = 100; // default = 8
 static const double SLICEOFSSET_HANDLE_DEFAULT_POSITION[3] = { 0.0,0.0,0.0 };
@@ -181,8 +180,6 @@ class SliceIntersectionInteractionDisplayPipeline
       this->CreateSliceOffsetHandles();
 
       // Handle points
-      this->IntersectionLine1Points = vtkSmartPointer<vtkPolyData>::New();
-      this->IntersectionLine2Points = vtkSmartPointer<vtkPolyData>::New();
       this->RotationHandlePoints = vtkSmartPointer<vtkPolyData>::New();
       this->TranslationHandlePoints = vtkSmartPointer<vtkPolyData>::New();
       this->SliceOffsetHandlePoints = vtkSmartPointer<vtkPolyData>::New();
@@ -811,8 +808,6 @@ class SliceIntersectionInteractionDisplayPipeline
     vtkWeakPointer<vtkMRMLSliceLogic> SliceLogic;
     vtkWeakPointer<vtkCallbackCommand> Callback;
 
-    vtkSmartPointer<vtkPolyData> IntersectionLine1Points;
-    vtkSmartPointer<vtkPolyData> IntersectionLine2Points;
     vtkSmartPointer<vtkPolyData> RotationHandlePoints;
     vtkSmartPointer<vtkPolyData> TranslationHandlePoints;
     vtkSmartPointer<vtkPolyData> SliceOffsetHandlePoints;
@@ -1212,9 +1207,6 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
       }
     }
 
-  // Store handle positions along intersection lines
-  vtkNew<vtkPoints> handlePointsAlongIntersectionLines;
-
   // Set translation handle position
   vtkNew<vtkPoints> translationHandlePoints;
   double translationHandlePosition[3] = { sliceIntersectionPoint[0], sliceIntersectionPoint[1], 0.0 };
@@ -1222,7 +1214,6 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   pipeline->TranslationInnerHandle->SetCenter(translationHandlePosition[0], translationHandlePosition[1], translationHandlePosition[2]);
   translationHandlePoints->InsertNextPoint(translationHandlePosition);
   pipeline->TranslationHandlePoints->SetPoints(translationHandlePoints);
-  handlePointsAlongIntersectionLines->InsertNextPoint(translationHandlePosition);
 
   // Set position of rotation handles
   double rotationHandle1Position[2] = { intersectionOuterLineTip1[0], intersectionOuterLineTip1[1] };
@@ -1257,7 +1248,6 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
       rotationHandle1Point[2] = rotationHandle1Point_h[2];
       rotationHandlePoints->InsertNextPoint(rotationHandle1Point);
       }
-    handlePointsAlongIntersectionLines->InsertNextPoint(rotationHandle1Position);
     }
   if (pipeline->RotationHandle2Visible) // Handle 2
     {
@@ -1275,9 +1265,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
       rotationHandle2Point[2] = rotationHandle2Point_h[2];
       rotationHandlePoints->InsertNextPoint(rotationHandle2Point);
       }
-    handlePointsAlongIntersectionLines->InsertNextPoint(rotationHandle2Position);
     }
-  pipeline->RotationHandlePoints->SetPoints(rotationHandlePoints);
 
   // Set position of slice offset handles
   double sliceOffsetHandle1Position[2] = { (rotationHandle1Position[0] + sliceIntersectionPoint[0]) / 2 ,
@@ -1312,7 +1300,6 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
       sliceOffsetHandlePoint[2] = sliceOffsetHandlePoint_h[2];
       sliceOffsetHandlePoints->InsertNextPoint(sliceOffsetHandlePoint);
       }
-    handlePointsAlongIntersectionLines->InsertNextPoint(sliceOffsetHandle1Position);
     }
   if (pipeline->SliceOffsetHandle2Visible) // Handle 2
     {
@@ -1328,80 +1315,77 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
       sliceOffsetHandlePoint[2] = sliceOffsetHandlePoint_h[2];
       sliceOffsetHandlePoints->InsertNextPoint(sliceOffsetHandlePoint);
       }
-    handlePointsAlongIntersectionLines->InsertNextPoint(sliceOffsetHandle2Position);
     }
-  pipeline->SliceOffsetHandlePoints->SetPoints(sliceOffsetHandlePoints);
 
-  // Define points along intersection line for interaction
+  // Define points along intersection lines for interaction
   vtkPoints* line1PointsDefault;
   vtkPoints* line2PointsDefault;
   line1PointsDefault = pipeline->IntersectionLine1->GetOutput()->GetPoints();
   line2PointsDefault = pipeline->IntersectionLine2->GetOutput()->GetPoints();
 
-  // Filter out those line points near interaction handles
-  // If this is not done, when clicking over the handle, interaction with line (right below) could occur instead.
+  // Get closer handles to intersection line 1
   vtkIdType numLinePoints;
-  vtkIdType numHandlePointsAlongIntersectionLines;
   double linePoint[3] = { 0.0, 0.0, 0.0 };
-  double handlePoint[3] = { 0.0, 0.0, 0.0 };
-  bool closeToHandle;
-  double linePointToHandlePoint[3] = { 0.0, 0.0, 0.0 };
-  double distanceLinePointToHandlePoint;
-  // Intersection line 1
-  vtkNew<vtkPoints> line1PointsFiltered;
+  double linePointToRotationHandle1[2] = { 0.0, 0.0 };
+  double linePointToSliceOffsetHandle1[2] = { 0.0, 0.0 };
+  double linePointToRotationHandle1Distance;
+  double linePointToSliceOffsetHandle1Distance;
   numLinePoints = line1PointsDefault->GetNumberOfPoints();
-  numHandlePointsAlongIntersectionLines = handlePointsAlongIntersectionLines->GetNumberOfPoints();
   for (int i = 0; i < numLinePoints; i++)
     {
+    // Get line point coordinates
     line1PointsDefault->GetPoint(i, linePoint);
-    closeToHandle = false;
-    for (int j = 0; j < numHandlePointsAlongIntersectionLines; j++)
+    // Distance to rotation handle
+    linePointToRotationHandle1[0] = rotationHandle1Position[0] - linePoint[0];
+    linePointToRotationHandle1[1] = rotationHandle1Position[1] - linePoint[1];
+    linePointToRotationHandle1Distance = vtkMath::Norm2D(linePointToRotationHandle1);
+    // Distance to slice offset handle
+    linePointToSliceOffsetHandle1[0] = sliceOffsetHandle1Position[0] - linePoint[0];
+    linePointToSliceOffsetHandle1[1] = sliceOffsetHandle1Position[1] - linePoint[1];
+    linePointToSliceOffsetHandle1Distance = vtkMath::Norm2D(linePointToSliceOffsetHandle1);
+    // Determine closer handle and insert interaction points
+    if (linePointToRotationHandle1Distance < linePointToSliceOffsetHandle1Distance)
       {
-      handlePointsAlongIntersectionLines->GetPoint(j, handlePoint);
-      linePointToHandlePoint[0] = handlePoint[0] - linePoint[0];
-      linePointToHandlePoint[1] = handlePoint[1] - linePoint[1];
-      linePointToHandlePoint[2] = handlePoint[2] - linePoint[2];
-      distanceLinePointToHandlePoint = vtkMath::Norm(linePointToHandlePoint);
-      if (distanceLinePointToHandlePoint < LINE_POINTS_FILTERING_THRESHOLD)
-        {
-        closeToHandle = true;
-        break;
-        }
+      rotationHandlePoints->InsertNextPoint(linePoint);
       }
-    if (!closeToHandle)
+    else
       {
-      line1PointsFiltered->InsertNextPoint(linePoint);
+      sliceOffsetHandlePoints->InsertNextPoint(linePoint);
       }
     }
-  pipeline->IntersectionLine1Points->SetPoints(line1PointsFiltered);
 
-  // Intersection line 2
-  vtkNew<vtkPoints> line2PointsFiltered;
+  // Get closer handles to intersection line 2
+  double linePointToRotationHandle2[2] = { 0.0, 0.0 };
+  double linePointToSliceOffsetHandle2[2] = { 0.0, 0.0 };
+  double linePointToRotationHandle2Distance;
+  double linePointToSliceOffsetHandle2Distance;
   numLinePoints = line2PointsDefault->GetNumberOfPoints();
-  numHandlePointsAlongIntersectionLines = handlePointsAlongIntersectionLines->GetNumberOfPoints();
   for (int i = 0; i < numLinePoints; i++)
     {
+    // Get line point coordinates
     line2PointsDefault->GetPoint(i, linePoint);
-    closeToHandle = false;
-    for (int j = 0; j < numHandlePointsAlongIntersectionLines; j++)
+    // Distance to rotation handle
+    linePointToRotationHandle2[0] = rotationHandle2Position[0] - linePoint[0];
+    linePointToRotationHandle2[1] = rotationHandle2Position[1] - linePoint[1];
+    linePointToRotationHandle2Distance = vtkMath::Norm2D(linePointToRotationHandle2);
+    // Distance to slice offset handle
+    linePointToSliceOffsetHandle2[0] = sliceOffsetHandle2Position[0] - linePoint[0];
+    linePointToSliceOffsetHandle2[1] = sliceOffsetHandle2Position[1] - linePoint[1];
+    linePointToSliceOffsetHandle2Distance = vtkMath::Norm2D(linePointToSliceOffsetHandle2);
+    // Determine closer handle and insert interaction points
+    if (linePointToRotationHandle2Distance < linePointToSliceOffsetHandle2Distance)
       {
-      handlePointsAlongIntersectionLines->GetPoint(j, handlePoint);
-      linePointToHandlePoint[0] = handlePoint[0] - linePoint[0];
-      linePointToHandlePoint[1] = handlePoint[1] - linePoint[1];
-      linePointToHandlePoint[2] = handlePoint[2] - linePoint[2];
-      distanceLinePointToHandlePoint = vtkMath::Norm(linePointToHandlePoint);
-      if (distanceLinePointToHandlePoint < LINE_POINTS_FILTERING_THRESHOLD)
-        {
-        closeToHandle = true;
-        break;
-        }
+      rotationHandlePoints->InsertNextPoint(linePoint);
       }
-    if (!closeToHandle)
+    else
       {
-      line2PointsFiltered->InsertNextPoint(linePoint);
+      sliceOffsetHandlePoints->InsertNextPoint(linePoint);
       }
     }
-  pipeline->IntersectionLine2Points->SetPoints(line2PointsFiltered);
+
+  // Set interaction points
+  pipeline->RotationHandlePoints->SetPoints(rotationHandlePoints);
+  pipeline->SliceOffsetHandlePoints->SetPoints(sliceOffsetHandlePoints);
 
   // Visibility
   pipeline->SetVisibility(true);
@@ -1872,13 +1856,6 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInter
   int& foundComponentType, int& foundComponentIndex, int& intersectingSliceNodeIndex, double& closestDistance2, double& handleOpacity)
 {
   foundComponentType = InteractionNone;
-  vtkMRMLAbstractViewNode* viewNode = this->GetViewNode();
-  /*
-  if (!viewNode || !this->GetVisibility() || !interactionEventData)
-    {
-    return;
-    }
-  */
   closestDistance2 = VTK_DOUBLE_MAX; // in display coordinate system
   foundComponentIndex = -1;
   intersectingSliceNodeIndex = -1;
@@ -2057,42 +2034,6 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
     handlePositionWorld[1] = handlePositionWorld_h[1];
     handlePositionWorld[2] = handlePositionWorld_h[2];
     HandleInfo info(i, InteractionSliceOffsetHandle, intersectingSliceNodeIndex, handlePositionWorld, handlePositionLocal);
-    handleInfoList.push_back(info);
-    }
-
-  for (int i = 0; i < pipeline->IntersectionLine1Points->GetNumberOfPoints(); ++i)
-    {
-    double handlePositionLocal[3] = { 0 };
-    double handlePositionLocal_h[4] = { 0.0,0.0,0.0,1.0 };
-    double handlePositionWorld[3] = { 0 };
-    double handlePositionWorld_h[4] = { 0.0,0.0,0.0,1.0 };
-    pipeline->IntersectionLine1Points->GetPoint(i, handlePositionLocal);
-    handlePositionLocal_h[0] = handlePositionLocal[0];
-    handlePositionLocal_h[1] = handlePositionLocal[1];
-    handlePositionLocal_h[2] = handlePositionLocal[2];
-    currentXYToRAS->MultiplyPoint(handlePositionLocal_h, handlePositionWorld_h);
-    handlePositionWorld[0] = handlePositionWorld_h[0];
-    handlePositionWorld[1] = handlePositionWorld_h[1];
-    handlePositionWorld[2] = handlePositionWorld_h[2];
-    HandleInfo info(i, InteractionIntersectionLine, intersectingSliceNodeIndex, handlePositionWorld, handlePositionLocal);
-    handleInfoList.push_back(info);
-    }
-
-  for (int i = 0; i < pipeline->IntersectionLine2Points->GetNumberOfPoints(); ++i)
-    {
-    double handlePositionLocal[3] = { 0 };
-    double handlePositionLocal_h[4] = { 0.0,0.0,0.0,1.0 };
-    double handlePositionWorld[3] = { 0 };
-    double handlePositionWorld_h[4] = { 0.0,0.0,0.0,1.0 };
-    pipeline->IntersectionLine2Points->GetPoint(i, handlePositionLocal);
-    handlePositionLocal_h[0] = handlePositionLocal[0];
-    handlePositionLocal_h[1] = handlePositionLocal[1];
-    handlePositionLocal_h[2] = handlePositionLocal[2];
-    currentXYToRAS->MultiplyPoint(handlePositionLocal_h, handlePositionWorld_h);
-    handlePositionWorld[0] = handlePositionWorld_h[0];
-    handlePositionWorld[1] = handlePositionWorld_h[1];
-    handlePositionWorld[2] = handlePositionWorld_h[2];
-    HandleInfo info(i, InteractionIntersectionLine, intersectingSliceNodeIndex, handlePositionWorld, handlePositionLocal);
     handleInfoList.push_back(info);
     }
 
