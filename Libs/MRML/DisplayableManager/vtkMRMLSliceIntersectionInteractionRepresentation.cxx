@@ -1056,10 +1056,10 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   vtkMatrix4x4* intersectingXYToRAS = intersectingSliceNode->GetXYToRAS();
   vtkNew<vtkMatrix4x4> intersectingXYToXY;
   vtkMatrix4x4::Multiply4x4(rasToXY, intersectingXYToRAS, intersectingXYToXY);
-  double intersectionOuterLineTip1[3] = { 0.0, 0.0, 0.0};
-  double intersectionOuterLineTip2[3] = { 0.0, 0.0, 0.0};
+  double intersectionLineTip1[3] = { 0.0, 0.0, 0.0};
+  double intersectionLineTip2[3] = { 0.0, 0.0, 0.0};
   int intersectionFound = this->GetLineTipsFromIntersectingSliceNode(intersectingSliceNode, intersectingXYToXY,
-      intersectionOuterLineTip1, intersectionOuterLineTip2);
+    intersectionLineTip1, intersectionLineTip2);
   if (!intersectionFound) // Pipelines not visible if no intersection is found
     {
     pipeline->SetVisibility(false);
@@ -1079,7 +1079,9 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   sliceViewBounds[2] = sliceViewBounds[2] + (sliceViewBounds[3] - sliceViewBounds[2]) * FOV_HANDLES_MARGIN;
   sliceViewBounds[3] = sliceViewBounds[3] - (sliceViewBounds[3] - sliceViewBounds[2]) * FOV_HANDLES_MARGIN;
 
-  // Adjust outer intersection line tips to FOV margins
+  // Get outer intersection line tips adjusted to FOV margins
+  double intersectionOuterLineTip1[3] = { intersectionLineTip1[0], intersectionLineTip1[1], intersectionLineTip1[2] };
+  double intersectionOuterLineTip2[3] = { intersectionLineTip2[0], intersectionLineTip2[1], intersectionLineTip2[2] };
   bool intersectionFoundLineTip1;
   bool intersectionFoundLineTip2;
   if ((sliceIntersectionPoint[0] > sliceViewBounds[0]) && // If intersection point is within FOV
@@ -1154,9 +1156,9 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
     }
 
   // Define intersection lines
-  pipeline->IntersectionLine1->SetPoint1(intersectionOuterLineTip1);
+  pipeline->IntersectionLine1->SetPoint1(intersectionLineTip1);
   pipeline->IntersectionLine1->SetPoint2(intersectionInnerLineTip1);
-  pipeline->IntersectionLine2->SetPoint1(intersectionOuterLineTip2);
+  pipeline->IntersectionLine2->SetPoint1(intersectionLineTip2);
   pipeline->IntersectionLine2->SetPoint2(intersectionInnerLineTip2);
 
   // Determine visibility of handles according to line spacing
