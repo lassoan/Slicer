@@ -174,6 +174,13 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
     return true;
     }
 
+  // Interaction mode
+  int currentInteractionMode = this->ApplicationLogic->GetInteractionNode()->GetCurrentInteractionMode();
+  if (currentInteractionMode != vtkMRMLInteractionNode::ViewTransform)
+    {
+    return false;
+    }
+
   // Interaction
   int foundComponentType = InteractionNone;
   int foundComponentIndex = -1;
