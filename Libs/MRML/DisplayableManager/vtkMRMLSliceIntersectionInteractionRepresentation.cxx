@@ -1877,15 +1877,14 @@ double vtkMRMLSliceIntersectionInteractionRepresentation::GetMaximumHandlePickin
 }
 
 //-----------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInteractionEventData* interactionEventData,
-  int& foundComponentType, int& foundComponentIndex, int& intersectingSliceNodeIndex, double& closestDistance2, double& handleOpacity)
+const char* vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInteractionEventData* interactionEventData,
+  int& foundComponentType, int& foundComponentIndex, double& closestDistance2, double& handleOpacity)
 {
   foundComponentType = InteractionNone;
   closestDistance2 = VTK_DOUBLE_MAX; // in display coordinate system
   foundComponentIndex = -1;
-  intersectingSliceNodeIndex = -1;
   handleOpacity = 0.0;
-
+  const char* intersectingSliceNodeID = nullptr;
   double maxPickingDistanceFromControlPoint2 = this->GetMaximumHandlePickingDistance2();
   double extendedPickingDistanceFromControlPoint2 = maxPickingDistanceFromControlPoint2 + OPACITY_RANGE;
   double displayPosition3[3] = { 0.0, 0.0, 0.0 };
@@ -1899,7 +1898,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInter
     }
   else if (!interactionEventData->IsWorldPositionValid())
     {
-    return;
+    return nullptr;
     }
 
   for (std::deque<SliceIntersectionInteractionDisplayPipeline*>::iterator
@@ -1938,7 +1937,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInter
               closestDistance2 = dist2;
               foundComponentType = handleInfo.ComponentType;
               foundComponentIndex = handleInfo.Index;
-              intersectingSliceNodeIndex = handleInfo.IntersectingSliceNodeIndex;
+              intersectingSliceNodeID = handleInfo.IntersectingSliceNodeID;
               handlePicked = true;
               }
             }
@@ -1976,7 +1975,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInter
             closestDistance2 = dist2;
             foundComponentType = handleInfo.ComponentType;
             foundComponentIndex = handleInfo.Index;
-            intersectingSliceNodeIndex = handleInfo.IntersectingSliceNodeIndex;
+            intersectingSliceNodeID = handleInfo.IntersectingSliceNodeID;
             handlePicked = true;
             }
           }
@@ -1991,13 +1990,14 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInter
             closestDistance2 = dist2;
             foundComponentType = handleInfo.ComponentType;
             foundComponentIndex = handleInfo.Index;
-            intersectingSliceNodeIndex = handleInfo.IntersectingSliceNodeIndex;
+            intersectingSliceNodeID = handleInfo.IntersectingSliceNodeID;
             }
           }
         }
       }
     }
-  }
+  return intersectingSliceNodeID;
+}
 
 //----------------------------------------------------------------------
 vtkMRMLSliceIntersectionInteractionRepresentation::HandleInfoList
@@ -2005,7 +2005,7 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
 {
   vtkMRMLSliceNode* currentSliceNode = this->GetSliceNode(); // Get slice node
   vtkMRMLSliceNode* intersectingSliceNode = pipeline->SliceLogic->GetSliceNode(); // Get intersecting slice node
-  int intersectingSliceNodeIndex = this->GetSliceNodeIndex(intersectingSliceNode);
+  const char* intersectingSliceNodeID = intersectingSliceNode->GetID(); // Get intersection slice node ID
   vtkMatrix4x4* currentXYToRAS = currentSliceNode->GetXYToRAS(); // Get XY to RAS transform matrix
   HandleInfoList handleInfoList;
   for (int i = 0; i < pipeline->RotationHandlePoints->GetNumberOfPoints(); ++i)
@@ -2022,7 +2022,7 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
     handlePositionWorld[0] = handlePositionWorld_h[0];
     handlePositionWorld[1] = handlePositionWorld_h[1];
     handlePositionWorld[2] = handlePositionWorld_h[2];
-    HandleInfo info(i, InteractionRotationHandle, intersectingSliceNodeIndex, handlePositionWorld, handlePositionLocal);
+    HandleInfo info(i, InteractionRotationHandle, intersectingSliceNodeID, handlePositionWorld, handlePositionLocal);
     handleInfoList.push_back(info);
     }
 
@@ -2040,7 +2040,7 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
     handlePositionWorld[0] = handlePositionWorld_h[0];
     handlePositionWorld[1] = handlePositionWorld_h[1];
     handlePositionWorld[2] = handlePositionWorld_h[2];
-    HandleInfo info(i, InteractionTranslationHandle, intersectingSliceNodeIndex, handlePositionWorld, handlePositionLocal);
+    HandleInfo info(i, InteractionTranslationHandle, intersectingSliceNodeID, handlePositionWorld, handlePositionLocal);
     handleInfoList.push_back(info);
     }
 
@@ -2058,7 +2058,7 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
     handlePositionWorld[0] = handlePositionWorld_h[0];
     handlePositionWorld[1] = handlePositionWorld_h[1];
     handlePositionWorld[2] = handlePositionWorld_h[2];
-    HandleInfo info(i, InteractionSliceOffsetHandle, intersectingSliceNodeIndex, handlePositionWorld, handlePositionLocal);
+    HandleInfo info(i, InteractionSliceOffsetHandle, intersectingSliceNodeID, handlePositionWorld, handlePositionLocal);
     handleInfoList.push_back(info);
     }
 
@@ -2120,67 +2120,6 @@ double vtkMRMLSliceIntersectionInteractionRepresentation::GetViewScaleFactorAtPo
       }
     }
   return viewScaleFactorMmPerPixel;
-}
-
-//----------------------------------------------------------------------
-int vtkMRMLSliceIntersectionInteractionRepresentation::GetSliceNodeIndex(vtkMRMLSliceNode* sliceNode)
-{
-  // Get red, green and yellow slice nodes
-  vtkMRMLScene* scene = sliceNode->GetScene();
-  std::vector<vtkMRMLNode*> sliceNodes;
-  int nnodes = scene ? scene->GetNodesByClass("vtkMRMLSliceNode", sliceNodes) : 0;
-  vtkMRMLSliceNode* redSliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[0]);
-  vtkMRMLSliceNode* greenSliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[1]);
-  vtkMRMLSliceNode* yellowSliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[2]);
-
-  // Slice node index
-  int sliceNodeIndex = -1;
-
-  if (sliceNode == redSliceNode)
-    {
-    sliceNodeIndex = 0;
-    }
-  else if (sliceNode == greenSliceNode)
-    {
-    sliceNodeIndex = 1;
-    }
-  else if (sliceNode == yellowSliceNode)
-    {
-    sliceNodeIndex = 2;
-    }
-
-  return sliceNodeIndex;
-}
-
-//----------------------------------------------------------------------
-vtkMRMLSliceNode* vtkMRMLSliceIntersectionInteractionRepresentation::GetSliceNodeFromIndex(vtkMRMLScene* scene, int sliceNodeIndex)
-{
-  // Get red, green and yellow slice nodes
-  vtkMRMLScene* currentScene = vtkMRMLScene::SafeDownCast(scene);
-  std::vector<vtkMRMLNode*> sliceNodes;
-  int nnodes = currentScene ? currentScene->GetNodesByClass("vtkMRMLSliceNode", sliceNodes) : 0;
-
-  // Slice node
-  if (sliceNodeIndex == 0)
-    {
-    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[0]); // red slice node
-    return sliceNode;
-    }
-  else if (sliceNodeIndex == 1)
-    {
-    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[1]); // green slice node
-    return sliceNode;
-    }
-  else if (sliceNodeIndex == 2)
-    {
-    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[2]); // yellow slice node
-    return sliceNode;
-    }
-  else
-    {
-    vtkMRMLSliceNode* sliceNode = nullptr;
-    return sliceNode;
-    }
 }
 
 //----------------------------------------------------------------------

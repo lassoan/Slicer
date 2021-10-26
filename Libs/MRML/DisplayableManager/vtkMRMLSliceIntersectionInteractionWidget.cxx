@@ -72,7 +72,7 @@ vtkMRMLSliceIntersectionInteractionWidget::vtkMRMLSliceIntersectionInteractionWi
     this->TotalTouchTranslation = 0.0;
     this->TouchTranslationEnabled = false;
 
-    this->LastIntersectingSliceNodeIndex = -1; // Last intersecting slice node where interaction occurred
+    this->LastIntersectingSliceNodeID = nullptr; // Last intersecting slice node where interaction occurred
 
     this->SliceLogicsModifiedCommand->SetClientData(this);
     this->SliceLogicsModifiedCommand->SetCallback(vtkMRMLSliceIntersectionInteractionWidget::SliceLogicsModifiedCallback);
@@ -184,10 +184,10 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
   // Interaction
   int foundComponentType = InteractionNone;
   int foundComponentIndex = -1;
-  int intersectingSliceNodeIndex = -1;
   double closestDistance2 = 0.0;
   double handleOpacity = 0.0;
-  rep->CanInteract(eventData, foundComponentType, foundComponentIndex, intersectingSliceNodeIndex, closestDistance2, handleOpacity);
+  const char* intersectingSliceNodeID;
+  intersectingSliceNodeID = rep->CanInteract(eventData, foundComponentType, foundComponentIndex, closestDistance2, handleOpacity);
 
   // Update handle visibility and opacity
   rep->SetPipelinesHandlesVisibility(true);
@@ -231,7 +231,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
   distance2 = closestDistance2;
 
   // Store last intersecting slice node index
-  this->LastIntersectingSliceNodeIndex = intersectingSliceNodeIndex;
+  this->LastIntersectingSliceNodeID = intersectingSliceNodeID;
 
   return true;
 }
@@ -339,10 +339,10 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessMouseMove(vtkMRMLInteract
     // Update widget state according to distance to interaction handles
     int foundComponentType = InteractionNone;
     int foundComponentIndex = -1;
-    int intersectingSliceNodeIndex = -1;
     double closestDistance2 = 0.0;
     double handleOpacity = 0.0;
-    rep->CanInteract(eventData, foundComponentType, foundComponentIndex, intersectingSliceNodeIndex, closestDistance2, handleOpacity);
+    const char* intersectingSliceNodeID;
+    intersectingSliceNodeID = rep->CanInteract(eventData, foundComponentType, foundComponentIndex, closestDistance2, handleOpacity);
     if (foundComponentType == InteractionNone)
       {
       this->SetWidgetState(WidgetStateIdle);
@@ -371,7 +371,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessMouseMove(vtkMRMLInteract
     // Store last intersecting slice node index
     if (foundComponentType != InteractionNone)
       {
-      this->LastIntersectingSliceNodeIndex = intersectingSliceNodeIndex;
+      this->LastIntersectingSliceNodeID = intersectingSliceNodeID;
       }
 
     this->activeComponentIndex = foundComponentIndex;
@@ -767,8 +767,8 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessTranslateSlice(vtkMRMLInt
     }
 
   // Get intersecting slice node
-  int intersectingSliceNodeIndex = this->LastIntersectingSliceNodeIndex;
-  vtkMRMLSliceNode* intersectingSliceNode = rep->GetSliceNodeFromIndex(scene, intersectingSliceNodeIndex);
+  const char* intersectingSliceNodeID = this->LastIntersectingSliceNodeID;
+  vtkMRMLSliceNode* intersectingSliceNode = vtkMRMLSliceNode::SafeDownCast(scene->GetNodeByID(intersectingSliceNodeID));
   if (!intersectingSliceNode)
     {
     return false;

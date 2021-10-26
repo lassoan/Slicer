@@ -97,12 +97,6 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     /// Check whether the mouse cursor is within the slice view or not
     bool IsMouseCursorInSliceView(double cursorPosition[2]);
 
-    /// Get index for slice node: red = 0, green = 1, and yellow = 2
-    int GetSliceNodeIndex(vtkMRMLSliceNode* sliceNode);
-
-    /// Get slice node from index: red = 0, green = 1, and yellow = 2
-    vtkMRMLSliceNode* GetSliceNodeFromIndex(vtkMRMLScene* scene, int sliceNodeIndex);
-
     int GetLineTipsFromIntersectingSliceNode(vtkMRMLSliceNode* intersectingSliceNode, vtkMatrix4x4* intersectingXYToXY,
         double intersectionLineTip1[3], double intersectionLineTip2[3]);
 
@@ -117,8 +111,8 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     /// Return found component type (as vtkMRMLInteractionDisplayNode::ComponentType).
     /// closestDistance2 is the squared distance in display coordinates from the closest position where interaction is possible.
     /// componentIndex returns index of the found component (e.g., if control point is found then control point index is returned).
-    virtual void CanInteract(vtkMRMLInteractionEventData* interactionEventData,
-        int& foundComponentType, int& foundComponentIndex, int& intersectingSliceNodeIndex, double& closestDistance2, double& handleOpacity);
+    virtual const char* CanInteract(vtkMRMLInteractionEventData* interactionEventData,
+        int& foundComponentType, int& foundComponentIndex, double& closestDistance2, double& handleOpacity);
 
     enum
       {
@@ -134,10 +128,10 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     class HandleInfo
       {
       public:
-        HandleInfo(int index, int componentType, int intersectingSliceNodeIndex, double positionWorld[3], double positionLocal[3])
+        HandleInfo(int index, int componentType, const char* intersectingSliceNodeID, double positionWorld[3], double positionLocal[3])
           : Index(index)
           , ComponentType(componentType)
-          , IntersectingSliceNodeIndex(intersectingSliceNodeIndex)
+          , IntersectingSliceNodeID(intersectingSliceNodeID)
           {
           for (int i = 0; i < 3; ++i)
             {
@@ -152,7 +146,7 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
           }
         int Index;
         int ComponentType;
-        int IntersectingSliceNodeIndex;
+        const char* IntersectingSliceNodeID;
         double PositionLocal[4];
         double PositionWorld[4];
       };

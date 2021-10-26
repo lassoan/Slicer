@@ -223,7 +223,7 @@ protected:
     double TotalTouchZoom;
     bool TouchZoomEnabled;
 
-    int LastIntersectingSliceNodeIndex;
+    const char* LastIntersectingSliceNodeID;
 
     int activeComponentType;
     int activeComponentIndex;
