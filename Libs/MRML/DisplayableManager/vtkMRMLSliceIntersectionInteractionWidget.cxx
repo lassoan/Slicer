@@ -661,19 +661,17 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessRotateStart(vtkMRMLIntera
   this->SetWidgetState(WidgetStateRotate);
 
   // Save rotation center RAS
-  double* sliceIntersectionPoint_RAS = rep->GetSliceIntersectionPoint(); // in RAS coordinate system
-  this->StartRotationCenter_RAS[0] = sliceIntersectionPoint_RAS[0];
-  this->StartRotationCenter_RAS[1] = sliceIntersectionPoint_RAS[1];
-  this->StartRotationCenter_RAS[2] = sliceIntersectionPoint_RAS[2];
+  double* sliceIntersectionPoint_XY = rep->GetSliceIntersectionPoint(); // in RAS coordinate system
+  this->StartRotationCenter[0] = sliceIntersectionPoint_XY[0];
+  this->StartRotationCenter[1] = sliceIntersectionPoint_XY[1];
 
   // Save rotation center XY
   vtkMatrix4x4* xyToRAS = this->GetSliceNode()->GetXYToRAS();
-  vtkNew<vtkMatrix4x4> rasToXY;
-  vtkMatrix4x4::Invert(xyToRAS, rasToXY);
-  double sliceIntersectionPoint_XY[4] = { 0, 0, 0, 1 };
-  rasToXY->MultiplyPoint(sliceIntersectionPoint_RAS, sliceIntersectionPoint_XY);
-  this->StartRotationCenter[0] = sliceIntersectionPoint_XY[0];
-  this->StartRotationCenter[1] = sliceIntersectionPoint_XY[1];
+  double sliceIntersectionPoint_RAS[4] = { 0, 0, 0, 1 };
+  xyToRAS->MultiplyPoint(sliceIntersectionPoint_XY, sliceIntersectionPoint_RAS);
+  this->StartRotationCenter_RAS[0] = sliceIntersectionPoint_RAS[0];
+  this->StartRotationCenter_RAS[1] = sliceIntersectionPoint_RAS[1];
+  this->StartRotationCenter_RAS[2] = sliceIntersectionPoint_RAS[2];
 
   // Save initial rotation angle
   const int* displayPos = eventData->GetDisplayPosition();
@@ -726,19 +724,17 @@ bool vtkMRMLSliceIntersectionInteractionWidget::Rotate(double sliceRotationAngle
   vtkNew<vtkTransform> rotatedSliceToSliceTransform;
 
   // Save rotation center RAS
-  double* sliceIntersectionPoint_RAS = rep->GetSliceIntersectionPoint(); // in RAS coordinate system
-  this->StartRotationCenter_RAS[0] = sliceIntersectionPoint_RAS[0];
-  this->StartRotationCenter_RAS[1] = sliceIntersectionPoint_RAS[1];
-  this->StartRotationCenter_RAS[2] = sliceIntersectionPoint_RAS[2];
+  double* sliceIntersectionPoint_XY = rep->GetSliceIntersectionPoint(); // in RAS coordinate system
+  this->StartRotationCenter[0] = sliceIntersectionPoint_XY[0];
+  this->StartRotationCenter[1] = sliceIntersectionPoint_XY[1];
 
   // Save rotation center XY
   vtkMatrix4x4* xyToRAS = this->GetSliceNode()->GetXYToRAS();
-  vtkNew<vtkMatrix4x4> rasToXY;
-  vtkMatrix4x4::Invert(xyToRAS, rasToXY);
-  double sliceIntersectionPoint_XY[4] = { 0, 0, 0, 1 };
-  rasToXY->MultiplyPoint(sliceIntersectionPoint_RAS, sliceIntersectionPoint_XY);
-  this->StartRotationCenter[0] = sliceIntersectionPoint_XY[0];
-  this->StartRotationCenter[1] = sliceIntersectionPoint_XY[1];
+  double sliceIntersectionPoint_RAS[4] = { 0, 0, 0, 1 };
+  xyToRAS->MultiplyPoint(sliceIntersectionPoint_XY, sliceIntersectionPoint_RAS);
+  this->StartRotationCenter_RAS[0] = sliceIntersectionPoint_RAS[0];
+  this->StartRotationCenter_RAS[1] = sliceIntersectionPoint_RAS[1];
+  this->StartRotationCenter_RAS[2] = sliceIntersectionPoint_RAS[2];
 
   rotatedSliceToSliceTransform->Translate(this->StartRotationCenter_RAS[0], this->StartRotationCenter_RAS[1], this->StartRotationCenter_RAS[2]);
   double rotationDirection = vtkMath::Determinant3x3(sliceToRAS->Element[0], sliceToRAS->Element[1], sliceToRAS->Element[2]) >= 0 ? 1.0 : -1.0;

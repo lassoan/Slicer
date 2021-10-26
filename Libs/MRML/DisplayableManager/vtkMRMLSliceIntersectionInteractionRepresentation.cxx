@@ -1047,10 +1047,8 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   vtkMatrix4x4::Invert(xyToRAS, rasToXY);
 
   // Get slice intersection point XY
-  this->GetSliceIntersectionPoint(); // Get slice intersection point RAS
-  double sliceIntersectionPointRAS[4] = { this->SliceIntersectionPoint[0], this->SliceIntersectionPoint[1], this->SliceIntersectionPoint[2], 1 };
-  double sliceIntersectionPoint[4] = { 0.0, 0.0, 0.0, 1 };
-  rasToXY->MultiplyPoint(sliceIntersectionPointRAS, sliceIntersectionPoint); // Get slice intersection point XY
+  this->GetSliceIntersectionPoint();
+  double sliceIntersectionPoint[4] = { this->SliceIntersectionPoint[0], this->SliceIntersectionPoint[1], this->SliceIntersectionPoint[2], 1 };
 
   // Get outer intersection line tips
   vtkMatrix4x4* intersectingXYToRAS = intersectingSliceNode->GetXYToRAS();
@@ -1661,78 +1659,103 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::RemoveAllIntersectingSli
 //----------------------------------------------------------------------
 double* vtkMRMLSliceIntersectionInteractionRepresentation::GetSliceIntersectionPoint()
 {
-  // Slice node where interaction takes place
-  vtkMRMLSliceNode* intersectingSliceNode = this->Internal->SliceNode;
+  this->SliceIntersectionPoint[0] = 0.0;
+  this->SliceIntersectionPoint[1] = 0.0;
+  this->SliceIntersectionPoint[2] = 0.0;
 
-  // Get slice nodes from scene
-  vtkMRMLScene* scene = intersectingSliceNode->GetScene();
-  if (!scene)
+  size_t numberOfIntersections = this->Internal->SliceIntersectionInteractionDisplayPipelines.size();
+  int numberOfFoundIntersectionPoints = 0;
+  if (!this->Internal->SliceNode)
     {
     return this->SliceIntersectionPoint;
     }
-  std::vector<vtkMRMLNode*> sliceNodes;
-  int nnodes = scene ? scene->GetNodesByClass("vtkMRMLSliceNode", sliceNodes) : 0;
 
-  // Red slice
-  vtkMRMLSliceNode* redSliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[0]);
-  vtkMatrix4x4* redSliceToRASTransformMatrix = redSliceNode->GetSliceToRAS();
-  double redSlicePlaneOrigin[3] = { redSliceToRASTransformMatrix->GetElement(0, 3), redSliceToRASTransformMatrix->GetElement(1,3),
-                                    redSliceToRASTransformMatrix->GetElement(2,3) };
-  double redSlicePlaneNormal[3] = { redSliceToRASTransformMatrix->GetElement(0, 2), redSliceToRASTransformMatrix->GetElement(1,2),
-                                    redSliceToRASTransformMatrix->GetElement(2,2) };
+  // XY to RAS
+  vtkMatrix4x4* xyToRAS = this->Internal->SliceNode->GetXYToRAS();
 
-  // Green slice
-  vtkMRMLSliceNode* greenSliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[1]);
-  vtkMatrix4x4* greenSliceToRASTransformMatrix = greenSliceNode->GetSliceToRAS();
-  double greenSlicePlaneOrigin[3] = { greenSliceToRASTransformMatrix->GetElement(0, 3), greenSliceToRASTransformMatrix->GetElement(1,3),
-                                      greenSliceToRASTransformMatrix->GetElement(2,3) };
-  double greenSlicePlaneNormal[3] = { greenSliceToRASTransformMatrix->GetElement(0, 2), greenSliceToRASTransformMatrix->GetElement(1,2),
-                                      greenSliceToRASTransformMatrix->GetElement(2,2) };
+  // Get intersection point
+  for (size_t slice1Index = 0; slice1Index < numberOfIntersections - 1; slice1Index++)
+    {
+    if (!this->Internal->SliceIntersectionInteractionDisplayPipelines[slice1Index]->GetVisibility())
+      {
+      continue;
+      }
+    // Get line 1 points
+    vtkLineSource* line1R = this->Internal->SliceIntersectionInteractionDisplayPipelines[slice1Index]->IntersectionLine1;
+    vtkLineSource* line1L = this->Internal->SliceIntersectionInteractionDisplayPipelines[slice1Index]->IntersectionLine2;
+    double* line1PointR = line1R->GetPoint1();
+    double* line1PointL = line1L->GetPoint1();
 
-  // Yellow slice
-  vtkMRMLSliceNode* yellowSliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[2]);
-  vtkMatrix4x4* yellowSliceToRASTransformMatrix = yellowSliceNode->GetSliceToRAS();
-  double yellowSlicePlaneOrigin[3] = { yellowSliceToRASTransformMatrix->GetElement(0, 3), yellowSliceToRASTransformMatrix->GetElement(1,3),
-                                       yellowSliceToRASTransformMatrix->GetElement(2,3) };
-  double yellowSlicePlaneNormal[3] = { yellowSliceToRASTransformMatrix->GetElement(0, 2), yellowSliceToRASTransformMatrix->GetElement(1,2),
-                                       yellowSliceToRASTransformMatrix->GetElement(2,2) };
+    // Get extended line 1 points
+    double line1Direction[3] = { line1PointR[0] - line1PointL[0],
+                                 line1PointR[1] - line1PointL[1],
+                                 line1PointR[2] - line1PointL[2] };
+    double line1DirectionInv[3] = { -line1Direction[0], -line1Direction[1], -line1Direction[2] };
+    double line1Length = vtkMath::Norm(line1Direction);
+    vtkMath::Normalize(line1Direction);
+    vtkMath::Normalize(line1DirectionInv);
+    double extendLineFactor = 100;
+    double extendedLine1PointR[3] = { line1PointL[0] + line1Direction[0] * line1Length * extendLineFactor,
+                                      line1PointL[1] + line1Direction[1] * line1Length * extendLineFactor,
+                                      line1PointL[2] + line1Direction[2] * line1Length * extendLineFactor };
+    double extendedLine1PointL[3] = { line1PointR[0] + line1DirectionInv[0] * line1Length * extendLineFactor,
+                                      line1PointR[1] + line1DirectionInv[1] * line1Length * extendLineFactor,
+                                      line1PointR[2] + line1DirectionInv[2] * line1Length * extendLineFactor };
 
-  // Build matrix with normals (n1,n2,n3) and compute determinant det(n1,n2,n3)
-  vtkNew<vtkMatrix3x3> slicePlaneNormalsMatrix;
-  slicePlaneNormalsMatrix->SetElement(0, 0, redSlicePlaneNormal[0]);
-  slicePlaneNormalsMatrix->SetElement(0, 1, redSlicePlaneNormal[1]);
-  slicePlaneNormalsMatrix->SetElement(0, 2, redSlicePlaneNormal[2]);
-  slicePlaneNormalsMatrix->SetElement(1, 0, greenSlicePlaneNormal[0]);
-  slicePlaneNormalsMatrix->SetElement(1, 1, greenSlicePlaneNormal[1]);
-  slicePlaneNormalsMatrix->SetElement(1, 2, greenSlicePlaneNormal[2]);
-  slicePlaneNormalsMatrix->SetElement(2, 0, yellowSlicePlaneNormal[0]);
-  slicePlaneNormalsMatrix->SetElement(2, 1, yellowSlicePlaneNormal[1]);
-  slicePlaneNormalsMatrix->SetElement(2, 2, yellowSlicePlaneNormal[2]);
-  double determinant = slicePlaneNormalsMatrix->Determinant();
+    for (size_t slice2Index = slice1Index + 1; slice2Index < numberOfIntersections; slice2Index++)
+      {
+      if (!this->Internal->SliceIntersectionInteractionDisplayPipelines[slice2Index]->GetVisibility())
+        {
+        continue;
+        }
+      // Get line 2 points
+      vtkLineSource* line2R = this->Internal->SliceIntersectionInteractionDisplayPipelines[slice2Index]->IntersectionLine1;
+      vtkLineSource* line2L = this->Internal->SliceIntersectionInteractionDisplayPipelines[slice2Index]->IntersectionLine2;
+      double* line2PointR = line2R->GetPoint1();
+      double* line2PointL = line2L->GetPoint1();
 
-  // 3-plane intersection point: P = (( point_on1 • n1 )( n2 × n3 ) + ( point_on2 • n2 )( n3 × n1 ) + ( point_on3 • n3 )( n1 × n2 )) / det(n1,n2,n3)
-  double d1 = vtkMath::Dot(redSlicePlaneOrigin, redSlicePlaneNormal);
-  double cross1[3];
-  vtkMath::Cross(greenSlicePlaneNormal, yellowSlicePlaneNormal, cross1);
-  vtkMath::MultiplyScalar(cross1, d1);
-  double d2 = vtkMath::Dot(greenSlicePlaneOrigin, greenSlicePlaneNormal);
-  double cross2[3];
-  vtkMath::Cross(yellowSlicePlaneNormal, redSlicePlaneNormal, cross2);
-  vtkMath::MultiplyScalar(cross2, d2);
-  double d3 = vtkMath::Dot(yellowSlicePlaneOrigin, yellowSlicePlaneNormal);
-  double cross3[3];
-  vtkMath::Cross(redSlicePlaneNormal, greenSlicePlaneNormal, cross3);
-  vtkMath::MultiplyScalar(cross3, d3);
-  double crossSum12[3];
-  vtkMath::Add(cross1, cross2, crossSum12);
-  double sliceIntersectionPoint[3];
-  vtkMath::Add(crossSum12, cross3, sliceIntersectionPoint);
-  vtkMath::MultiplyScalar(sliceIntersectionPoint, 1 / determinant);
+      // Get extended line 2 points
+      double line2Direction[3] = { line2PointR[0] - line2PointL[0],
+                                   line2PointR[1] - line2PointL[1],
+                                   line2PointR[2] - line2PointL[2] };
+      double line2DirectionInv[3] = { -line2Direction[0], -line2Direction[1], -line2Direction[2] };
+      double line2Length = vtkMath::Norm(line2Direction);
+      vtkMath::Normalize(line2Direction);
+      vtkMath::Normalize(line2DirectionInv);
+      double extendedLine2PointR[3] = { line2PointL[0] + line2Direction[0] * line2Length * extendLineFactor,
+                                        line2PointL[1] + line2Direction[1] * line2Length * extendLineFactor,
+                                        line2PointL[2] + line2Direction[2] * line2Length * extendLineFactor };
+      double extendedLine2PointL[3] = { line2PointR[0] + line2DirectionInv[0] * line2Length * extendLineFactor,
+                                        line2PointR[1] + line2DirectionInv[1] * line2Length * extendLineFactor,
+                                        line2PointR[2] + line2DirectionInv[2] * line2Length * extendLineFactor };
 
-  this->SliceIntersectionPoint[0] = sliceIntersectionPoint[0];
-  this->SliceIntersectionPoint[1] = sliceIntersectionPoint[1];
-  this->SliceIntersectionPoint[2] = sliceIntersectionPoint[2];
-
+      // Compute intersection
+      double line1ParametricPosition = 0;
+      double line2ParametricPosition = 0;
+      if (vtkLine::Intersection(extendedLine1PointR, extendedLine1PointL, extendedLine2PointR, extendedLine2PointL,
+        line1ParametricPosition, line2ParametricPosition))
+        {
+        this->SliceIntersectionPoint[0] += extendedLine1PointR[0] + line1ParametricPosition * (extendedLine1PointL[0] - extendedLine1PointR[0]);
+        this->SliceIntersectionPoint[1] += extendedLine1PointR[1] + line1ParametricPosition * (extendedLine1PointL[1] - extendedLine1PointR[1]);
+        this->SliceIntersectionPoint[2] += extendedLine1PointR[2] + line1ParametricPosition * (extendedLine1PointL[2] - extendedLine1PointR[2]);
+        numberOfFoundIntersectionPoints++;
+        }
+      }
+    }
+  if (numberOfFoundIntersectionPoints > 0)
+    {
+    this->SliceIntersectionPoint[0] /= numberOfFoundIntersectionPoints;
+    this->SliceIntersectionPoint[1] /= numberOfFoundIntersectionPoints;
+    this->SliceIntersectionPoint[2] /= numberOfFoundIntersectionPoints;
+    }
+  else
+    {
+    // No slice intersections, use slice centerpoint
+    int* sliceDimension = this->Internal->SliceNode->GetDimensions();
+    this->SliceIntersectionPoint[0] = sliceDimension[0] / 2.0;
+    this->SliceIntersectionPoint[1] = sliceDimension[1] / 2.0;
+    this->SliceIntersectionPoint[2] = 0.0;
+    }
   return this->SliceIntersectionPoint;
 }
 
