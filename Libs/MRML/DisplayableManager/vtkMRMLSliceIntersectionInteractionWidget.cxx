@@ -214,7 +214,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
     }
   else if (foundComponentType == InteractionSliceOffsetHandle)
     {
-    rep->GetRenderer()->GetRenderWindow()->SetCurrentCursor(VTK_CURSOR_SIZENS); // set cursor to size NS mode
+    rep->GetRenderer()->GetRenderWindow()->SetCurrentCursor(VTK_CURSOR_SIZEALL); // set cursor to size all mode
     }
   else
     {
