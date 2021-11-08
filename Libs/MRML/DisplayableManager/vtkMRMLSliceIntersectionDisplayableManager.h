@@ -44,8 +44,6 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionDisplayableMana
     vtkMRMLSliceIntersectionInteractionWidget* GetSliceIntersectionInteractionWidget();
 
   protected:
-    void ProcessMRMLNodesEvents(vtkObject* caller, unsigned long event, void* callData) override;
-
     void UnobserveMRMLScene() override;
     void ObserveMRMLScene() override;
     void UpdateFromMRMLScene() override;

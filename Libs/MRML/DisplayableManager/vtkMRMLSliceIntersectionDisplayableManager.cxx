@@ -176,23 +176,6 @@ void vtkMRMLSliceIntersectionDisplayableManager::PrintSelf(ostream& os, vtkInden
 }
 
 //---------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionDisplayableManager::ProcessMRMLNodesEvents(vtkObject* caller, unsigned long event, void* callData)
-{
-  vtkMRMLScene* scene = this->GetMRMLScene();
-
-  if (scene == nullptr || scene->IsBatchProcessing())
-    {
-    return;
-    }
-
-  vtkMRMLSliceCompositeNode* compositeNode = vtkMRMLSliceCompositeNode::SafeDownCast(caller);
-  if (compositeNode && event == vtkCommand::ModifiedEvent)
-    {
-    this->RequestRender();
-    }
-}
-
-//---------------------------------------------------------------------------
 void vtkMRMLSliceIntersectionDisplayableManager::ObserveMRMLScene()
 {
   this->Superclass::ObserveMRMLScene();
