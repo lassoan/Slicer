@@ -1096,8 +1096,6 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   // Get outer intersection line tips adjusted to FOV margins
   double intersectionOuterLineTip1[3] = { intersectionLineTip1[0], intersectionLineTip1[1], intersectionLineTip1[2] };
   double intersectionOuterLineTip2[3] = { intersectionLineTip2[0], intersectionLineTip2[1], intersectionLineTip2[2] };
-  bool intersectionFoundLineTip1;
-  bool intersectionFoundLineTip2;
   if ((sliceIntersectionPoint[0] > sliceViewBounds[0]) && // If intersection point is within FOV
       (sliceIntersectionPoint[0] < sliceViewBounds[1]) &&
       (sliceIntersectionPoint[1] > sliceViewBounds[2]) &&
@@ -1108,7 +1106,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
         (intersectionOuterLineTip1[1] < sliceViewBounds[2]) ||
         (intersectionOuterLineTip1[1] > sliceViewBounds[3]))
       {
-      intersectionFoundLineTip1 = this->GetIntersectionWithSliceViewBoundaries(intersectionOuterLineTip1, sliceIntersectionPoint,
+      this->GetIntersectionWithSliceViewBoundaries(intersectionOuterLineTip1, sliceIntersectionPoint,
                                                                                   sliceViewBounds, intersectionOuterLineTip1);
       }
     if ((intersectionOuterLineTip2[0] < sliceViewBounds[0]) || // If line tip 2 is outside the FOV
@@ -1116,7 +1114,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
         (intersectionOuterLineTip2[1] < sliceViewBounds[2]) ||
         (intersectionOuterLineTip2[1] > sliceViewBounds[3]))
       {
-      intersectionFoundLineTip2 = this->GetIntersectionWithSliceViewBoundaries(intersectionOuterLineTip2, sliceIntersectionPoint,
+      this->GetIntersectionWithSliceViewBoundaries(intersectionOuterLineTip2, sliceIntersectionPoint,
                                                                                   sliceViewBounds, intersectionOuterLineTip2);
       }
     }
@@ -1474,7 +1472,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::GetSliceViewBoundariesXY
 }
 
 //----------------------------------------------------------------------
-bool vtkMRMLSliceIntersectionInteractionRepresentation::GetIntersectionWithSliceViewBoundaries(double* pointA, double* pointB,
+void vtkMRMLSliceIntersectionInteractionRepresentation::GetIntersectionWithSliceViewBoundaries(double* pointA, double* pointB,
       double* sliceViewBounds, double* intersectionPoint)
 {
     // Get line equation -> y = slope * x + intercept
@@ -1499,65 +1497,65 @@ bool vtkMRMLSliceIntersectionInteractionRepresentation::GetIntersectionWithSlice
 
     // Get intersection point using line equation
     double x0, y0;
-    if ((sliceViewBounds[0] > lineBounds[0]) && (sliceViewBounds[0] < lineBounds[1]))
+    if ((xMin > lineBounds[0]) && (xMin < lineBounds[1]))
       {
-      y0 = slope * sliceViewBounds[0] + intercept;
-      if ((y0 > sliceViewBounds[2]) && (y0 < sliceViewBounds[3]))
+      y0 = slope * xMin + intercept;
+      if ((y0 > yMin) && (y0 < yMax))
         {
-        intersectionPoint[0] = sliceViewBounds[0];
+        intersectionPoint[0] = xMin;
         intersectionPoint[1] = y0;
-        return true;
+        return;
         }
       }
-    if ((sliceViewBounds[1] > lineBounds[0]) && (sliceViewBounds[1] < lineBounds[1]))
+    if ((xMax > lineBounds[0]) && (xMax < lineBounds[1]))
       {
-      y0 = slope * sliceViewBounds[1] + intercept;
-      if ((y0 > sliceViewBounds[2]) && (y0 < sliceViewBounds[3]))
+      y0 = slope * xMax + intercept;
+      if ((y0 > yMin) && (y0 < yMax))
         {
-        intersectionPoint[0] = sliceViewBounds[1];
+        intersectionPoint[0] = xMax;
         intersectionPoint[1] = y0;
-        return true;
+        return;
         }
       }
-    if ((sliceViewBounds[2] > lineBounds[2]) && (sliceViewBounds[2] < lineBounds[3]))
+    if ((yMin > lineBounds[2]) && (yMin < lineBounds[3]))
       {
       if (std::isfinite(slope)) // check if slope is finite
         {
-        x0 = (sliceViewBounds[2] - intercept)/slope;
-        if ((x0 > sliceViewBounds[0]) && (x0 < sliceViewBounds[1]))
+        x0 = (yMin - intercept)/slope;
+        if ((x0 > xMin) && (x0 < xMax))
           {
           intersectionPoint[0] = x0;
-          intersectionPoint[1] = sliceViewBounds[2];
-          return true;
+          intersectionPoint[1] = yMin;
+          return;
           }
         }
       else // infinite slope = vertical line
         {
           intersectionPoint[0] = lineBounds[0]; // or lineBounds[1] (if the line is vertical, then both points A and B have the same value of X)
-          intersectionPoint[1] = sliceViewBounds[2];
-          return true;
+          intersectionPoint[1] = yMin;
+          return;
         }
       }
-    if ((sliceViewBounds[3] > lineBounds[2]) && (sliceViewBounds[3] < lineBounds[3]))
+    if ((yMax > lineBounds[2]) && (yMax < lineBounds[3]))
       {
       if (std::isfinite(slope)) // check if slope is finite
         {
-        x0 = (sliceViewBounds[3] - intercept)/slope;
-        if ((x0 > sliceViewBounds[0]) && (x0 < sliceViewBounds[1]))
+        x0 = (yMax - intercept)/slope;
+        if ((x0 > xMin) && (x0 < xMax))
           {
           intersectionPoint[0] = x0;
-          intersectionPoint[1] = sliceViewBounds[3];
-          return true;
+          intersectionPoint[1] = yMax;
+          return;
           }
         }
       else // infinite slope = vertical line
         {
           intersectionPoint[0] = lineBounds[0]; // or lineBounds[1] (if the line is vertical, then both points A and B have the same value of X)
-          intersectionPoint[1] = sliceViewBounds[3];
-          return true;
+          intersectionPoint[1] = yMax;
+          return;
         }
       }
-    return false;
+    return;
 }
 
 //----------------------------------------------------------------------

@@ -154,7 +154,6 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
     {
     return false;
     }
-  int eventid = eventData->GetType();
 
   // Get widget event
   unsigned long widgetEvent = this->TranslateInteractionEventToWidgetEvent(eventData);

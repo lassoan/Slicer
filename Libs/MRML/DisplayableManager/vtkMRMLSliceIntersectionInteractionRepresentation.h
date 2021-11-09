@@ -89,7 +89,7 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     int IntersectWithFinitePlane(double n[3], double o[3], double pOrigin[3], double px[3], double py[3], double x0[3], double x1[3]);
 
     /// Compute intersection between a 2D line and the slice view boundaries
-    bool GetIntersectionWithSliceViewBoundaries(double* pointA, double* pointB, double* sliceViewBounds, double* intersectionPoint);
+    void GetIntersectionWithSliceViewBoundaries(double* pointA, double* pointB, double* sliceViewBounds, double* intersectionPoint);
 
     /// Get boundaries of the slice view associated with a given vtkMRMLSliceNode
     void GetSliceViewBoundariesXY(vtkMRMLSliceNode* sliceNode, double* sliceViewBounds);
@@ -168,14 +168,6 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     void UpdateSliceIntersectionDisplay(SliceIntersectionInteractionDisplayPipeline* pipeline);
 
     double GetSliceRotationAngleRad(int eventPos[2]);
-
-    /// The internal transformation matrix
-    vtkTransform* CurrentTransform;
-    vtkTransform* TotalTransform;
-    double Origin[4]; //the current origin in world coordinates
-    double DisplayOrigin[3]; //the current origin in display coordinates
-    double CurrentTranslation[3]; //translation this movement
-    double StartWorldPosition[4]; //Start event position converted to world
 
     /// Support picking
     double LastEventPosition[2];
