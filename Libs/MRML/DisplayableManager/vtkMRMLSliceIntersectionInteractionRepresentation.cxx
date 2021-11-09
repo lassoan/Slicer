@@ -179,6 +179,10 @@ class SliceIntersectionInteractionDisplayPipeline
       // Slice offset handles
       this->CreateSliceOffsetHandles();
 
+      // Handles visibility
+      this->RotationHandlesVisible = true;
+      this->TranslationHandlesVisible = true;
+
       // Handle points
       this->RotationHandlePoints = vtkSmartPointer<vtkPolyData>::New();
       this->TranslationHandlePoints = vtkSmartPointer<vtkPolyData>::New();
@@ -722,15 +726,24 @@ class SliceIntersectionInteractionDisplayPipeline
       {
       if (VISUALIZATION_MODE == ShowIntersection)
         {
-        this->TranslationOuterHandleActor->SetVisibility(visibility);
-        this->TranslationInnerHandleActor->SetVisibility(visibility);
+        if (this->TranslationHandlesVisible)
+          {
+          this->TranslationOuterHandleActor->SetVisibility(visibility);
+          this->TranslationInnerHandleActor->SetVisibility(visibility);
+          }
         }
       if (visibility)
         {
-        this->RotationHandle1Actor->SetVisibility(this->RotationHandle1Visible);
-        this->RotationHandle2Actor->SetVisibility(this->RotationHandle2Visible);
-        this->SliceOffsetHandle1Actor->SetVisibility(this->SliceOffsetHandle1Visible);
-        this->SliceOffsetHandle2Actor->SetVisibility(this->SliceOffsetHandle2Visible);
+        if (this->RotationHandlesVisible)
+          {
+          this->RotationHandle1Actor->SetVisibility(this->RotationHandle1Visible);
+          this->RotationHandle2Actor->SetVisibility(this->RotationHandle2Visible);
+          }
+        if (this->TranslationHandlesVisible)
+          {
+          this->SliceOffsetHandle1Actor->SetVisibility(this->SliceOffsetHandle1Visible);
+          this->SliceOffsetHandle2Actor->SetVisibility(this->SliceOffsetHandle2Visible);
+          }
         }
       else
         {
@@ -821,7 +834,8 @@ class SliceIntersectionInteractionDisplayPipeline
     bool SliceOffsetHandle2Visible;
     bool RotationHandle1Visible;
     bool RotationHandle2Visible;
-
+    bool RotationHandlesVisible;
+    bool TranslationHandlesVisible;
   };
 
 class vtkMRMLSliceIntersectionInteractionRepresentation::vtkInternal
@@ -1015,13 +1029,15 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
     }
   if (compositeNode)
     {
-    bool sliceInteractionHandlesVisible = compositeNode->GetSliceIntersectionHandlesVisibility();
-    if (!sliceInteractionHandlesVisible)
+    bool sliceInteractionHandlesInteractive = compositeNode->GetHandlesInteractive();
+    if (!sliceInteractionHandlesInteractive)
       {
       pipeline->SetVisibility(false);
       pipeline->SetHandlesVisibility(false);
       return;
       }
+    pipeline->TranslationHandlesVisible = compositeNode->GetTranslationHandleVisibility();
+    pipeline->RotationHandlesVisible = compositeNode->GetRotationHandleVisibility();
     }
 
   // Set thickness of intersection lines
