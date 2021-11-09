@@ -174,12 +174,14 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
     return true;
     }
 
-  // Interaction mode
+  /*
+  // Disable interaction with handles when interaction mode is not vtkMRMLInteractionNode::ViewTransform.
   int currentInteractionMode = this->ApplicationLogic->GetInteractionNode()->GetCurrentInteractionMode();
   if (currentInteractionMode != vtkMRMLInteractionNode::ViewTransform)
     {
     return false;
     }
+  */
 
   // Interaction
   int foundComponentType = InteractionNone;
