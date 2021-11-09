@@ -195,8 +195,8 @@ void vtkMRMLSliceIntersectionDisplayableManager::ObserveMRMLScene()
   vtkEventBroker* broker = vtkEventBroker::GetInstance();
   vtkMRMLScene* scene = this->GetMRMLScene();
   std::vector<vtkMRMLNode*> sliceCompositeNodes;
-  int numOfSegmentationNodes = scene->GetNodesByClass("vtkMRMLSliceCompositeNode", sliceCompositeNodes);
-  for (int i = 0; i < numOfSegmentationNodes; i++)
+  int numOfSliceCompositeNodes = scene->GetNodesByClass("vtkMRMLSliceCompositeNode", sliceCompositeNodes);
+  for (int i = 0; i < numOfSliceCompositeNodes; i++)
     {
     vtkMRMLSliceCompositeNode* sliceCompositeNode = vtkMRMLSliceCompositeNode::SafeDownCast(sliceCompositeNodes[i]);
     if (!broker->GetObservationExist(sliceCompositeNode, vtkCommand::ModifiedEvent, this, this->GetMRMLNodesCallbackCommand()))
