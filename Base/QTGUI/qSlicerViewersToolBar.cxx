@@ -205,29 +205,39 @@ void qSlicerViewersToolBarPrivate::init()
 
   // Interactive slice intersections
   this->CrosshairInteractiveSliceIntersectionsAction = new QAction(q);
-  this->CrosshairInteractiveSliceIntersectionsAction->setText(tr("Interactive"));
+  this->CrosshairInteractiveSliceIntersectionsAction->setText(tr("Interaction"));
   this->CrosshairInteractiveSliceIntersectionsAction->setToolTip(tr("Show handles for slice interaction."));
   this->CrosshairInteractiveSliceIntersectionsAction->setCheckable(true);
-  this->CrosshairInteractiveSliceIntersectionsAction->setVisible(false);
+  this->CrosshairInteractiveSliceIntersectionsAction->setEnabled(false);
   QObject::connect(this->CrosshairInteractiveSliceIntersectionsAction, SIGNAL(triggered(bool)),
-      this, SLOT(setSliceIntersectionHandlesVisible(bool)));
+    this, SLOT(setSliceIntersectionHandlesVisible(bool)));
 
-  // Interaction handles visibility
+  // Interaction options
+  this->CrosshairTranslationHandlesSliceIntersectionsAction = new QAction(q);
+  this->CrosshairTranslationHandlesSliceIntersectionsAction->setText(tr("Translate"));
+  this->CrosshairTranslationHandlesSliceIntersectionsAction->setToolTip(tr("Control visibility of translation handles for slice interaction."));
+  this->CrosshairTranslationHandlesSliceIntersectionsAction->setCheckable(true);
+  this->CrosshairTranslationHandlesSliceIntersectionsAction->setEnabled(false);
+  QObject::connect(this->CrosshairTranslationHandlesSliceIntersectionsAction, SIGNAL(triggered(bool)),
+    this, SLOT(setSliceIntersectionTranslationHandlesVisible(bool)));
+
   this->CrosshairRotationHandlesSliceIntersectionsAction = new QAction(q);
-  this->CrosshairRotationHandlesSliceIntersectionsAction->setText(tr("Rotation handles"));
+  this->CrosshairRotationHandlesSliceIntersectionsAction->setText(tr("Rotate"));
   this->CrosshairRotationHandlesSliceIntersectionsAction->setToolTip(tr("Control visibility of rotation handles for slice interaction."));
   this->CrosshairRotationHandlesSliceIntersectionsAction->setCheckable(true);
-  this->CrosshairRotationHandlesSliceIntersectionsAction->setVisible(false);
+  this->CrosshairRotationHandlesSliceIntersectionsAction->setEnabled(false);
   QObject::connect(this->CrosshairRotationHandlesSliceIntersectionsAction, SIGNAL(triggered(bool)),
     this, SLOT(setSliceIntersectionRotationHandlesVisible(bool)));
 
-  this->CrosshairTranslationHandlesSliceIntersectionsAction = new QAction(q);
-  this->CrosshairTranslationHandlesSliceIntersectionsAction->setText(tr("Translation handles"));
-  this->CrosshairTranslationHandlesSliceIntersectionsAction->setToolTip(tr("Control visibility of translation handles for slice interaction."));
-  this->CrosshairTranslationHandlesSliceIntersectionsAction->setCheckable(true);
-  this->CrosshairTranslationHandlesSliceIntersectionsAction->setVisible(false);
-  QObject::connect(this->CrosshairTranslationHandlesSliceIntersectionsAction, SIGNAL(triggered(bool)),
-    this, SLOT(setSliceIntersectionTranslationHandlesVisible(bool)));
+  this->CrosshairHandleVisibilityMenu = new QMenu();
+  this->CrosshairHandleVisibilityMenu->addAction(this->CrosshairTranslationHandlesSliceIntersectionsAction);
+  this->CrosshairHandleVisibilityMenu->addAction(this->CrosshairRotationHandlesSliceIntersectionsAction);
+
+  this->CrosshairHandleVisibilityAction = new QAction("Interaction options");
+  this->CrosshairHandleVisibilityAction->setObjectName("HandleInteractionOptions");
+  this->CrosshairHandleVisibilityAction->setEnabled(false);
+  //q->setActionPosition(this->CrosshairHandleVisibilityAction, interactionHandlesSection);
+  this->CrosshairHandleVisibilityAction->setMenu(this->CrosshairHandleVisibilityMenu);
 
   // Menu
   this->CrosshairMenu = new QMenu(tr("Crosshair"), q);
@@ -239,8 +249,7 @@ void qSlicerViewersToolBarPrivate::init()
   this->CrosshairMenu->addSeparator();
   this->CrosshairMenu->addAction(this->CrosshairSliceIntersectionsAction);
   this->CrosshairMenu->addAction(this->CrosshairInteractiveSliceIntersectionsAction);
-  this->CrosshairMenu->addAction(this->CrosshairRotationHandlesSliceIntersectionsAction);
-  this->CrosshairMenu->addAction(this->CrosshairTranslationHandlesSliceIntersectionsAction);
+  this->CrosshairMenu->addMenu(this->CrosshairHandleVisibilityMenu);
 
   this->CrosshairToolButton = new QToolButton();
 //  this->CrosshairToolButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -636,11 +645,15 @@ void qSlicerViewersToolBarPrivate::updateWidgetFromMRML()
         {
         this->CrosshairSliceIntersectionsAction->setChecked((node->GetSliceIntersectionVisibility() || node->GetHandlesInteractive()));
         this->CrosshairInteractiveSliceIntersectionsAction->setChecked(node->GetHandlesInteractive());
-        this->CrosshairInteractiveSliceIntersectionsAction->setVisible(this->CrosshairSliceIntersectionsAction->isChecked()); // visibility
+        this->CrosshairInteractiveSliceIntersectionsAction->setEnabled(this->CrosshairSliceIntersectionsAction->isChecked());
+        // Interaction options submenu
+        this->CrosshairHandleVisibilityAction->setEnabled(this->CrosshairInteractiveSliceIntersectionsAction->isChecked());
+        // Rotation handles visibility
         this->CrosshairRotationHandlesSliceIntersectionsAction->setChecked(node->GetRotationHandleVisibility());
-        this->CrosshairRotationHandlesSliceIntersectionsAction->setVisible(this->CrosshairInteractiveSliceIntersectionsAction->isChecked()); // visibility
+        this->CrosshairRotationHandlesSliceIntersectionsAction->setEnabled(this->CrosshairInteractiveSliceIntersectionsAction->isChecked());
+        // Translation handles visibility
         this->CrosshairTranslationHandlesSliceIntersectionsAction->setChecked(node->GetTranslationHandleVisibility());
-        this->CrosshairTranslationHandlesSliceIntersectionsAction->setVisible(this->CrosshairInteractiveSliceIntersectionsAction->isChecked()); // visibility
+        this->CrosshairTranslationHandlesSliceIntersectionsAction->setEnabled(this->CrosshairInteractiveSliceIntersectionsAction->isChecked());
         }
       }
     }

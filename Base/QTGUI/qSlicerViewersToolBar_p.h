@@ -112,10 +112,13 @@ public:
   QAction*      CrosshairBasicIntersectionAction;
   QAction*      CrosshairSmallBasicAction;
   QAction*      CrosshairSmallBasicIntersectionAction;
+
   QAction*      CrosshairSliceIntersectionsAction;
   QAction*      CrosshairInteractiveSliceIntersectionsAction;
   QAction*      CrosshairRotationHandlesSliceIntersectionsAction;
   QAction*      CrosshairTranslationHandlesSliceIntersectionsAction;
+  QMenu*        CrosshairHandleVisibilityMenu;
+  QAction*      CrosshairHandleVisibilityAction;
 
   ctkSignalMapper* CrosshairThicknessMapper;
   QAction*      CrosshairFineAction;
