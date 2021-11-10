@@ -47,7 +47,6 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionDisplayableMana
     void UnobserveMRMLScene() override;
     void ObserveMRMLScene() override;
     void UpdateFromMRMLScene() override;
-    void OnMRMLNodeModified(vtkMRMLNode* node) override;
 
   protected:
     vtkMRMLSliceIntersectionDisplayableManager();

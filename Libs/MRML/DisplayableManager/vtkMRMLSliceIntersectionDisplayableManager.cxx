@@ -82,12 +82,6 @@ class vtkMRMLSliceIntersectionDisplayableManager::vtkInternal
     void AddCrosshairLine(vtkPoints* pts, vtkCellArray* cellArray,
       int p1x, int p1y, int p2x, int p2y);
 
-    // Did crosshair position change?
-    bool DidCrosshairPositionChange();
-
-    // Did crosshair property change?
-    bool DidCrosshairPropertyChange();
-
     vtkMRMLSliceIntersectionDisplayableManager* External;
     int                                        PickState;
     int                                        ActionState;
@@ -231,13 +225,6 @@ void vtkMRMLSliceIntersectionDisplayableManager::UnobserveMRMLScene()
     broker->RemoveObservations(observations);
     }
   }
-
-//---------------------------------------------------------------------------
-void vtkMRMLSliceIntersectionDisplayableManager::OnMRMLNodeModified(
-  vtkMRMLNode* vtkNotUsed(node))
-{
-    // test
-}
 
 //---------------------------------------------------------------------------
 bool vtkMRMLSliceIntersectionDisplayableManager::CanProcessInteractionEvent(vtkMRMLInteractionEventData* eventData, double& closestDistance2)
