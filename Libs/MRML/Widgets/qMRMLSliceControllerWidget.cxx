@@ -1962,6 +1962,16 @@ void qMRMLSliceControllerWidget::trackSliceOffsetValue(double offset)
     {
     applicationLogic->ResumeRender();
     }
+
+  // Enable updates of display pipelines in scene by modifying all associated slice nodes
+  vtkMRMLScene* scene = this->mrmlScene();
+  std::vector<vtkMRMLNode*> sliceNodes;
+  int nnodes = scene ? scene->GetNodesByClass("vtkMRMLSliceNode", sliceNodes) : 0;
+  for (int i = 0; i < nnodes; i++)
+    {
+    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[i]);
+    sliceNode->Modified();
+    }
 }
 
 // --------------------------------------------------------------------------
