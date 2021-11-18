@@ -188,6 +188,7 @@ protected:
     double GetSliceRotationAngleRad(double eventPos[2]);
 
     // Move slice in-plane by click-and-drag
+    bool ProcessTranslateSliceStart(vtkMRMLInteractionEventData* eventData);
     bool ProcessTranslateSlice(vtkMRMLInteractionEventData* eventData);
 
     bool ProcessTouchGestureStart(vtkMRMLInteractionEventData* eventData);
@@ -210,6 +211,9 @@ protected:
     int PreviousEventPosition[2];
     double StartRotationCenter[2];
     double StartRotationCenter_RAS[4];
+    double StartTranslationPoint[2];
+    double StartTranslationPoint_RAS[3];
+    double CurrentTranslationPoint_RAS[3];
 
     int ActionsEnabled;
 
