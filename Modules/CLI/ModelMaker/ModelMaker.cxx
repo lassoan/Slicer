@@ -29,11 +29,13 @@ Version:   $Revision$
 // vtkITK includes
 #include "vtkITKArchetypeImageSeriesScalarReader.h"
 
+#define ENABLE_FLYING_EDGES 0
+
 // VTK includes
 #include <vtkVersion.h> // must precede reference to VTK_MAJOR_VERSION
 #include <vtkDebugLeaks.h>
 #include <vtkDecimatePro.h>
-#if VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2)
+#if ENABLE_FLYING_EDGES && (VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2))
   #include <vtkDiscreteFlyingEdges3D.h>
   #include <vtkFlyingEdges3D.h>
 #else
@@ -277,7 +279,7 @@ int main(int argc, char * argv[])
   // vtk and helper variables
   vtkSmartPointer<vtkITKArchetypeImageSeriesReader> reader;
   vtkImageData *                                    image;
-#if VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2)
+#if ENABLE_FLYING_EDGES && (VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2))
   vtkSmartPointer<vtkDiscreteFlyingEdges3D>         cubes;
 #else
   vtkSmartPointer<vtkDiscreteMarchingCubes>         cubes;
@@ -294,7 +296,7 @@ int main(int argc, char * argv[])
   vtkSmartPointer<vtkImageConstantPad>        padder;
   vtkSmartPointer<vtkDecimatePro>             decimator;
 
-#if VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2)
+#if ENABLE_FLYING_EDGES && (VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2))
   vtkSmartPointer<vtkFlyingEdges3D>           mcubes;
 #else
   vtkSmartPointer<vtkMarchingCubes>           mcubes;
@@ -667,7 +669,7 @@ int main(int argc, char * argv[])
       cubes = nullptr;
       }
 
-#if VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2)
+#if ENABLE_FLYING_EDGES && (VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2))
     cubes = vtkSmartPointer<vtkDiscreteFlyingEdges3D>::New();
 #else
     cubes = vtkSmartPointer<vtkDiscreteMarchingCubes>::New();
@@ -1105,7 +1107,7 @@ int main(int argc, char * argv[])
         mcubes->SetInputData(nullptr);
         mcubes = nullptr;
         }
-#if VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2)
+#if ENABLE_FLYING_EDGES && (VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2))
       mcubes = vtkSmartPointer<vtkFlyingEdges3D>::New();
 #else
       mcubes = vtkSmartPointer<vtkMarchingCubes>::New();

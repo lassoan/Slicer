@@ -18,6 +18,8 @@
 
 ==============================================================================*/
 
+#define ENABLE_FLYING_EDGES 0
+
 // SegmentationCore includes
 #include "vtkBinaryLabelmapToClosedSurfaceConversionRule.h"
 #include "vtkSegmentation.h"
@@ -29,7 +31,8 @@
 #include <vtkCompositeDataGeometryFilter.h>
 #include <vtkCompositeDataIterator.h>
 #include <vtkDecimatePro.h>
-#if VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2)
+#define USE_FLYING_EDGES (ENABLE_FLYING_EDGES && (VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2)))
+#if USE_FLYING_EDGES
   #include <vtkDiscreteFlyingEdges3D.h>
 #else
   #include <vtkDiscreteMarchingCubes.h>
@@ -177,6 +180,11 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::Convert(vtkSegment* segment
       std::vector<int> labelValues;
       for (int labelValue = lowLabel; labelValue <= highLabel; ++labelValue)
         {
+        if (labelValue == 0)
+          {
+          // background
+          continue;
+          }
         // Add a new threshold for every level in the labelmap
         double numberOfVoxels = imageAccumulate->GetOutput()->GetPointData()->GetScalars()->GetTuple1((int)labelValue - lowLabel);
         if (numberOfVoxels > 0.0)
@@ -199,8 +207,12 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::Convert(vtkSegment* segment
 
     vtkNew<vtkSelectionSource> selection;
     selection->SetContentType(vtkSelectionNode::THRESHOLDS);
+#if USE_FLYING_EDGES
     selection->SetFieldType(vtkSelectionNode::POINT);
     selection->GetContainingCells();
+#else
+    selection->SetFieldType(vtkSelectionNode::CELL);
+#endif
     selection->AddThreshold(segment->GetLabelValue(), segment->GetLabelValue());
 
     vtkNew<vtkExtractSelection> threshold;
@@ -294,15 +306,16 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
   double smoothingFactor = vtkVariant(this->ConversionParameters[GetSmoothingFactorParameterName()].first).ToDouble();
   int computeSurfaceNormals = vtkVariant(this->ConversionParameters[GetComputeSurfaceNormalsParameterName()].first).ToInt();
 
-#if VTK_MAJOR_VERSION >= 9 || (VTK_MAJOR_VERSION >= 8 && VTK_MINOR_VERSION >= 2)
+#if USE_FLYING_EDGES
   vtkNew<vtkDiscreteFlyingEdges3D> marchingCubes;
 #else
   vtkNew<vtkDiscreteMarchingCubes> marchingCubes;
 #endif
   marchingCubes->SetInputData(binaryLabelmapWithIdentityGeometry);
   marchingCubes->ComputeGradientsOff();
-  marchingCubes->ComputeNormalsOff(); // While computing normals is faster using the flying edges filter,
-  // it results in incorrect normals in meshes from shared labelmaps marchingCubes->ComputeScalarsOn();
+  // While computing normals is faster using the flying edges filter,
+  // it results in incorrect normals in meshes from shared labelmaps marchingCubes->ComputeScalarsOn().
+  marchingCubes->ComputeNormalsOff();
 
   int valueIndex = 0;
   for (vtkIdType labelValue : labelValues)
@@ -356,8 +369,9 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
     smoother->SetPassBand(passBand);
     smoother->BoundarySmoothingOff();
     smoother->FeatureEdgeSmoothingOff();
+    //smoother->SetFeatureAngle(120.0l);
     smoother->NonManifoldSmoothingOn();
-    smoother->NormalizeCoordinatesOn();
+    //smoother->NormalizeCoordinatesOn();
     smoother->Update();
     processingResult = smoother->GetOutput();
     }
@@ -376,12 +390,30 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
     {
     vtkSmartPointer<vtkPolyDataNormals> polyDataNormals = vtkSmartPointer<vtkPolyDataNormals>::New();
     polyDataNormals->SetInputConnection(transformPolyDataFilter->GetOutputPort());
-    polyDataNormals->ConsistencyOn(); // discrete marching cubes may generate inconsistent surface
+
+    //polyDataNormals->SetAutoOrientNormals(true);
+    //polyDataNormals->ConsistencyOn(); // discrete marching cubes may generate inconsistent surface
+
     // We almost always perform smoothing, so splitting would not be able to preserve any sharp features
     // (and sharp edges would look like artifacts in the smooth surface).
     polyDataNormals->SplittingOff();
+
     polyDataNormals->Update();
     convertedSegment->ShallowCopy(polyDataNormals->GetOutput());
+
+    /*
+    vtkNew<vtkPolyDataNormals> polyDataNormals2;
+    polyDataNormals2->SetInputConnection(polyDataNormals->GetOutputPort());
+
+    polyDataNormals2->SetAutoOrientNormals(true);
+    polyDataNormals2->ConsistencyOn(); // discrete marching cubes may generate inconsistent surface
+
+    // We almost always perform smoothing, so splitting would not be able to preserve any sharp features
+    // (and sharp edges would look like artifacts in the smooth surface).
+    polyDataNormals2->SplittingOff();
+    polyDataNormals2->Update();
+    convertedSegment->ShallowCopy(polyDataNormals2->GetOutput());
+    */
     }
   else
     {
