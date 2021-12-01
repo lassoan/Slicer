@@ -25,6 +25,7 @@
 
 #include "vtkMRMLDisplayableManagerExport.h" // For export macro
 #include "vtkMRMLAbstractWidgetRepresentation.h"
+#include "vtkMRMLSliceIntersectionInteractionRepresentationHelper.h"
 
 #include "vtkMRMLSliceNode.h"
 
@@ -86,22 +87,8 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     /// Get slice intersection point between red, green and yellow slice nodes
     double* GetSliceIntersectionPoint();
 
-    int IntersectWithFinitePlane(double n[3], double o[3], double pOrigin[3], double px[3], double py[3], double x0[3], double x1[3]);
-
-    /// Compute intersection between a 2D line and the slice view boundaries
-    void GetIntersectionWithSliceViewBoundaries(double* pointA, double* pointB, double* sliceViewBounds, double* intersectionPoint);
-
-    /// Get boundaries of the slice view associated with a given vtkMRMLSliceNode
-    void GetSliceViewBoundariesXY(vtkMRMLSliceNode* sliceNode, double* sliceViewBounds);
-
     /// Check whether the mouse cursor is within the slice view or not
     bool IsMouseCursorInSliceView(double cursorPosition[2]);
-
-    int GetLineTipsFromIntersectingSliceNode(vtkMRMLSliceNode* intersectingSliceNode, vtkMatrix4x4* intersectingXYToXY,
-        double intersectionLineTip1[3], double intersectionLineTip2[3]);
-
-    void ComputeHandleToWorldTransformMatrix(double handlePosition[2], double handleOrientation[2], vtkMatrix4x4* handleToWorldTransformMatrix);
-    void RotationMatrixFromVectors(double vector1[2], double vector2[2], vtkMatrix4x4* rotationMatrixHom);
 
     void SetPipelinesHandlesVisibility(bool visible);
     void SetPipelinesHandlesOpacity(double opacity);
@@ -187,6 +174,8 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
 
     class vtkInternal;
     vtkInternal* Internal;
+
+    vtkMRMLSliceIntersectionInteractionRepresentationHelper* Helper;
 
   private:
     vtkMRMLSliceIntersectionInteractionRepresentation(const vtkMRMLSliceIntersectionInteractionRepresentation&) = delete;
