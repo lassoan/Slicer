@@ -198,7 +198,20 @@ void vtkMRMLSliceIntersectionDisplayableManager::ObserveMRMLScene()
       broker->AddObservation(sliceCompositeNode, vtkCommand::ModifiedEvent, this, this->GetMRMLNodesCallbackCommand());
       }
     }
-}
+
+  // Observe slice logics
+  // Needed to update the display pipelines when slice offset is changed using the sliders in the slice views.
+  vtkCollection* sliceLogics = this->GetMRMLApplicationLogic()->GetSliceLogics();
+  vtkCollectionSimpleIterator it;
+  vtkMRMLSliceLogic* sliceLogic;
+  for (sliceLogics->InitTraversal(it); (sliceLogic = vtkMRMLSliceLogic::SafeDownCast(sliceLogics->GetNextItemAsObject(it)));)
+    {
+    if (!broker->GetObservationExist(sliceLogic, vtkCommand::ModifiedEvent, this, this->GetMRMLLogicsCallbackCommand()))
+      {
+      broker->AddObservation(sliceLogic, vtkCommand::ModifiedEvent, this, this->GetMRMLLogicsCallbackCommand());
+      }
+    }
+  }
 
 //---------------------------------------------------------------------------
 void vtkMRMLSliceIntersectionDisplayableManager::UpdateFromMRMLScene()
@@ -213,6 +226,7 @@ void vtkMRMLSliceIntersectionDisplayableManager::UnobserveMRMLScene()
 
   this->Internal->SliceIntersectionInteractionWidget->SetSliceNode(nullptr);
 
+  // Unobserve slice composite nodes
   vtkEventBroker* broker = vtkEventBroker::GetInstance();
   vtkMRMLScene* scene = this->GetMRMLScene();
   std::vector<vtkMRMLNode*> sliceCompositeNodes;
@@ -222,6 +236,17 @@ void vtkMRMLSliceIntersectionDisplayableManager::UnobserveMRMLScene()
     vtkMRMLSliceCompositeNode* sliceCompositeNode = vtkMRMLSliceCompositeNode::SafeDownCast(sliceCompositeNodes[i]);
     vtkEventBroker::ObservationVector observations;
     observations = broker->GetObservations(sliceCompositeNode, vtkCommand::ModifiedEvent, this, this->GetMRMLNodesCallbackCommand());
+    broker->RemoveObservations(observations);
+    }
+
+  // Unobserve slice logics
+  vtkCollection* sliceLogics = this->GetMRMLApplicationLogic()->GetSliceLogics();
+  vtkCollectionSimpleIterator it;
+  vtkMRMLSliceLogic* sliceLogic = nullptr;
+  for (sliceLogics->InitTraversal(it); (sliceLogic = vtkMRMLSliceLogic::SafeDownCast(sliceLogics->GetNextItemAsObject(it)));)
+    {
+    vtkEventBroker::ObservationVector observations;
+    observations = broker->GetObservations(sliceLogic, vtkCommand::ModifiedEvent, this, this->GetMRMLLogicsCallbackCommand());
     broker->RemoveObservations(observations);
     }
   }
