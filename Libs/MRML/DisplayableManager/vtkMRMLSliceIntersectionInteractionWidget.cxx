@@ -112,7 +112,15 @@ void vtkMRMLSliceIntersectionInteractionWidget::UpdateInteractionEventMapping()
   if (this->GetActionEnabled(ActionRotateSliceIntersection))
     {
     this->SetEventTranslationClickAndDrag(WidgetStateOnRotationHandle, vtkCommand::LeftButtonPressEvent, vtkEvent::NoModifier,
-      WidgetStateRotate, WidgetEventRotateStart, WidgetEventRotateEnd);
+      WidgetStateHandleRotate, WidgetEventHandleRotateStart, WidgetEventHandleRotateEnd);
+
+    this->SetEventTranslationClickAndDrag(WidgetStateAny, vtkCommand::LeftButtonPressEvent,
+      vtkEvent::AltModifier + vtkEvent::ControlModifier, WidgetStateRotate, WidgetEventRotateStart, WidgetEventRotateEnd);
+    this->SetEventTranslationClickAndDrag(WidgetStateIdle, vtkCommand::LeftButtonPressEvent,
+      vtkEvent::AltModifier + vtkEvent::ControlModifier, WidgetStateRotate, WidgetEventRotateStart, WidgetEventRotateEnd);
+    this->SetEventTranslationClickAndDrag(WidgetStateOnWidget, vtkCommand::LeftButtonPressEvent,
+      vtkEvent::AltModifier + vtkEvent::ControlModifier, WidgetStateRotate, WidgetEventRotateStart, WidgetEventRotateEnd);
+
     }
   if (this->GetActionEnabled(ActionTranslateSliceIntersection))
     {
@@ -168,15 +176,24 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
 
   // Get widget event
   unsigned long widgetEvent = this->TranslateInteractionEventToWidgetEvent(eventData);
-  if (widgetEvent == WidgetEventNone)
+
+  // Enable keyboard-based rotation
+  if ((widgetEvent == WidgetEventRotateStart) || (this->WidgetState == WidgetStateRotate))
     {
-    rep->SetPipelinesHandlesVisibility(false); // Hide handles if mouse not in slice view
+    this->ProcessInteractionEvent(eventData);
+    return true;
+    }
+
+  // Hide handles if mouse not in slice view
+  if ((widgetEvent == WidgetEventNone) && (this->WidgetState != WidgetStateRotate))
+    {
+    rep->SetPipelinesHandlesVisibility(false);
     return false;
     }
 
   // Currently interacting
   if (this->WidgetState == WidgetStateTranslate
-    || this->WidgetState == WidgetStateRotate
+    || this->WidgetState == WidgetStateHandleRotate
     || this->WidgetState == WidgetStateTranslateSlice)
     {
     distance2 = 0.0;
@@ -234,7 +251,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
     }
 
   // Verify interaction
-  if (foundComponentType == InteractionNone)
+  if ((foundComponentType == InteractionNone) && (this->WidgetState != WidgetStateRotate) && (widgetEvent != WidgetEventRotateStart))
     {
     return false;
     }
@@ -244,7 +261,6 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
 
   // Store last intersecting slice node index
   this->LastIntersectingSliceNodeID = intersectingSliceNodeID;
-
   return true;
 }
 
@@ -286,8 +302,17 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessInteractionEvent(vtkMRMLI
     case WidgetEventTranslateEnd:
       processedEvent = this->ProcessEndMouseDrag(eventData);
       break;
+    case WidgetEventHandleRotateStart:
+      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SetWidgetState(WidgetStateHandleRotate);
+      processedEvent = this->ProcessRotateStart(eventData);
+      break;
+    case WidgetEventHandleRotateEnd:
+      processedEvent = this->ProcessEndMouseDrag(eventData);
+      break;
     case WidgetEventRotateStart:
       this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SetWidgetState(WidgetStateRotate);
       processedEvent = this->ProcessRotateStart(eventData);
       break;
     case WidgetEventRotateEnd:
@@ -427,6 +452,10 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessMouseMove(vtkMRMLInteract
         this->ProcessTranslateSlice(eventData);
         }
       }
+    else if (state == WidgetStateHandleRotate)
+      {
+      this->ProcessRotate(eventData);
+      }
     else if (state == WidgetStateRotate)
       {
       this->ProcessRotate(eventData);
@@ -476,9 +505,17 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessEndMouseDrag(vtkMRMLInter
     return false;
     }
 
+  if (this->WidgetState == WidgetStateIdle)
+    {
+    return false;
+    }
+  this->SetWidgetState(WidgetStateIdle);
+
+  /*
   if ((this->WidgetState != WidgetStateTranslate
-    && this->WidgetState != WidgetStateRotate
+    && this->WidgetState != WidgetStateHandleRotate
     && this->WidgetState != WidgetStateTranslateSlice
+    && this->WidgetState != WidgetStateRotate
     ) || !this->WidgetRep)
     {
     return false;
@@ -505,7 +542,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessEndMouseDrag(vtkMRMLInter
     {
     this->SetWidgetState(WidgetStateOnWidget);
     }
-
+  */
   // Indicate interaction in the slice node to make behavior similar to the 3D reformat widget
   this->SliceLogic->EndSliceNodeInteraction();
 
@@ -668,8 +705,6 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessRotateStart(vtkMRMLIntera
     {
     return false;
     }
-
-  this->SetWidgetState(WidgetStateRotate);
 
   // Save rotation center RAS
   double* sliceIntersectionPoint_XY = rep->GetSliceIntersectionPoint(); // in RAS coordinate system

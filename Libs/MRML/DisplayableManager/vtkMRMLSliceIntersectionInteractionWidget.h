@@ -102,6 +102,7 @@ public:
       WidgetStateOnIntersectionLine, // hovering over a intersection line
       WidgetStateTranslateSlice,
       WidgetStateTouchGesture,
+      WidgetStateHandleRotate, // ctrl + alt + left mouse drag
       WidgetState_Last
       };
 
@@ -133,6 +134,8 @@ public:
       WidgetEventZoomSliceStart,
       WidgetEventZoomSliceEnd,
       WidgetEventSetCrosshairPosition,
+      WidgetEventHandleRotateStart,
+      WidgetEventHandleRotateEnd,
       };
 
     /// Action State values and management
