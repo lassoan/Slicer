@@ -28,6 +28,7 @@
 #include <vtkMRMLScalarVolumeDisplayNode.h>
 #include <vtkMRMLScene.h>
 #include <vtkMRMLSliceCompositeNode.h>
+#include <vtkMRMLSliceDisplayNode.h>
 
 // VTK includes
 #include <vtkAlgorithmOutput.h>
@@ -583,10 +584,6 @@ void vtkMRMLSliceLogic::ProcessMRMLLogicsEvents()
         {
         modelDisplayNode->SetInterpolateTexture(1);
         }
-      if ( this->SliceCompositeNode != nullptr )
-        {
-        modelDisplayNode->SetVisibility2D( this->SliceCompositeNode->GetSliceIntersectionVisibility() );
-        }
       }
     }
 
@@ -1010,13 +1007,6 @@ void vtkMRMLSliceLogic::UpdatePipeline()
       {
       this->SetSliceExtentsToSliceNode();
       }
-    // update the slice intersection visibility to track the composite node setting
-    vtkMRMLModelDisplayNode *modelDisplayNode =
-      this->SliceModelNode ? this->SliceModelNode->GetModelDisplayNode() : nullptr;
-    if ( modelDisplayNode )
-      {
-      modelDisplayNode->SetVisibility2D(this->SliceCompositeNode->GetSliceIntersectionVisibility());
-      }
 
     // Now update the image blend with the background and foreground and label
     // -- layer 0 opacity is ignored, but since not all inputs may be non-0,
@@ -1073,11 +1063,11 @@ void vtkMRMLSliceLogic::UpdatePipeline()
         }
         if ( this->LabelLayer && this->LabelLayer->GetImageDataConnection())
           {
-          modelDisplayNode->SetInterpolateTexture(0);
+          displayNode->SetInterpolateTexture(0);
           }
         else
           {
-          modelDisplayNode->SetInterpolateTexture(1);
+          displayNode->SetInterpolateTexture(1);
           }
        }
     if ( modified )
@@ -1253,7 +1243,7 @@ void vtkMRMLSliceLogic::CreateSliceModel()
     this->SliceModelNode->SetDisableModifiedEvent(0);
 
     // create display node and set texture
-    this->SliceModelDisplayNode = vtkMRMLModelDisplayNode::New();
+    this->SliceModelDisplayNode = vtkMRMLSliceDisplayNode::New();
     this->SliceModelDisplayNode->SetScene(this->GetMRMLScene());
     this->SliceModelDisplayNode->SetDisableModifiedEvent(1);
 
@@ -2511,4 +2501,11 @@ bool vtkMRMLSliceLogic::IsEventInsideVolume(bool background, double worldPos[3])
       }
     }
   return true;
+}
+
+
+//----------------------------------------------------------------------------
+vtkMRMLSliceDisplayNode* vtkMRMLSliceLogic::GetSliceDisplayNode()
+{
+  return vtkMRMLSliceDisplayNode::SafeDownCast(this->GetSliceModelDisplayNode());
 }

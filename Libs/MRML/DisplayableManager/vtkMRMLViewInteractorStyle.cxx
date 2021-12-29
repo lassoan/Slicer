@@ -407,7 +407,7 @@ bool vtkMRMLViewInteractorStyle::DelegateInteractionEventDataToDisplayableManage
     }
 
   // Process event with focused displayable manager
-  bool processed;
+  bool processed = false;
   if (vtkMRMLSliceIntersectionDisplayableManager::SafeDownCast(this->FocusedDisplayableManager))
     {
     // Process the interaction event without updating mouse cursor. This is needed to enable

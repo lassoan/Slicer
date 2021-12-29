@@ -104,32 +104,6 @@ public:
   vtkGetMacro (FiducialLabelVisibility, int );
   vtkSetMacro (FiducialLabelVisibility, int );
 
-  ///
-  /// toggles visibility of intersections of other slices in the slice viewer
-  vtkGetMacro(SliceIntersectionVisibility, int);
-  vtkSetMacro(SliceIntersectionVisibility, int);
-
-  // Interaction handles
-  enum HandleType
-    {
-    HandleNone = 0,
-    HandleRotation,
-    HandleTranslation
-    };
-
-  /// The visibility and interactability of the interaction handles
-  vtkGetMacro(HandlesInteractive, bool);
-  vtkSetMacro(HandlesInteractive, bool);
-  vtkBooleanMacro(HandlesInteractive, bool);
-  vtkGetMacro(TranslationHandleVisibility, bool);
-  vtkSetMacro(TranslationHandleVisibility, bool);
-  vtkBooleanMacro(TranslationHandleVisibility, bool);
-  vtkGetMacro(RotationHandleVisibility, bool);
-  vtkSetMacro(RotationHandleVisibility, bool);
-  vtkBooleanMacro(RotationHandleVisibility, bool);
-  void SetHandleVisibility(int handleType, bool visibility);
-  bool GetHandleVisibility(int handleType);
-
   /// Get annotation space.
   vtkGetMacro ( AnnotationSpace, int );
 
@@ -260,31 +234,27 @@ protected:
   vtkMRMLSliceCompositeNode(const vtkMRMLSliceCompositeNode&);
   void operator=(const vtkMRMLSliceCompositeNode&);
 
-  double ForegroundOpacity;
+  // start by showing only the background volume
+  double ForegroundOpacity{ 0.0 };
 
-  int Compositing;
+  int Compositing{ Alpha };
 
-  double LabelOpacity;
-  int LinkedControl;
-  int HotLinkedControl;
+  // Show the label if there is one
+  double LabelOpacity{ 1.0 };
+  int LinkedControl{ 0 };
+  int HotLinkedControl{ 0 };
 
-  int FiducialVisibility;
-  int FiducialLabelVisibility;
+  int FiducialVisibility{ 1 };
+  int FiducialLabelVisibility{ 1 };
 
-  int SliceIntersectionVisibility;
+  int AnnotationSpace{ IJKAndRAS };
+  int AnnotationMode{ All };
 
-  bool HandlesInteractive;
-  bool TranslationHandleVisibility;
-  bool RotationHandleVisibility;
+  bool DoPropagateVolumeSelection{ true };
 
-  int AnnotationSpace;
-  int AnnotationMode;
-
-  bool DoPropagateVolumeSelection;
-
-  int Interacting;
-  unsigned int InteractionFlags;
-  unsigned int InteractionFlagsModifier;
+  int Interacting{ 0 };
+  unsigned int InteractionFlags{ 0 };
+  unsigned int InteractionFlagsModifier{ (unsigned int)-1 };
 };
 
 #endif

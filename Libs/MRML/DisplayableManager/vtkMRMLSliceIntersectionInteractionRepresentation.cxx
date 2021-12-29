@@ -25,9 +25,9 @@
 #include "vtkMRMLInteractionNode.h"
 #include "vtkMRMLModelDisplayNode.h"
 #include "vtkMRMLScene.h"
+#include "vtkMRMLSliceDisplayNode.h"
 #include "vtkMRMLSliceLogic.h"
 #include "vtkMRMLSliceNode.h"
-#include "vtkMRMLSliceCompositeNode.h"
 
 #include "vtkActor2D.h"
 #include "vtkArcSource.h"
@@ -1019,8 +1019,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
     return;
     }
 
-  vtkMRMLModelDisplayNode* displayNode = nullptr;
-  vtkMRMLSliceCompositeNode* compositeNode = nullptr;
+  vtkMRMLSliceDisplayNode* displayNode = nullptr;
   vtkMRMLSliceLogic* sliceLogic = nullptr;
   vtkMRMLApplicationLogic* mrmlAppLogic = this->GetMRMLApplicationLogic();
   if (mrmlAppLogic)
@@ -1029,25 +1028,23 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
     }
   if (sliceLogic)
     {
-    displayNode = sliceLogic->GetSliceModelDisplayNode();
-    compositeNode = sliceLogic->GetSliceCompositeNode();
+    displayNode = sliceLogic->GetSliceDisplayNode();
     }
-  if (compositeNode)
+
+  // Set properties of slice intersection lines
+  if (displayNode)
     {
-    bool sliceInteractionHandlesInteractive = compositeNode->GetHandlesInteractive();
+    bool sliceInteractionHandlesInteractive =
+      (displayNode->GetSliceIntersectionVisibility() && displayNode->GetSliceIntersectionInteractive());
     if (!sliceInteractionHandlesInteractive)
-      {
+    {
       pipeline->SetVisibility(false);
       pipeline->SetHandlesVisibility(false);
       return;
-      }
-    pipeline->TranslationHandlesVisible = compositeNode->GetTranslationHandleVisibility();
-    pipeline->RotationHandlesVisible = compositeNode->GetRotationHandleVisibility();
     }
+    pipeline->TranslationHandlesVisible = displayNode->GetSliceIntersectionTranslationEnabled();
+    pipeline->RotationHandlesVisible = displayNode->GetSliceIntersectionRotationEnabled();
 
-  // Set thickness of intersection lines
-  if (displayNode)
-    {
     pipeline->IntersectionLine1Property->SetLineWidth(displayNode->GetLineWidth() + INTERSECTION_LINE_EXTRA_THICKNESS);
     pipeline->IntersectionLine2Property->SetLineWidth(displayNode->GetLineWidth() + INTERSECTION_LINE_EXTRA_THICKNESS);
     }

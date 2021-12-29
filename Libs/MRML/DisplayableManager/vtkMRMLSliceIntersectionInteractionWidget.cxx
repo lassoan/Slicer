@@ -222,15 +222,17 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
   rep->SetPipelinesHandlesVisibility(true);
   rep->SetPipelinesHandlesOpacity(handleOpacity);
 
+  /*
   // Enable updates of display pipelines in scene by modifying all associated slice nodes
   vtkMRMLScene* scene = this->SliceNode->GetScene();
   std::vector<vtkMRMLNode*> sliceNodes;
-  int nnodes = scene ? scene->GetNodesByClass("vtkMRMLSliceNode", sliceNodes) : 0;
+  int nnodes = scene ? scene->`, sliceNodes) : 0;
   for (int i = 0; i < nnodes; i++)
     {
     vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[i]);
     sliceNode->Modified();
     }
+    */
 
   // Update mouse cursor according to interaction
   if (foundComponentType == InteractionTranslationHandle)
@@ -332,6 +334,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessInteractionEvent(vtkMRMLI
       processedEvent = false;
     }
 
+  /*
   // Enable updates of display pipelines in scene by modifying all associated slice nodes
   vtkMRMLScene* scene = this->SliceNode->GetScene();
   std::vector<vtkMRMLNode*> sliceNodes;
@@ -341,6 +344,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessInteractionEvent(vtkMRMLI
     vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(sliceNodes[i]);
     sliceNode->Modified();
     }
+    */
 
   return processedEvent;
 }

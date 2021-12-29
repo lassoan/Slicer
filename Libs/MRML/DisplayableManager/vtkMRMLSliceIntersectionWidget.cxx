@@ -359,7 +359,8 @@ bool vtkMRMLSliceIntersectionWidget::ProcessInteractionEvent(vtkMRMLInteractionE
       {
       this->StartActionSegmentationDisplayNode = nullptr;
       this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
-      this->StartActionSegmentationDisplayNode = nullptr;      double opacity = this->GetLabelOpacity();
+      this->StartActionSegmentationDisplayNode = nullptr;
+      double opacity = this->GetLabelOpacity();
       if (opacity != 0.0)
         {
         this->LastLabelOpacity = opacity;

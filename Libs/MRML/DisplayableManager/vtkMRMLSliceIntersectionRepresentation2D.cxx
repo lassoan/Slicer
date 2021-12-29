@@ -20,7 +20,7 @@
 #include "vtkMRMLApplicationLogic.h"
 #include "vtkMRMLDisplayableNode.h"
 #include "vtkMRMLInteractionNode.h"
-#include "vtkMRMLModelDisplayNode.h"
+#include "vtkMRMLSliceDisplayNode.h"
 #include "vtkMRMLScene.h"
 #include "vtkMRMLSliceLogic.h"
 #include "vtkMRMLSliceNode.h"
@@ -408,7 +408,7 @@ void vtkMRMLSliceIntersectionRepresentation2D::UpdateSliceIntersectionDisplay(Sl
     return;
     }
 
-  vtkMRMLModelDisplayNode* displayNode = nullptr;
+  vtkMRMLSliceDisplayNode* displayNode = nullptr;
   vtkMRMLSliceLogic *sliceLogic = nullptr;
   vtkMRMLApplicationLogic *mrmlAppLogic = this->GetMRMLApplicationLogic();
   if (mrmlAppLogic)
@@ -417,11 +417,13 @@ void vtkMRMLSliceIntersectionRepresentation2D::UpdateSliceIntersectionDisplay(Sl
     }
   if (sliceLogic)
     {
-    displayNode = sliceLogic->GetSliceModelDisplayNode();
+    displayNode = sliceLogic->GetSliceDisplayNode();
     }
   if (displayNode)
     {
-    if (!displayNode->GetSliceIntersectionVisibility())
+    bool showNonInteractiveSliceIntersection = (displayNode->GetSliceIntersectionVisibility()
+      && !displayNode->GetSliceIntersectionInteractive());
+    if (!showNonInteractiveSliceIntersection)
       {
       pipeline->SetVisibility(false);
       return;
