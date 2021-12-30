@@ -43,7 +43,6 @@
 #include <vtkMRMLCrosshairDisplayableManager.h>
 #include <vtkMRMLDisplayableManagerGroup.h>
 #include <vtkMRMLLightBoxRendererManagerProxy.h>
-#include <vtkMRMLSliceIntersectionDisplayableManager.h>
 #include <vtkMRMLSliceViewDisplayableManagerFactory.h>
 #include <vtkMRMLScalarBarDisplayableManager.h>
 #include <vtkMRMLSliceViewInteractorStyle.h>
@@ -194,7 +193,6 @@ void qMRMLSliceViewPrivate::initDisplayableManagers()
   displayableManagers << "vtkMRMLOrientationMarkerDisplayableManager";
   displayableManagers << "vtkMRMLRulerDisplayableManager";
   displayableManagers << "vtkMRMLScalarBarDisplayableManager";
-  displayableManagers << "vtkMRMLSliceIntersectionDisplayableManager";
   foreach(const QString& displayableManager, displayableManagers)
     {
     if (!factory->IsDisplayableManagerRegistered(displayableManager.toUtf8()))
