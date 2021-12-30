@@ -83,8 +83,6 @@ vtkMRMLSliceIntersectionInteractionWidget::vtkMRMLSliceIntersectionInteractionWi
     this->TotalTouchTranslation = 0.0;
     this->TouchTranslationEnabled = false;
 
-    this->LastIntersectingSliceNodeID = nullptr; // Last intersecting slice node where interaction occurred
-
     this->SliceLogicsModifiedCommand->SetClientData(this);
     this->SliceLogicsModifiedCommand->SetCallback(vtkMRMLSliceIntersectionInteractionWidget::SliceLogicsModifiedCallback);
 
@@ -215,12 +213,11 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
   int foundComponentIndex = -1;
   double closestDistance2 = 0.0;
   double handleOpacity = 0.0;
-  const char* intersectingSliceNodeID;
-  intersectingSliceNodeID = rep->CanInteract(eventData, foundComponentType, foundComponentIndex, closestDistance2, handleOpacity);
+  std::string intersectingSliceNodeID = rep->CanInteract(eventData, foundComponentType, foundComponentIndex, closestDistance2, handleOpacity);
 
   // Update handle visibility and opacity
-  rep->SetPipelinesHandlesVisibility(true);
-  rep->SetPipelinesHandlesOpacity(handleOpacity);
+  //rep->SetPipelinesHandlesVisibility(true);
+  //rep->SetPipelinesHandlesOpacity(handleOpacity);
 
   /*
   // Enable updates of display pipelines in scene by modifying all associated slice nodes
@@ -233,24 +230,6 @@ bool vtkMRMLSliceIntersectionInteractionWidget::CanProcessInteractionEvent(vtkMR
     sliceNode->Modified();
     }
     */
-
-  // Update mouse cursor according to interaction
-  if (foundComponentType == InteractionTranslationHandle)
-    {
-    rep->GetRenderer()->GetRenderWindow()->SetCurrentCursor(VTK_CURSOR_SIZEALL); // set cursor to size all mode
-    }
-  else if (foundComponentType == InteractionRotationHandle)
-    {
-    rep->GetRenderer()->GetRenderWindow()->SetCurrentCursor(VTK_CURSOR_HAND); // set cursor to hand mode
-    }
-  else if (foundComponentType == InteractionSliceOffsetHandle)
-    {
-    rep->GetRenderer()->GetRenderWindow()->SetCurrentCursor(VTK_CURSOR_SIZEALL); // set cursor to size all mode
-    }
-  else
-    {
-    rep->GetRenderer()->GetRenderWindow()->SetCurrentCursor(VTK_CURSOR_DEFAULT); // reset cursor to default mode
-    }
 
   // Verify interaction
   if ((foundComponentType == InteractionNone) && (this->WidgetState != WidgetStateRotate) && (widgetEvent != WidgetEventRotateStart))
@@ -381,8 +360,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessMouseMove(vtkMRMLInteract
     int foundComponentIndex = -1;
     double closestDistance2 = 0.0;
     double handleOpacity = 0.0;
-    const char* intersectingSliceNodeID;
-    intersectingSliceNodeID = rep->CanInteract(eventData, foundComponentType, foundComponentIndex, closestDistance2, handleOpacity);
+    std::string intersectingSliceNodeID = rep->CanInteract(eventData, foundComponentType, foundComponentIndex, closestDistance2, handleOpacity);
     if (foundComponentType == InteractionNone)
       {
       this->SetWidgetState(WidgetStateIdle);
@@ -856,7 +834,7 @@ bool vtkMRMLSliceIntersectionInteractionWidget::ProcessTranslateSlice(vtkMRMLInt
     }
 
   // Get intersecting slice node
-  const char* intersectingSliceNodeID = this->LastIntersectingSliceNodeID;
+  std::string intersectingSliceNodeID = this->LastIntersectingSliceNodeID;
   vtkMRMLSliceNode* intersectingSliceNode = vtkMRMLSliceNode::SafeDownCast(scene->GetNodeByID(intersectingSliceNodeID));
   if (!intersectingSliceNode)
     {
@@ -940,4 +918,23 @@ void vtkMRMLSliceIntersectionInteractionWidget::SetActionsEnabled(int actions)
 {
   this->ActionsEnabled = actions;
   this->UpdateInteractionEventMapping();
+}
+
+//-------------------------------------------------------------------------
+int vtkMRMLSliceIntersectionInteractionWidget::GetMouseCursor()
+{
+  switch (this->WidgetState)
+    {
+    case WidgetStateOnTranslationHandle:
+    case WidgetStateOnSliceTranslationHandle:
+    case WidgetStateOnIntersectionLine:
+      return VTK_CURSOR_SIZEALL;
+      break;
+    case WidgetStateOnRotationHandle:
+      return VTK_CURSOR_HAND;
+      break;
+    default:
+      return VTK_CURSOR_DEFAULT;
+      break;
+    }
 }

@@ -436,8 +436,6 @@ void vtkMRMLSliceIntersectionRepresentation2D::UpdateSliceIntersectionDisplay(Sl
   vtkMatrix4x4* intersectingXYToRAS = intersectingSliceNode->GetXYToRAS();
   vtkMatrix4x4* xyToRAS = this->Internal->SliceNode->GetXYToRAS();
 
-  //double slicePlaneAngleDifference = vtkMath::AngleBetweenVectors()
-
   vtkNew<vtkMatrix4x4> rasToXY;
   vtkMatrix4x4::Invert(xyToRAS, rasToXY);
   vtkNew<vtkMatrix4x4> intersectingXYToXY;
@@ -617,11 +615,11 @@ double* vtkMRMLSliceIntersectionRepresentation2D::GetSliceIntersectionPoint()
       double v2[3] = {line2Point1[0] - line2Point2[0], line2Point1[1] - line2Point2[1], line2Point1[2] - line2Point2[2]};
       double angleRadBetweenTwoLines = vtkMath::AngleBetweenVectors(v1, v2);
 
-      const double angleThresholdForParallel = vtkMath::Pi()/60; // roughly 3 degree
+      const double angleThresholdForParallel = vtkMath::RadiansFromDegrees(3.0);
       if (angleRadBetweenTwoLines < angleThresholdForParallel || angleThresholdForParallel > vtkMath::Pi() - angleThresholdForParallel)
         {
-        // Two lines intesecting under roughly 3 degree are
-        // considered to be parallel and not considered as intersecting.
+        // Two lines intesecting under the threshold are
+        // considered to be parallel and not as intersecting.
         continue;
         }
 

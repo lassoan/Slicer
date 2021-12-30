@@ -43,6 +43,9 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionDisplayableMana
 
     vtkMRMLSliceIntersectionInteractionWidget* GetSliceIntersectionInteractionWidget();
 
+    /// Displayable manager returns ID of the mouse cursor shape that should be displayed
+    virtual int GetMouseCursor();
+
   protected:
     void UnobserveMRMLScene() override;
     void ObserveMRMLScene() override;

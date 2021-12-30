@@ -33,7 +33,6 @@
 
 // MRML includes
 #include <vtkMRMLCrosshairNode.h>
-#include <vtkMRMLSliceCompositeNode.h>
 
 //---------------------------------------------------------------------------
 // qSlicerViewersToolBarPrivate methods
@@ -423,26 +422,16 @@ void qSlicerViewersToolBarPrivate::setMRMLScene(vtkMRMLScene* newScene)
       }
 
 
-    // Watch the Red SliceCompositeNodes for a change in the
+    // Watch the first slice display node for a change in the
     // SliceIntersectionVisibility state. There are potentially many
-    // SliceCompositeNodes but only one menu option in the toolbar for
-    // the state. So we just watch the Red viewer.
-    qSlicerApplication *app = qSlicerApplication::application();
-    qSlicerLayoutManager *layoutManager = app->layoutManager();
-    if (layoutManager)
+    // slice display nodes but only one menu option in the toolbar for
+    // the state. So we just watch one.
+    vtkMRMLNode* sliceDisplayNode = this->MRMLScene->GetFirstNodeByClass("vtkMRMLSliceDisplayNode");
+    if (sliceDisplayNode)
       {
-      qMRMLSliceWidget *red = layoutManager->sliceWidget("Red");
-      if (red)
-        {
-        vtkMRMLSliceCompositeNode *node = red->mrmlSliceCompositeNode();
-        if (node)
-          {
-          this->qvtkReconnect(node, vtkCommand::ModifiedEvent,
-                              this, SLOT(onSliceCompositeNodeChangedEvent()));
-          }
-        }
+      this->qvtkReconnect(sliceDisplayNode, vtkCommand::ModifiedEvent,
+                          this, SLOT(onSliceDisplayNodeChangedEvent()));
       }
-
     }
 
   // Update UI
@@ -582,7 +571,7 @@ void qSlicerViewersToolBarPrivate::onCrosshairNodeModeChangedEvent()
 }
 
 //---------------------------------------------------------------------------
-void qSlicerViewersToolBarPrivate::onSliceCompositeNodeChangedEvent()
+void qSlicerViewersToolBarPrivate::onSliceDisplayNodeChangedEvent()
 {
   this->updateWidgetFromMRML();
 }

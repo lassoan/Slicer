@@ -98,7 +98,7 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     /// Return found component type (as vtkMRMLInteractionDisplayNode::ComponentType).
     /// closestDistance2 is the squared distance in display coordinates from the closest position where interaction is possible.
     /// componentIndex returns index of the found component (e.g., if control point is found then control point index is returned).
-    virtual const char* CanInteract(vtkMRMLInteractionEventData* interactionEventData,
+    virtual std::string CanInteract(vtkMRMLInteractionEventData* interactionEventData,
         int& foundComponentType, int& foundComponentIndex, double& closestDistance2, double& handleOpacity);
 
     enum
@@ -115,7 +115,7 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     class HandleInfo
       {
       public:
-        HandleInfo(int index, int componentType, const char* intersectingSliceNodeID, double positionWorld[3], double positionLocal[3])
+        HandleInfo(int index, int componentType, const std::string& intersectingSliceNodeID, double positionWorld[3], double positionLocal[3])
           : Index(index)
           , ComponentType(componentType)
           , IntersectingSliceNodeID(intersectingSliceNodeID)
@@ -133,7 +133,7 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
           }
         int Index;
         int ComponentType;
-        const char* IntersectingSliceNodeID;
+        std::string IntersectingSliceNodeID;
         double PositionLocal[4];
         double PositionWorld[4];
       };

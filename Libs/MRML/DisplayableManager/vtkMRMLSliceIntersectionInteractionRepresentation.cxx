@@ -83,8 +83,8 @@ enum
   };
 
 // Settings
-static const double VISUALIZATION_MODE = HideIntersection;
-static const double HANDLES_TYPE = Arrows;
+static const int VISUALIZATION_MODE = HideIntersection;
+static const int HANDLES_TYPE = Arrows;
 static const bool HANDLES_ALWAYS_VISIBLE = false;
 static const double OPACITY_RANGE = 1000.0;
 static const double FOV_HANDLES_MARGIN = 0.03; // 3% margin
@@ -1669,14 +1669,14 @@ double vtkMRMLSliceIntersectionInteractionRepresentation::GetMaximumHandlePickin
 }
 
 //-----------------------------------------------------------------------------
-const char* vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInteractionEventData* interactionEventData,
+std::string vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInteractionEventData* interactionEventData,
   int& foundComponentType, int& foundComponentIndex, double& closestDistance2, double& handleOpacity)
 {
   foundComponentType = InteractionNone;
   closestDistance2 = VTK_DOUBLE_MAX; // in display coordinate system
   foundComponentIndex = -1;
   handleOpacity = 0.0;
-  const char* intersectingSliceNodeID = nullptr;
+  std::string intersectingSliceNodeID;
   double maxPickingDistanceFromControlPoint2 = this->GetMaximumHandlePickingDistance2();
   double extendedPickingDistanceFromControlPoint2 = maxPickingDistanceFromControlPoint2 + OPACITY_RANGE;
   double displayPosition3[3] = { 0.0, 0.0, 0.0 };
@@ -1797,7 +1797,7 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
 {
   vtkMRMLSliceNode* currentSliceNode = this->GetSliceNode(); // Get slice node
   vtkMRMLSliceNode* intersectingSliceNode = pipeline->SliceLogic->GetSliceNode(); // Get intersecting slice node
-  const char* intersectingSliceNodeID = intersectingSliceNode->GetID(); // Get intersection slice node ID
+  std::string intersectingSliceNodeID = intersectingSliceNode->GetID(); // Get intersection slice node ID
   vtkMatrix4x4* currentXYToRAS = currentSliceNode->GetXYToRAS(); // Get XY to RAS transform matrix
   HandleInfoList handleInfoList;
   for (int i = 0; i < pipeline->RotationHandlePoints->GetNumberOfPoints(); ++i)
@@ -1920,7 +1920,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SetPipelinesHandlesVisib
   // Force visible handles in the "handles always visible" mode is activated
   if (HANDLES_ALWAYS_VISIBLE)
     {
-      visible = true;
+    visible = true;
     }
 
   // Update handles visibility in all display pipelines

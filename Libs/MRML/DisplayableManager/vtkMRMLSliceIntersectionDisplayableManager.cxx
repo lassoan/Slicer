@@ -280,3 +280,13 @@ vtkMRMLSliceIntersectionInteractionWidget* vtkMRMLSliceIntersectionDisplayableMa
 {
   return this->Internal->SliceIntersectionInteractionWidget;
 }
+
+//---------------------------------------------------------------------------
+int vtkMRMLSliceIntersectionDisplayableManager::GetMouseCursor()
+{
+  if (!this->Internal->SliceIntersectionInteractionWidget)
+  {
+    return VTK_CURSOR_DEFAULT;
+  }
+  return this->Internal->SliceIntersectionInteractionWidget->GetMouseCursor();
+}

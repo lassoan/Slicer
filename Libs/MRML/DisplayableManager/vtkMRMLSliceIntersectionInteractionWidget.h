@@ -177,6 +177,9 @@ public:
 
     void UpdateInteractionEventMapping();
 
+    // Allows the widget to request a cursor shape
+    int GetMouseCursor() override;
+
 protected:
     vtkMRMLSliceIntersectionInteractionWidget();
     ~vtkMRMLSliceIntersectionInteractionWidget() override;
@@ -230,7 +233,8 @@ protected:
     double TotalTouchZoom;
     bool TouchZoomEnabled;
 
-    const char* LastIntersectingSliceNodeID;
+    // Last intersecting slice node where interaction occurred
+    std::string LastIntersectingSliceNodeID;
 
     int activeComponentType;
     int activeComponentIndex;
