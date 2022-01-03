@@ -984,6 +984,10 @@ bool vtkMRMLApplicationLogic::GetSliceIntersectionEnabled(
     }
   vtkMRMLSliceDisplayNode* sliceDisplayNode = vtkMRMLSliceDisplayNode::SafeDownCast(
     scene->GetFirstNodeByClass("vtkMRMLSliceDisplayNode"));
+  if (!sliceDisplayNode)
+    {
+    return false;
+    }
 
   switch (operation)
     {

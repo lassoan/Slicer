@@ -27,7 +27,6 @@
 
 class vtkMRMLCrosshairNode;
 class vtkMRMLScene;
-class vtkMRMLSliceIntersectionInteractionWidget;
 class vtkMRMLSliceIntersectionWidget;
 
 /// \brief Displayable manager for the crosshair on slice (2D) views
@@ -52,7 +51,6 @@ public:
   int GetActionsEnabled();
 
   vtkMRMLSliceIntersectionWidget* GetSliceIntersectionWidget();
-  vtkMRMLSliceIntersectionInteractionWidget* GetSliceIntersectionInteractionWidget();
 
   /// Displayable manager returns ID of the mouse cursor shape that should be displayed
   virtual int GetMouseCursor();
