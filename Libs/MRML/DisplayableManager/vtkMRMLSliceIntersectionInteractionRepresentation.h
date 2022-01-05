@@ -153,6 +153,8 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
 
     vtkMRMLSliceDisplayNode* GetSliceDisplayNode(vtkMRMLSliceNode* sliceNode);
 
+    void SetSliceDisplayNode(vtkMRMLSliceDisplayNode* sliceDisplayNode);
+
     double GetSliceRotationAngleRad(int eventPos[2]);
 
     /// Support picking

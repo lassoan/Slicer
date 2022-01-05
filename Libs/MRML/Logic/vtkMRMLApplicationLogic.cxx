@@ -930,6 +930,16 @@ void vtkMRMLApplicationLogic::SetSliceIntersectionEnabled(
     return;
     }
 
+  // The slice intersection options will be stored in the default slice display node as well.
+  // This ensures all new slice nodes will be created with the current slice intersection options.
+  vtkSmartPointer<vtkMRMLSliceDisplayNode> defaultSliceDisplayNode =
+    vtkMRMLSliceDisplayNode::SafeDownCast(scene->GetDefaultNodeByClass("vtkMRMLSliceDisplayNode"));
+  if (!defaultSliceDisplayNode.GetPointer())
+    {
+    defaultSliceDisplayNode = vtkSmartPointer<vtkMRMLSliceDisplayNode>::New();
+    scene->AddDefaultNode(defaultSliceDisplayNode);
+    }
+
   vtkSmartPointer<vtkCollection> sliceDisplayNodes =
     vtkSmartPointer<vtkCollection>::Take(scene->GetNodesByClass("vtkMRMLSliceDisplayNode"));
   if (sliceDisplayNodes.GetPointer())
@@ -943,15 +953,19 @@ void vtkMRMLApplicationLogic::SetSliceIntersectionEnabled(
         {
         case vtkMRMLApplicationLogic::SliceIntersectionVisibility:
           sliceDisplayNode->SetSliceIntersectionVisibility(enabled);
+          defaultSliceDisplayNode->SetSliceIntersectionVisibility(enabled);
           break;
         case vtkMRMLApplicationLogic::SliceIntersectionInteractive:
           sliceDisplayNode->SetSliceIntersectionInteractive(enabled);
+          defaultSliceDisplayNode->SetSliceIntersectionInteractive(enabled);
           break;
         case vtkMRMLApplicationLogic::SliceIntersectionTranslation:
           sliceDisplayNode->SetSliceIntersectionTranslationEnabled(enabled);
+          defaultSliceDisplayNode->SetSliceIntersectionTranslationEnabled(enabled);
           break;
         case vtkMRMLApplicationLogic::SliceIntersectionRotation:
           sliceDisplayNode->SetSliceIntersectionRotationEnabled(enabled);
+          defaultSliceDisplayNode->SetSliceIntersectionRotationEnabled(enabled);
           break;
         }
       }

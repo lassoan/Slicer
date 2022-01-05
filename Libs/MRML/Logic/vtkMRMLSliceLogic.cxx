@@ -1243,7 +1243,7 @@ void vtkMRMLSliceLogic::CreateSliceModel()
     this->SliceModelNode->SetDisableModifiedEvent(0);
 
     // create display node and set texture
-    this->SliceModelDisplayNode = vtkMRMLSliceDisplayNode::New();
+    this->SliceModelDisplayNode = vtkMRMLSliceDisplayNode::SafeDownCast(this->GetMRMLScene()->CreateNodeByClass("vtkMRMLSliceDisplayNode"));
     this->SliceModelDisplayNode->SetScene(this->GetMRMLScene());
     this->SliceModelDisplayNode->SetDisableModifiedEvent(1);
 
@@ -1253,12 +1253,14 @@ void vtkMRMLSliceLogic::CreateSliceModel()
     this->SliceModelDisplayNode->SetColor(1,1,1);
     std::string displayName = "Slice Display";
     std::string modelNodeName = "Slice " + this->SLICE_MODEL_NODE_NAME_SUFFIX;
+    std::string transformNodeName = "Slice Transform";
     if (this->SliceNode && this->SliceNode->GetLayoutName())
       {
       // Auto-set the colors based on the slice node
       this->SliceModelDisplayNode->SetColor(this->SliceNode->GetLayoutColor());
-      displayName = std::string(this->SliceNode->GetLayoutName()) + std::string(" Display");
+      displayName = this->SliceNode->GetLayoutName() + std::string(" Display");
       modelNodeName = this->SliceNode->GetLayoutName() + std::string(" ") + this->SLICE_MODEL_NODE_NAME_SUFFIX;
+      transformNodeName = this->SliceNode->GetLayoutName() + std::string(" Transform");
       }
     this->SliceModelDisplayNode->SetAmbient(1);
     this->SliceModelDisplayNode->SetBackfaceCulling(0);
@@ -1268,11 +1270,7 @@ void vtkMRMLSliceLogic::CreateSliceModel()
     this->SliceModelDisplayNode->SetDisableModifiedEvent(0);
     // set an attribute to distinguish this from regular model display nodes
     this->SliceModelDisplayNode->SetAttribute("SliceLogic.IsSliceModelDisplayNode", "True");
-    this->SliceModelDisplayNode->SetName(displayName.c_str());
-    // Turn slice intersection off by default - there is a higher level GUI control
-    // in the SliceCompositeNode that tells if slices should be enabled for a given
-    // slice viewer
-    this->SliceModelDisplayNode->SetVisibility2D(0);
+    this->SliceModelDisplayNode->SetName(this->GetMRMLScene()->GenerateUniqueName(displayName).c_str());
 
     this->SliceModelNode->SetName(modelNodeName.c_str());
 
@@ -1288,6 +1286,7 @@ void vtkMRMLSliceLogic::CreateSliceModel()
     vtkNew<vtkMatrix4x4> identity;
     identity->Identity();
     this->SliceModelTransformNode->SetMatrixTransformToParent(identity.GetPointer());
+    this->SliceModelTransformNode->SetName(this->GetMRMLScene()->GenerateUniqueName(transformNodeName).c_str());
 
     this->SliceModelTransformNode->SetDisableModifiedEvent(0);
 

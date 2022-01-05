@@ -996,10 +996,10 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SliceNodeModified(vtkMRM
       this->UpdateSliceIntersectionDisplay(*sliceIntersectionIt);
       }
     bool handlesVisible = false;
-    if (this->Internal->SliceDisplayNode)
+    vtkMRMLSliceDisplayNode* displayNode = this->GetSliceDisplayNode();
+    if (displayNode)
       {
-
-      int componentType = this->Internal->SliceDisplayNode->GetActiveComponentType();
+      int componentType = displayNode->GetActiveComponentType();
       handlesVisible = componentType != vtkMRMLSliceDisplayNode::ComponentNone
         && componentType != vtkMRMLSliceDisplayNode::ComponentSliceIntersection; // hide handles during interaction:
       }
@@ -1426,7 +1426,13 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
 //----------------------------------------------------------------------
 vtkMRMLSliceDisplayNode* vtkMRMLSliceIntersectionInteractionRepresentation::GetSliceDisplayNode()
 {
-  return this->Internal->SliceDisplayNode;
+  if (this->Internal->SliceDisplayNode)
+    {
+    return this->Internal->SliceDisplayNode;
+    }
+  vtkMRMLSliceDisplayNode* sliceDisplayNode = this->GetSliceDisplayNode(this->Internal->SliceNode);
+  this->SetSliceDisplayNode(sliceDisplayNode);
+  return sliceDisplayNode;
 }
 
 //----------------------------------------------------------------------
@@ -1463,18 +1469,30 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SetSliceNode(vtkMRMLSlic
     }
   this->Internal->SliceNode = sliceNode;
 
+  this->SetSliceDisplayNode(nullptr);
+  vtkMRMLSliceDisplayNode* sliceDisplayNode = this->GetSliceDisplayNode(sliceNode);
+  this->SetSliceDisplayNode(sliceDisplayNode);
+
+  this->UpdateIntersectingSliceNodes();
+}
+
+//----------------------------------------------------------------------
+void vtkMRMLSliceIntersectionInteractionRepresentation::SetSliceDisplayNode(vtkMRMLSliceDisplayNode* sliceDisplayNode)
+{
+  if (this->Internal->SliceDisplayNode == sliceDisplayNode)
+    {
+    // no change
+    return;
+    }
   if (this->Internal->SliceDisplayNode)
     {
     this->Internal->SliceDisplayNode->RemoveObserver(this->Internal->SliceNodeModifiedCommand);
     }
-  vtkMRMLSliceDisplayNode* sliceDisplayNode = this->GetSliceDisplayNode(sliceNode);
   if (sliceDisplayNode)
     {
     sliceDisplayNode->AddObserver(vtkCommand::ModifiedEvent, this->Internal->SliceNodeModifiedCommand.GetPointer());
     }
   this->Internal->SliceDisplayNode = sliceDisplayNode;
-
-  this->UpdateIntersectingSliceNodes();
 }
 
 //----------------------------------------------------------------------
@@ -1745,11 +1763,12 @@ std::string vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMR
 
   bool sliceIntersectionTranslationEnabled = true;
   bool sliceIntersectionRotationEnabled = true;
-  if (this->Internal->SliceDisplayNode)
-  {
-    sliceIntersectionTranslationEnabled = this->Internal->SliceDisplayNode->GetSliceIntersectionTranslationEnabled();
-    sliceIntersectionRotationEnabled = this->Internal->SliceDisplayNode->GetSliceIntersectionRotationEnabled();
-  }
+  vtkMRMLSliceDisplayNode* sliceDisplayNode = this->GetSliceDisplayNode();
+  if (sliceDisplayNode)
+    {
+    sliceIntersectionTranslationEnabled = sliceDisplayNode->GetSliceIntersectionTranslationEnabled();
+    sliceIntersectionRotationEnabled = sliceDisplayNode->GetSliceIntersectionRotationEnabled();
+    }
 
   for (std::deque<SliceIntersectionInteractionDisplayPipeline*>::iterator
     sliceIntersectionIt = this->Internal->SliceIntersectionInteractionDisplayPipelines.begin();
@@ -2057,24 +2076,25 @@ bool vtkMRMLSliceIntersectionInteractionRepresentation::IsMouseCursorInSliceView
 //-----------------------------------------------------------------------------
 bool vtkMRMLSliceIntersectionInteractionRepresentation::IsDisplayable()
 {
-  if (!this->Internal->SliceDisplayNode
+  vtkMRMLSliceDisplayNode* sliceDisplayNode = this->GetSliceDisplayNode();
+  if (!sliceDisplayNode
     || !this->ViewNode
-    || !this->Internal->SliceDisplayNode->GetVisibility()
-    || !this->Internal->SliceDisplayNode->IsDisplayableInView(this->ViewNode->GetID()))
+    || !sliceDisplayNode->GetVisibility()
+    || !sliceDisplayNode->IsDisplayableInView(this->ViewNode->GetID()))
     {
     return false;
     }
 
   if (vtkMRMLSliceNode::SafeDownCast(this->ViewNode))
     {
-    if (!this->Internal->SliceDisplayNode->GetVisibility2D())
+    if (!sliceDisplayNode->GetVisibility2D())
       {
       return false;
       }
     }
   if (vtkMRMLViewNode::SafeDownCast(this->ViewNode))
     {
-    if (!this->Internal->SliceDisplayNode->GetVisibility3D())
+    if (!sliceDisplayNode->GetVisibility3D())
       {
       return false;
       }

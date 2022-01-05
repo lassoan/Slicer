@@ -863,7 +863,6 @@ bool vtkMRMLSliceIntersectionWidget::ProcessTouchTranslate(vtkMRMLInteractionEve
     xyToSlice->GetElement(1, 1) * translate[1]
   };
 
-
   this->TotalTouchTranslation += vtkMath::Norm2D(translate);
 
   if (this->TouchTranslationEnabled || this->TotalTouchTranslation >= this->TouchTranslationThreshold)
