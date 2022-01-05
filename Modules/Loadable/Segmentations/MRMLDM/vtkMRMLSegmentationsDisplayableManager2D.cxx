@@ -27,10 +27,13 @@
 #include <vtkMRMLSliceNode.h>
 #include <vtkMRMLSegmentationDisplayNode.h>
 #include <vtkMRMLSegmentationNode.h>
+#include <vtkMRMLSegmentEditorNode.h>
 #include <vtkMRMLTransformNode.h>
 
 // MRML logic includes
 #include "vtkImageLabelOutline.h"
+#include "vtkMRMLApplicationLogic.h"
+#include "vtkSlicerSegmentationsModuleLogic.h"
 
 // SegmentationCore includes
 #include "vtkSegmentation.h"
@@ -315,6 +318,10 @@ public:
   bool UseDisplayableNode(vtkMRMLSegmentationNode* node);
   void ClearDisplayableNodes();
   bool IsSegmentVisibleInCurrentSlice(vtkMRMLSegmentationDisplayNode* displayNode, Pipeline* pipeline, const std::string &segmentID);
+
+  // List to allow quick iteration through segment editor nodes on each interaction event
+  std::deque< vtkWeakPointer<vtkMRMLSegmentEditorNode> > SegmentEditorNodes;
+  vtkWeakPointer<vtkSlicerSegmentationsModuleLogic> SegmentationsModuleLogic;
 
 private:
   vtkSmartPointer<vtkMatrix4x4> SliceXYToRAS;
@@ -1329,7 +1336,8 @@ void vtkMRMLSegmentationsDisplayableManager2D::PrintSelf(ostream& os, vtkIndent 
 //---------------------------------------------------------------------------
 void vtkMRMLSegmentationsDisplayableManager2D::OnMRMLSceneNodeAdded(vtkMRMLNode* node)
 {
-  if ( !node->IsA("vtkMRMLSegmentationNode") )
+  if (!(node->IsA("vtkMRMLSegmentationNode"))
+    && (!node->IsA("vtkMRMLSegmentEditorNode")) )
     {
     return;
     }
@@ -1341,7 +1349,18 @@ void vtkMRMLSegmentationsDisplayableManager2D::OnMRMLSceneNodeAdded(vtkMRMLNode*
     return;
     }
 
-  this->Internal->AddSegmentationNode(vtkMRMLSegmentationNode::SafeDownCast(node));
+  vtkMRMLSegmentationNode* segmentationNode = vtkMRMLSegmentationNode::SafeDownCast(node);
+  if (segmentationNode)
+    {
+    this->Internal->AddSegmentationNode(segmentationNode);
+    }
+
+  vtkMRMLSegmentEditorNode* segmentEditorNode = vtkMRMLSegmentEditorNode::SafeDownCast(node);
+  if (segmentEditorNode)
+    {
+    this->Internal->SegmentEditorNodes.push_back(segmentEditorNode);
+    }
+
   this->RequestRender();
 }
 
@@ -1350,13 +1369,15 @@ void vtkMRMLSegmentationsDisplayableManager2D::OnMRMLSceneNodeRemoved(vtkMRMLNod
 {
   if ( node
     && (!node->IsA("vtkMRMLSegmentationNode"))
-    && (!node->IsA("vtkMRMLSegmentationDisplayNode")) )
+    && (!node->IsA("vtkMRMLSegmentationDisplayNode"))
+    && (!node->IsA("vtkMRMLSegmentEditorNode")) )
     {
     return;
     }
 
   vtkMRMLSegmentationNode* segmentationNode = nullptr;
   vtkMRMLSegmentationDisplayNode* displayNode = nullptr;
+  vtkMRMLSegmentEditorNode* segmentEditorNode = nullptr;
 
   bool modified = false;
   if ( (segmentationNode = vtkMRMLSegmentationNode::SafeDownCast(node)) )
@@ -1368,6 +1389,14 @@ void vtkMRMLSegmentationsDisplayableManager2D::OnMRMLSceneNodeRemoved(vtkMRMLNod
     {
     this->Internal->RemoveDisplayNode(displayNode);
     modified = true;
+    }
+  else if ((segmentEditorNode = vtkMRMLSegmentEditorNode::SafeDownCast(node)))
+    {
+    auto it = std::find(this->Internal->SegmentEditorNodes.begin(), this->Internal->SegmentEditorNodes.end(), segmentEditorNode);
+    if (it != this->Internal->SegmentEditorNodes.end())
+      {
+      this->Internal->SegmentEditorNodes.erase(it);
+      }
     }
   if (modified)
     {
@@ -1439,17 +1468,29 @@ void vtkMRMLSegmentationsDisplayableManager2D::UpdateFromMRML()
     }
   this->Internal->ClearDisplayableNodes();
 
-  vtkMRMLSegmentationNode* mNode = nullptr;
   std::vector<vtkMRMLNode *> mNodes;
-  int nnodes = scene ? scene->GetNodesByClass("vtkMRMLSegmentationNode", mNodes) : 0;
-  for (int i=0; i<nnodes; i++)
+  scene->GetNodesByClass("vtkMRMLSegmentationNode", mNodes);
+  for (vtkMRMLNode* node : mNodes)
     {
-    mNode  = vtkMRMLSegmentationNode::SafeDownCast(mNodes[i]);
+    vtkMRMLSegmentationNode* mNode = vtkMRMLSegmentationNode::SafeDownCast(node);
     if (mNode && this->Internal->UseDisplayableNode(mNode))
       {
       this->Internal->AddSegmentationNode(mNode);
       }
     }
+
+  this->Internal->SegmentEditorNodes.clear();
+  std::vector<vtkMRMLNode *> segmentEditorNodes;
+  scene->GetNodesByClass("vtkMRMLSegmentationNode", segmentEditorNodes);
+  for (vtkMRMLNode* node : segmentEditorNodes)
+    {
+    vtkMRMLSegmentEditorNode* segmentEditorNode = vtkMRMLSegmentEditorNode::SafeDownCast(node);
+    if (segmentEditorNode)
+      {
+      this->Internal->SegmentEditorNodes.push_back(segmentEditorNode);
+      }
+    }
+
   this->RequestRender();
 }
 
@@ -1482,6 +1523,8 @@ void vtkMRMLSegmentationsDisplayableManager2D::Create()
 {
   this->Internal->SetSliceNode(this->GetMRMLSliceNode());
   this->SetUpdateFromMRMLRequested(true);
+  this->Internal->SegmentationsModuleLogic = vtkSlicerSegmentationsModuleLogic::SafeDownCast(
+    this->GetMRMLApplicationLogic()->GetModuleLogic("Segmentations"));
 }
 
 //---------------------------------------------------------------------------
@@ -1787,4 +1830,71 @@ void vtkMRMLSegmentationsDisplayableManager2D::GetVisibleSegmentsForPosition(dou
       segmentValues->InsertNextValue(valueForSegment[*segmentIt]);
       }
     }
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLSegmentationsDisplayableManager2D::CanProcessInteractionEvent(vtkMRMLInteractionEventData* eventData, double &closestDistance2)
+{
+  // TODO: probably move all bookkeping of segment editor nodes into the module logic so that
+  // it can be used from both the 2D and 3D displayable managers.
+  if (!this->Internal->SegmentationsModuleLogic)
+    {
+    return false;
+    }
+  for (vtkMRMLSegmentEditorNode* segmentEditorNode : this->Internal->SegmentEditorNodes)
+    {
+    if (!segmentEditorNode)
+      {
+      continue;
+      }
+    if (!segmentEditorNode->GetActiveEffectName()
+      || strlen(segmentEditorNode->GetActiveEffectName()) == 0)
+      {
+      continue;
+      }
+    vtkMRMLSegmentationNode* segmentationNode = segmentEditorNode->GetSegmentationNode();
+    if (!segmentationNode)
+      {
+      continue;
+      }
+    int numberOfDisplayNodes = segmentationNode->GetNumberOfDisplayNodes();
+    for (int displayNodeIndex = 0; displayNodeIndex < numberOfDisplayNodes; displayNodeIndex++)
+      {
+      vtkMRMLSegmentationDisplayNode* displayNode = vtkMRMLSegmentationDisplayNode::SafeDownCast(segmentationNode->GetNthDisplayNode(displayNodeIndex));
+      if (!displayNode || !this->Internal->IsVisible(displayNode))
+        {
+        continue;
+        }
+      /* TODO: implement this
+      if (this->Internal->SegmentationsModuleLogic->CanProcessInteractionEvent(segmentEditorNode, displayNode, eventData, closestDistance2))
+        {
+        this->Internal->LastActiveSegmentEditorNode = segmentEditorNode;
+        this->Internal->LastActiveSegmentationDisplayNode = displayNode;
+        return true;
+        }
+      */
+      }
+    }
+
+  /*
+  if (this->Internal->LastActiveSegmentEditorNode)
+  {
+    TODO: leave (hide preview actor, etc.)
+  }
+  */
+  return false;
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLSegmentationsDisplayableManager2D::ProcessInteractionEvent(vtkMRMLInteractionEventData* eventData)
+{
+  /* TODO: implement this
+  if (!this->Internal->LastActiveSegmentEditorNode || !this->Internal->LastActiveSegmentationDisplayNode)
+    {
+    return false;
+    }
+  return this->Internal->SegmentationsModuleLogic->ProcessInteractionEvent(
+    this->Internal->LastActiveSegmentEditorNode, this->Internal->LastActiveSegmentationDisplayNode, eventData);
+  */
+  return false;
 }

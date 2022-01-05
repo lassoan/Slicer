@@ -69,6 +69,9 @@ protected:
   /// Initialize the displayable manager based on its associated vtkMRMLSliceNode
   void Create() override;
 
+  bool CanProcessInteractionEvent(vtkMRMLInteractionEventData* eventData, double& closestDistance2) override;
+  bool ProcessInteractionEvent(vtkMRMLInteractionEventData* eventData) override;
+
 protected:
   vtkMRMLSegmentationsDisplayableManager2D();
   ~vtkMRMLSegmentationsDisplayableManager2D() override;
