@@ -2339,6 +2339,10 @@ bool vtkMRMLSliceLogic::IsSliceModelNode(vtkMRMLNode *mrmlNode)
 //----------------------------------------------------------------------------
 bool vtkMRMLSliceLogic::IsSliceModelDisplayNode(vtkMRMLDisplayNode *mrmlDisplayNode)
 {
+  if (vtkMRMLSliceDisplayNode::SafeDownCast(mrmlDisplayNode))
+    {
+    return true;
+    }
   if (mrmlDisplayNode != nullptr &&
       mrmlDisplayNode->IsA("vtkMRMLModelDisplayNode"))
     {
@@ -2502,7 +2506,6 @@ bool vtkMRMLSliceLogic::IsEventInsideVolume(bool background, double worldPos[3])
     }
   return true;
 }
-
 
 //----------------------------------------------------------------------------
 vtkMRMLSliceDisplayNode* vtkMRMLSliceLogic::GetSliceDisplayNode()

@@ -189,7 +189,6 @@ void qSlicerViewersToolBarPrivate::init()
   this->SliceIntersectionTranslationEnabledAction->setText(tr("Translate"));
   this->SliceIntersectionTranslationEnabledAction->setToolTip(tr("Control visibility of translation handles for slice intersection."));
   this->SliceIntersectionTranslationEnabledAction->setCheckable(true);
-  this->SliceIntersectionTranslationEnabledAction->setEnabled(false);
   QObject::connect(this->SliceIntersectionTranslationEnabledAction, SIGNAL(triggered(bool)),
     this, SLOT(setSliceIntersectionTranslationEnabled(bool)));
 
@@ -197,7 +196,6 @@ void qSlicerViewersToolBarPrivate::init()
   this->SliceIntersectionRotationEnabledAction->setText(tr("Rotate"));
   this->SliceIntersectionRotationEnabledAction->setToolTip(tr("Control visibility of rotation handles for slice intersection."));
   this->SliceIntersectionRotationEnabledAction->setCheckable(true);
-  this->SliceIntersectionRotationEnabledAction->setEnabled(false);
   QObject::connect(this->SliceIntersectionRotationEnabledAction, SIGNAL(triggered(bool)),
     this, SLOT(setSliceIntersectionRotationEnabled(bool)));
 
@@ -217,6 +215,9 @@ void qSlicerViewersToolBarPrivate::init()
   this->CrosshairMenu->addAction(this->SliceIntersectionVisibleAction);
   this->CrosshairMenu->addAction(this->SliceInsersectionInteractiveAction);
   this->CrosshairMenu->addMenu(this->SliceIntersectionInteractionModesMenu);
+  // Add connection to update slice intersection checkboxes before showing the dropdown menu
+  QObject::connect(this->CrosshairMenu, SIGNAL(aboutToShow()),
+    this, SLOT(updateWidgetFromMRML()));
 
   this->CrosshairToolButton = new QToolButton();
 //  this->CrosshairToolButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -241,6 +242,7 @@ void qSlicerViewersToolBarPrivate::init()
   QObject::connect(q, SIGNAL(toolButtonStyleChanged(Qt::ToolButtonStyle)),
                    this->CrosshairToolButton,
                    SLOT(setToolButtonStyle(Qt::ToolButtonStyle)));
+
   /// Other controls
   ///
 }
@@ -420,18 +422,6 @@ void qSlicerViewersToolBarPrivate::setMRMLScene(vtkMRMLScene* newScene)
                           this, SLOT(onCrosshairNodeModeChangedEvent()));
         }
       }
-
-
-    // Watch the first slice display node for a change in the
-    // SliceIntersectionVisibility state. There are potentially many
-    // slice display nodes but only one menu option in the toolbar for
-    // the state. So we just watch one.
-    vtkMRMLNode* sliceDisplayNode = this->MRMLScene->GetFirstNodeByClass("vtkMRMLSliceDisplayNode");
-    if (sliceDisplayNode)
-      {
-      this->qvtkReconnect(sliceDisplayNode, vtkCommand::ModifiedEvent,
-                          this, SLOT(onSliceDisplayNodeChangedEvent()));
-      }
     }
 
   // Update UI
@@ -521,9 +511,9 @@ void qSlicerViewersToolBarPrivate::updateWidgetFromMRML()
     // Slicer intersection interactive
     this->SliceInsersectionInteractiveAction->setChecked(
       this->MRMLAppLogic->GetSliceIntersectionEnabled(vtkMRMLApplicationLogic::SliceIntersectionInteractive));
-    this->SliceInsersectionInteractiveAction->setEnabled(this->SliceIntersectionVisibleAction->isEnabled());
+    this->SliceInsersectionInteractiveAction->setEnabled(this->SliceIntersectionVisibleAction->isChecked());
     // Interaction options
-    this->SliceIntersectionInteractionModesMenu->setEnabled(this->SliceIntersectionVisibleAction->isEnabled());
+    this->SliceIntersectionInteractionModesMenu->setEnabled(this->SliceIntersectionVisibleAction->isChecked());
     this->SliceIntersectionTranslationEnabledAction->setChecked(
       this->MRMLAppLogic->GetSliceIntersectionEnabled(vtkMRMLApplicationLogic::SliceIntersectionTranslation));
     this->SliceIntersectionRotationEnabledAction->setChecked(
@@ -575,8 +565,6 @@ void qSlicerViewersToolBarPrivate::onSliceDisplayNodeChangedEvent()
 {
   this->updateWidgetFromMRML();
 }
-
-
 
 //---------------------------------------------------------------------------
 // qSlicerModuleSelectorToolBar methods

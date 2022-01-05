@@ -66,6 +66,51 @@ public:
   void SetSliceIntersectionInteractiveModeEnabled(SliceIntersectionInteractiveMode mode, bool enabled);
   bool GetSliceIntersectionInteractiveModeEnabled(SliceIntersectionInteractiveMode mode);
 
+  /// Get name of the default interaction context (typically the mouse)
+  static const std::string GetDefaultContextName() { return ""; };
+
+  /// Active component (that the mouse or other interaction context is hovered over).
+  /// This property is computed on-the-fly and saved to file.
+  /// \param context Name of the interaction context. By default it is empty string, meaning mouse.
+  ///   Additional devices, such as virtual reality controllers can specify additional context names.
+  ///   This mechanism allows interacting with multiple markups at the same time (user can grab
+  ///   different markup points with each controller at the same time).
+  int GetActiveComponentType(std::string context = vtkMRMLSliceDisplayNode::GetDefaultContextName());
+  enum ComponentType
+    {
+    ComponentNone = 0, ///< no component of the slice or slice intersection widget is active
+    ComponentTranslateIntersectingSlicesHandle, ///< mouse is near the intersection point of slice intersections
+    ComponentRotateIntersectingSlicesHandle, ///< mouse is near the end of the slice intersection (rotation section)
+    ComponentTranslateSingleIntersectingSliceHandle, ///< mouse is near the middle of the slice intersection (translation section)
+    ComponentSliceIntersection, ///< slice intersection is active (not any handle), e.g., because user is interacting with the widget
+    Component_Last
+    };
+  struct ComponentInfo
+    {
+    ComponentInfo()
+      {
+      this->Type = ComponentNone;
+      this->Index = -1;
+      }
+    int Type;
+    int Index;
+    };
+
+  /// Index of active component (that the mouse or other interaction context is hovered over).
+  /// This property is computed on-the-fly and saved to file.
+  /// \param context Name of the interaction context. By default it is empty string, meaning mouse
+  int GetActiveComponentIndex(std::string context= vtkMRMLSliceDisplayNode::GetDefaultContextName());
+
+  /// Set active component type and index for interaction context (empty by default, meaning mouse)
+  void SetActiveComponent(int componentType, int componentIndex,
+                          std::string context= vtkMRMLSliceDisplayNode::GetDefaultContextName());
+
+  /// Query if there is an active component for any interaction context
+  bool HasActiveComponent();
+
+  /// Get list of interaction context names that have active components
+  /// \return List of interaction context names that have active components
+  std::vector<std::string> GetActiveComponentInteractionContexts();
 
 protected:
   vtkMRMLSliceDisplayNode();
@@ -76,6 +121,10 @@ protected:
   bool SliceIntersectionInteractive{ false };
   bool SliceIntersectionTranslationEnabled{ true };
   bool SliceIntersectionRotationEnabled{ true };
+
+  /// Current active point or widget component type and index (hovered by the mouse or other interaction context)
+  /// Map interaction context identifier (empty string for mouse) to component type enum
+  std::map<std::string, ComponentInfo> ActiveComponents;
 };
 
 #endif

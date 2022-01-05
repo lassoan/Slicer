@@ -612,3 +612,12 @@ int vtkMRMLCrosshairDisplayableManager::GetMouseCursor()
     }
   return this->Internal->SliceIntersectionWidget->GetMouseCursor();
 }
+
+//---------------------------------------------------------------------------
+void vtkMRMLCrosshairDisplayableManager::SetHasFocus(bool hasFocus)
+{
+  if (this->Internal->SliceIntersectionWidget)
+    {
+    this->Internal->SliceIntersectionWidget->Leave(nullptr);
+    }
+}

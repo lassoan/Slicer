@@ -17,6 +17,8 @@ vtkMRMLNodeNewMacro(vtkMRMLSliceDisplayNode);
 //-----------------------------------------------------------------------------
 vtkMRMLSliceDisplayNode::vtkMRMLSliceDisplayNode()
 {
+  // Set active component defaults for mouse (identified by empty string)
+  this->ActiveComponents[GetDefaultContextName()] = ComponentInfo();
 }
 
 //-----------------------------------------------------------------------------
@@ -33,6 +35,23 @@ void vtkMRMLSliceDisplayNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintBooleanMacro(SliceIntersectionInteractive);
   vtkMRMLPrintBooleanMacro(SliceIntersectionTranslationEnabled);
   vtkMRMLPrintBooleanMacro(SliceIntersectionRotationEnabled);
+  {
+  os << indent << "ActiveComponents:";
+  for (std::map<std::string, ComponentInfo>::iterator it = this->ActiveComponents.begin(); it != this->ActiveComponents.end(); ++it)
+    {
+    os << indent << indent;
+    if (it->first.empty())
+      {
+      os << "(default)";
+      }
+    else
+      {
+      os << it->first;
+      }
+    os << ": " << it->second.Type << ", " << it->second.Index;
+    }
+  os << "\n";
+  }
   vtkMRMLPrintEndMacro();
 }
 
@@ -115,4 +134,70 @@ bool vtkMRMLSliceDisplayNode::GetSliceIntersectionInteractiveModeEnabled(
       vtkErrorMacro("Unknown mode");
     }
   return false;
+}
+
+//---------------------------------------------------------------------------
+int vtkMRMLSliceDisplayNode::GetActiveComponentType(std::string context/*=GetDefaultContextName()*/)
+{
+  if (this->ActiveComponents.find(context) == this->ActiveComponents.end())
+    {
+    vtkErrorMacro("GetActiveComponentType: No interaction context with identifier '" << context << "' was found");
+    return ComponentNone;
+    }
+
+  return this->ActiveComponents[context].Type;
+}
+
+//---------------------------------------------------------------------------
+int vtkMRMLSliceDisplayNode::GetActiveComponentIndex(std::string context/*=GetDefaultContextName()*/)
+{
+  if (this->ActiveComponents.find(context) == this->ActiveComponents.end())
+    {
+    vtkErrorMacro("GetActiveComponentIndex: No interaction context with identifier '" << context << "' was found");
+    return -1;
+    }
+
+  return this->ActiveComponents[context].Index;
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLSliceDisplayNode::SetActiveComponent(int componentType, int componentIndex, std::string context/*=GetDefaultContextName()*/)
+{
+  if ( this->ActiveComponents.find(context) != this->ActiveComponents.end()
+    && this->ActiveComponents[context].Type == componentType
+    && this->ActiveComponents[context].Index == componentIndex )
+    {
+    // no change
+    return;
+    }
+  this->ActiveComponents[context].Index = componentIndex;
+  this->ActiveComponents[context].Type = componentType;
+  this->Modified();
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLSliceDisplayNode::HasActiveComponent()
+{
+  for (std::map<std::string, ComponentInfo>::iterator it = this->ActiveComponents.begin(); it != this->ActiveComponents.end(); ++it)
+    {
+    if (it->second.Type != ComponentNone)
+      {
+      return true;
+      }
+    }
+  return false;
+}
+
+//---------------------------------------------------------------------------
+std::vector<std::string> vtkMRMLSliceDisplayNode::GetActiveComponentInteractionContexts()
+{
+  std::vector<std::string> interactionContextVector;
+  for (std::map<std::string, ComponentInfo>::iterator it = this->ActiveComponents.begin(); it != this->ActiveComponents.end(); ++it)
+    {
+    if (it->second.Type != ComponentNone)
+      {
+      interactionContextVector.push_back(it->first);
+      }
+    }
+  return interactionContextVector;
 }

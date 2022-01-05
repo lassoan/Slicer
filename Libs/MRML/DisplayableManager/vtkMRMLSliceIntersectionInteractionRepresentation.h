@@ -27,6 +27,7 @@
 #include "vtkMRMLAbstractWidgetRepresentation.h"
 #include "vtkMRMLSliceIntersectionInteractionRepresentationHelper.h"
 
+#include "vtkMRMLSliceDisplayNode.h"
 #include "vtkMRMLSliceNode.h"
 
 class vtkMRMLApplicationLogic;
@@ -67,6 +68,11 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     void SetSliceNode(vtkMRMLSliceNode* sliceNode);
     vtkMRMLSliceNode* GetSliceNode();
 
+    vtkMRMLSliceDisplayNode* GetSliceDisplayNode();
+
+    bool IsDisplayable();
+    void UpdateFromMRML(vtkMRMLNode* caller, unsigned long event, void* callData = nullptr) override;
+
     void AddIntersectingSliceLogic(vtkMRMLSliceLogic* sliceLogic);
     void RemoveIntersectingSliceNode(vtkMRMLSliceNode* sliceNode);
     void UpdateIntersectingSliceNodes();
@@ -100,15 +106,6 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     /// componentIndex returns index of the found component (e.g., if control point is found then control point index is returned).
     virtual std::string CanInteract(vtkMRMLInteractionEventData* interactionEventData,
         int& foundComponentType, int& foundComponentIndex, double& closestDistance2, double& handleOpacity);
-
-    enum
-      {
-      InteractionNone,
-      InteractionTranslationHandle,
-      InteractionRotationHandle,
-      InteractionSliceOffsetHandle,
-      InteractionIntersectionLine,
-      };
 
     virtual double GetMaximumHandlePickingDistance2();
 
@@ -153,6 +150,8 @@ class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionInteractionRepr
     void SliceModelDisplayNodeModified(vtkMRMLModelDisplayNode* sliceNode);
 
     void UpdateSliceIntersectionDisplay(SliceIntersectionInteractionDisplayPipeline* pipeline);
+
+    vtkMRMLSliceDisplayNode* GetSliceDisplayNode(vtkMRMLSliceNode* sliceNode);
 
     double GetSliceRotationAngleRad(int eventPos[2]);
 

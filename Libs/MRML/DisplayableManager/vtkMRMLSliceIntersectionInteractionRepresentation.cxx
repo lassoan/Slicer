@@ -28,6 +28,7 @@
 #include "vtkMRMLSliceDisplayNode.h"
 #include "vtkMRMLSliceLogic.h"
 #include "vtkMRMLSliceNode.h"
+#include "vtkMRMLViewNode.h"
 
 #include "vtkActor2D.h"
 #include "vtkArcSource.h"
@@ -82,10 +83,17 @@ enum
   Circles = 1,
   };
 
+enum
+{
+  NeverVisible = 0,
+  NearbyVisible = 0,
+  AlwaysVisible =2
+} ;
+
 // Settings
 static const int VISUALIZATION_MODE = HideIntersection;
 static const int HANDLES_TYPE = Arrows;
-static const bool HANDLES_ALWAYS_VISIBLE = false;
+static const int HANDLES_VISIBILITY = NeverVisible;
 static const double OPACITY_RANGE = 1000.0;
 static const double FOV_HANDLES_MARGIN = 0.03; // 3% margin
 static const double HIDE_INTERSECTION_GAP_SIZE = 0.05; // 5.0% of the slice view width
@@ -618,7 +626,6 @@ class SliceIntersectionInteractionDisplayPipeline
     //----------------------------------------------------------------------
     void SetAndObserveSliceLogic(vtkMRMLSliceLogic* sliceLogic, vtkCallbackCommand* callback)
     {
-
       if (sliceLogic != this->SliceLogic || callback != this->Callback)
         {
         if (this->SliceLogic && this->Callback)
@@ -711,15 +718,20 @@ class SliceIntersectionInteractionDisplayPipeline
       {
       this->IntersectionLine1Actor->SetVisibility(visibility);
       this->IntersectionLine2Actor->SetVisibility(visibility);
-      if (HANDLES_ALWAYS_VISIBLE)
+      if (HANDLES_VISIBILITY == AlwaysVisible)
         {
-        this->TranslationOuterHandleActor->SetVisibility(visibility);
-        this->TranslationInnerHandleActor->SetVisibility(visibility);
-        this->RotationHandle1Actor->SetVisibility(visibility);
-        this->RotationHandle2Actor->SetVisibility(visibility);
-        this->SliceOffsetHandle1Actor->SetVisibility(visibility);
-        this->SliceOffsetHandle2Actor->SetVisibility(visibility);
+        visibility = true;
         }
+      else if (HANDLES_VISIBILITY == NeverVisible)
+        {
+        visibility = false;
+        }
+      this->TranslationOuterHandleActor->SetVisibility(visibility);
+      this->TranslationInnerHandleActor->SetVisibility(visibility);
+      this->RotationHandle1Actor->SetVisibility(visibility);
+      this->RotationHandle2Actor->SetVisibility(visibility);
+      this->SliceOffsetHandle1Actor->SetVisibility(visibility);
+      this->SliceOffsetHandle2Actor->SetVisibility(visibility);
       }
 
     //----------------------------------------------------------------------
@@ -848,6 +860,7 @@ class vtkMRMLSliceIntersectionInteractionRepresentation::vtkInternal
     vtkMRMLSliceIntersectionInteractionRepresentation* External;
 
     vtkSmartPointer<vtkMRMLSliceNode> SliceNode;
+    vtkSmartPointer<vtkMRMLSliceDisplayNode> SliceDisplayNode;
 
     std::deque<SliceIntersectionInteractionDisplayPipeline*> SliceIntersectionInteractionDisplayPipelines;
     vtkNew<vtkCallbackCommand> SliceNodeModifiedCommand;
@@ -946,7 +959,6 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SliceNodeModifiedCallbac
   vtkObject * caller, unsigned long vtkNotUsed(eid), void* clientData, void* vtkNotUsed(callData))
 {
   vtkMRMLSliceIntersectionInteractionRepresentation* self = vtkMRMLSliceIntersectionInteractionRepresentation::SafeDownCast((vtkObject*)clientData);
-
   vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(caller);
   if (sliceNode)
     {
@@ -954,12 +966,17 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SliceNodeModifiedCallbac
     return;
     }
 
+  // update all slice intersection
+  self->SliceNodeModified(self->Internal->SliceNode);
+
+  /*
   vtkMRMLSliceLogic* sliceLogic = vtkMRMLSliceLogic::SafeDownCast(caller);
   if (sliceLogic)
     {
     self->UpdateSliceIntersectionDisplay(self->GetDisplayPipelineFromSliceLogic(sliceLogic));
     return;
     }
+    */
 }
 
 //----------------------------------------------------------------------
@@ -978,6 +995,15 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SliceNodeModified(vtkMRM
       {
       this->UpdateSliceIntersectionDisplay(*sliceIntersectionIt);
       }
+    bool handlesVisible = false;
+    if (this->Internal->SliceDisplayNode)
+      {
+
+      int componentType = this->Internal->SliceDisplayNode->GetActiveComponentType();
+      handlesVisible = componentType != vtkMRMLSliceDisplayNode::ComponentNone
+        && componentType != vtkMRMLSliceDisplayNode::ComponentSliceIntersection; // hide handles during interaction:
+      }
+    this->SetPipelinesHandlesVisibility(handlesVisible);
     }
 }
 
@@ -1019,29 +1045,18 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
     return;
     }
 
-  vtkMRMLSliceDisplayNode* displayNode = nullptr;
-  vtkMRMLSliceLogic* sliceLogic = nullptr;
-  vtkMRMLApplicationLogic* mrmlAppLogic = this->GetMRMLApplicationLogic();
-  if (mrmlAppLogic)
-    {
-    sliceLogic = mrmlAppLogic->GetSliceLogic(intersectingSliceNode);
-    }
-  if (sliceLogic)
-    {
-    displayNode = sliceLogic->GetSliceDisplayNode();
-    }
-
   // Set properties of slice intersection lines
+  vtkMRMLSliceDisplayNode* displayNode = this->GetSliceDisplayNode(intersectingSliceNode);
   if (displayNode)
     {
     bool sliceInteractionHandlesInteractive =
       (displayNode->GetSliceIntersectionVisibility() && displayNode->GetSliceIntersectionInteractive());
     if (!sliceInteractionHandlesInteractive)
-    {
+      {
       pipeline->SetVisibility(false);
       pipeline->SetHandlesVisibility(false);
       return;
-    }
+      }
     pipeline->TranslationHandlesVisible = displayNode->GetSliceIntersectionTranslationEnabled();
     pipeline->RotationHandlesVisible = displayNode->GetSliceIntersectionRotationEnabled();
 
@@ -1407,6 +1422,29 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateSliceIntersectionD
   pipeline->SetVisibility(true);
 }
 
+
+//----------------------------------------------------------------------
+vtkMRMLSliceDisplayNode* vtkMRMLSliceIntersectionInteractionRepresentation::GetSliceDisplayNode()
+{
+  return this->Internal->SliceDisplayNode;
+}
+
+//----------------------------------------------------------------------
+vtkMRMLSliceDisplayNode* vtkMRMLSliceIntersectionInteractionRepresentation::GetSliceDisplayNode(vtkMRMLSliceNode* sliceNode)
+{
+  vtkMRMLApplicationLogic* mrmlAppLogic = this->GetMRMLApplicationLogic();
+  if (!mrmlAppLogic)
+    {
+    return nullptr;
+    }
+  vtkMRMLSliceLogic* sliceLogic = mrmlAppLogic->GetSliceLogic(sliceNode);
+  if (!sliceLogic)
+    {
+    return nullptr;
+    }
+  return sliceLogic->GetSliceDisplayNode();
+}
+
 //----------------------------------------------------------------------
 void vtkMRMLSliceIntersectionInteractionRepresentation::SetSliceNode(vtkMRMLSliceNode * sliceNode)
 {
@@ -1424,6 +1462,18 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SetSliceNode(vtkMRMLSlic
     sliceNode->AddObserver(vtkCommand::ModifiedEvent, this->Internal->SliceNodeModifiedCommand.GetPointer());
     }
   this->Internal->SliceNode = sliceNode;
+
+  if (this->Internal->SliceDisplayNode)
+    {
+    this->Internal->SliceDisplayNode->RemoveObserver(this->Internal->SliceNodeModifiedCommand);
+    }
+  vtkMRMLSliceDisplayNode* sliceDisplayNode = this->GetSliceDisplayNode(sliceNode);
+  if (sliceDisplayNode)
+    {
+    sliceDisplayNode->AddObserver(vtkCommand::ModifiedEvent, this->Internal->SliceNodeModifiedCommand.GetPointer());
+    }
+  this->Internal->SliceDisplayNode = sliceDisplayNode;
+
   this->UpdateIntersectingSliceNodes();
 }
 
@@ -1672,7 +1722,7 @@ double vtkMRMLSliceIntersectionInteractionRepresentation::GetMaximumHandlePickin
 std::string vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMRMLInteractionEventData* interactionEventData,
   int& foundComponentType, int& foundComponentIndex, double& closestDistance2, double& handleOpacity)
 {
-  foundComponentType = InteractionNone;
+  foundComponentType = vtkMRMLSliceDisplayNode::ComponentNone;
   closestDistance2 = VTK_DOUBLE_MAX; // in display coordinate system
   foundComponentIndex = -1;
   handleOpacity = 0.0;
@@ -1692,6 +1742,14 @@ std::string vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMR
     {
     return nullptr;
     }
+
+  bool sliceIntersectionTranslationEnabled = true;
+  bool sliceIntersectionRotationEnabled = true;
+  if (this->Internal->SliceDisplayNode)
+  {
+    sliceIntersectionTranslationEnabled = this->Internal->SliceDisplayNode->GetSliceIntersectionTranslationEnabled();
+    sliceIntersectionRotationEnabled = this->Internal->SliceDisplayNode->GetSliceIntersectionRotationEnabled();
+  }
 
   for (std::deque<SliceIntersectionInteractionDisplayPipeline*>::iterator
     sliceIntersectionIt = this->Internal->SliceIntersectionInteractionDisplayPipelines.begin();
@@ -1715,6 +1773,22 @@ std::string vtkMRMLSliceIntersectionInteractionRepresentation::CanInteract(vtkMR
       HandleInfoList handleInfoList = this->GetHandleInfoList((*sliceIntersectionIt));
       for (HandleInfo handleInfo : handleInfoList)
         {
+
+        // Ignore handle if the corresponding interaction mode is disabled
+        if (!sliceIntersectionTranslationEnabled
+          && (handleInfo.ComponentType == vtkMRMLSliceDisplayNode::ComponentTranslateIntersectingSlicesHandle
+            || handleInfo.ComponentType == vtkMRMLSliceDisplayNode::ComponentTranslateSingleIntersectingSliceHandle))
+          {
+          // translation is disabled and this is a translation handle
+          continue;
+          }
+        if (!sliceIntersectionRotationEnabled
+          && handleInfo.ComponentType == vtkMRMLSliceDisplayNode::ComponentRotateIntersectingSlicesHandle)
+          {
+          // rotation is disabled and this is a translation handle
+          continue;
+          }
+
         double* handleWorldPos = handleInfo.PositionWorld;
         rasToxyMatrix->MultiplyPoint(handleWorldPos, handleDisplayPos);
         handleDisplayPos[2] = displayPosition3[2]; // Handles are always projected
@@ -1814,7 +1888,8 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
     handlePositionWorld[0] = handlePositionWorld_h[0];
     handlePositionWorld[1] = handlePositionWorld_h[1];
     handlePositionWorld[2] = handlePositionWorld_h[2];
-    HandleInfo info(i, InteractionRotationHandle, intersectingSliceNodeID, handlePositionWorld, handlePositionLocal);
+    HandleInfo info(i, vtkMRMLSliceDisplayNode::ComponentRotateIntersectingSlicesHandle,
+      intersectingSliceNodeID, handlePositionWorld, handlePositionLocal);
     handleInfoList.push_back(info);
     }
 
@@ -1832,7 +1907,8 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
     handlePositionWorld[0] = handlePositionWorld_h[0];
     handlePositionWorld[1] = handlePositionWorld_h[1];
     handlePositionWorld[2] = handlePositionWorld_h[2];
-    HandleInfo info(i, InteractionTranslationHandle, intersectingSliceNodeID, handlePositionWorld, handlePositionLocal);
+    HandleInfo info(i, vtkMRMLSliceDisplayNode::ComponentTranslateIntersectingSlicesHandle,
+      intersectingSliceNodeID, handlePositionWorld, handlePositionLocal);
     handleInfoList.push_back(info);
     }
 
@@ -1850,7 +1926,8 @@ vtkMRMLSliceIntersectionInteractionRepresentation::GetHandleInfoList(SliceInters
     handlePositionWorld[0] = handlePositionWorld_h[0];
     handlePositionWorld[1] = handlePositionWorld_h[1];
     handlePositionWorld[2] = handlePositionWorld_h[2];
-    HandleInfo info(i, InteractionSliceOffsetHandle, intersectingSliceNodeID, handlePositionWorld, handlePositionLocal);
+    HandleInfo info(i, vtkMRMLSliceDisplayNode::ComponentTranslateSingleIntersectingSliceHandle,
+      intersectingSliceNodeID, handlePositionWorld, handlePositionLocal);
     handleInfoList.push_back(info);
     }
 
@@ -1917,10 +1994,13 @@ double vtkMRMLSliceIntersectionInteractionRepresentation::GetViewScaleFactorAtPo
 //----------------------------------------------------------------------
 void vtkMRMLSliceIntersectionInteractionRepresentation::SetPipelinesHandlesVisibility(bool visible)
 {
-  // Force visible handles in the "handles always visible" mode is activated
-  if (HANDLES_ALWAYS_VISIBLE)
+  if (HANDLES_VISIBILITY == AlwaysVisible)
     {
     visible = true;
+    }
+  else if (HANDLES_VISIBILITY == NeverVisible)
+    {
+    visible = false;
     }
 
   // Update handles visibility in all display pipelines
@@ -1936,7 +2016,7 @@ void vtkMRMLSliceIntersectionInteractionRepresentation::SetPipelinesHandlesVisib
 void vtkMRMLSliceIntersectionInteractionRepresentation::SetPipelinesHandlesOpacity(double opacity)
 {
   // Force visible handles in the "handles always visible" mode is activated
-  if (HANDLES_ALWAYS_VISIBLE)
+  if (HANDLES_VISIBILITY == AlwaysVisible)
     {
     opacity = 1.0;
     }
@@ -1972,4 +2052,56 @@ bool vtkMRMLSliceIntersectionInteractionRepresentation::IsMouseCursorInSliceView
     inSliceView = false;
     }
   return inSliceView;
+}
+
+//-----------------------------------------------------------------------------
+bool vtkMRMLSliceIntersectionInteractionRepresentation::IsDisplayable()
+{
+  if (!this->Internal->SliceDisplayNode
+    || !this->ViewNode
+    || !this->Internal->SliceDisplayNode->GetVisibility()
+    || !this->Internal->SliceDisplayNode->IsDisplayableInView(this->ViewNode->GetID()))
+    {
+    return false;
+    }
+
+  if (vtkMRMLSliceNode::SafeDownCast(this->ViewNode))
+    {
+    if (!this->Internal->SliceDisplayNode->GetVisibility2D())
+      {
+      return false;
+      }
+    }
+  if (vtkMRMLViewNode::SafeDownCast(this->ViewNode))
+    {
+    if (!this->Internal->SliceDisplayNode->GetVisibility3D())
+      {
+      return false;
+      }
+    }
+  return true;
+}
+
+//----------------------------------------------------------------------
+void vtkMRMLSliceIntersectionInteractionRepresentation::UpdateFromMRML(vtkMRMLNode* caller, unsigned long event, void *callData /*=nullptr*/)
+{
+  Superclass::UpdateFromMRML(caller, event, callData);
+
+  this->NeedToRenderOn();
+
+  vtkMRMLSliceIntersectionInteractionRepresentation* self = vtkMRMLSliceIntersectionInteractionRepresentation::SafeDownCast((vtkObject*)callData);
+
+  vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(caller);
+  if (sliceNode)
+    {
+    self->SliceNodeModified(sliceNode);
+    return;
+    }
+
+  vtkMRMLSliceLogic* sliceLogic = vtkMRMLSliceLogic::SafeDownCast(caller);
+  if (sliceLogic)
+    {
+    self->UpdateSliceIntersectionDisplay(self->GetDisplayPipelineFromSliceLogic(sliceLogic));
+    return;
+    }
 }

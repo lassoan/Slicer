@@ -75,7 +75,6 @@ public:
 
   void init();
   void setMRMLScene(vtkMRMLScene* newScene);
-  void updateWidgetFromMRML();
 
 public slots:
 
@@ -84,6 +83,7 @@ public slots:
   void OnMRMLSceneEndClose();
   void onCrosshairNodeModeChangedEvent();
   void onSliceDisplayNodeChangedEvent();
+  void updateWidgetFromMRML();
 
   void setCrosshairMode(int);
   void setCrosshairEnabled(bool); // used to toggle between last style and off

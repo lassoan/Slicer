@@ -38,7 +38,7 @@
 class vtkSliceIntersectionRepresentation2D;
 class vtkMRMLApplicationLogic;
 class vtkMRMLSegmentationDisplayNode;
-
+class vtkMRMLSliceDisplayNode;
 
 class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLSliceIntersectionWidget : public vtkMRMLAbstractWidget
 {
@@ -64,6 +64,8 @@ public:
   void SetSliceNode(vtkMRMLSliceNode* sliceNode);
   vtkMRMLSliceNode* GetSliceNode();
 
+  vtkMRMLSliceDisplayNode* GetSliceDisplayNode();
+
   void SetMRMLApplicationLogic(vtkMRMLApplicationLogic* applicationLogic) override;
 
   /// Return true if the widget can process the event.
@@ -74,16 +76,6 @@ public:
 
   /// Called when the the widget loses the focus.
   void Leave(vtkMRMLInteractionEventData* eventData) override;
-
-  /// Interaction with handles
-  enum
-    {
-    InteractionNone,
-    InteractionTranslationHandle,
-    InteractionRotationHandle,
-    InteractionSliceOffsetHandle,
-    InteractionIntersectionLine,
-    };
 
   /// Widget states
   enum
@@ -97,7 +89,6 @@ public:
     WidgetStateTouchGesture, ///< Pinch/zoom/pan using touch gestures
 
     // Interactions with slice intersection handles
-    WidgetStateOnIntersectionLine, ///< hovering over a slice intersection line
     WidgetStateOnTranslateIntersectingSlicesHandle, ///< hovering over a slice intersection point
     WidgetStateTranslateIntersectingSlicesHandle, ///< translating all intersecting slices by drag-and-dropping handle
     WidgetStateOnRotateIntersectingSlicesHandle, ///< hovering over a rotation interaction handle
@@ -321,9 +312,6 @@ protected:
 
   // Last intersecting slice node where interaction occurred
   std::string LastIntersectingSliceNodeID;
-
-  int activeComponentType;
-  int activeComponentIndex;
 
 private:
   vtkMRMLSliceIntersectionWidget(const vtkMRMLSliceIntersectionWidget&) = delete;
