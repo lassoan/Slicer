@@ -48,6 +48,11 @@
 #include <vtkMRMLFolderDisplayNode.h>
 #include <vtkMRMLInteractionEventData.h>
 #include <vtkMRMLViewNode.h>
+#include <vtkMRMLScene.h>
+#include <vtkMRMLVolumeNode.h>
+#include <vtkMRMLScalarVolumeNode.h>
+#include <vtkMRMLSliceCompositeNode.h>
+#include <vtkMRMLSliceNode.h>
 
 std::map<vtkRenderer*, vtkSmartPointer<vtkFloatArray> > vtkSlicerMarkupsWidgetRepresentation3D::CachedZBuffers;
 
@@ -94,6 +99,9 @@ vtkSlicerMarkupsWidgetRepresentation3D::ControlPointsPipeline3D::ControlPointsPi
   this->OccludedTextProperty = vtkSmartPointer<vtkTextProperty>::New();
   this->OccludedTextProperty->ShallowCopy(this->TextProperty);
   this->OccludedTextProperty->SetOpacity(0.0);
+
+  this->LabelLeaderLinesProperty = vtkSmartPointer<vtkProperty>::New();
+  this->LabelLeaderLinesProperty->SetColor(1.,1.,1.);
 
   // Label point filters
   this->ControlPointIndices = vtkSmartPointer<vtkIdTypeArray>::New();
@@ -167,6 +175,23 @@ vtkSlicerMarkupsWidgetRepresentation3D::ControlPointsPipeline3D::ControlPointsPi
   this->LabelsOccludedActor->SetMapper(this->LabelsOccludedMapper);
   this->LabelsOccludedActor->PickableOff();
   this->LabelsOccludedActor->DragableOff();
+
+  // Labels line polydata
+  this->LabelsLinePolyData = vtkSmartPointer<vtkPolyData>::New();
+  this->LabelsLineTubeFilter = vtkSmartPointer<vtkTubeFilter>::New();
+  this->LabelsLineTubeFilter->SetInputData(LabelsLinePolyData);
+  this->LabelsLineTubeFilter->SetNumberOfSides(20);
+  this->LabelsLineTubeFilter->SetRadius(this->LabelsLineTubeFilter->GetRadius());
+
+  this->LabelsLineMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+  this->LabelsLineMapper->SetInputConnection(this->LabelsLineTubeFilter->GetOutputPort());
+
+  this->LabelsLineMapper->SetScalarVisibility(true);
+
+  this->LabelsLineActor = vtkSmartPointer<vtkActor>::New();
+  this->LabelsLineActor->SetMapper(this->LabelsLineMapper);
+  this->LabelsLineActor->SetProperty(this->LabelLeaderLinesProperty);
+
 };
 
 vtkSlicerMarkupsWidgetRepresentation3D::ControlPointsPipeline3D::~ControlPointsPipeline3D() = default;
@@ -234,8 +259,161 @@ void vtkSlicerMarkupsWidgetRepresentation3D::UpdateNthPointAndLabelFromMRML(int 
 }
 
 //----------------------------------------------------------------------
+void vtkSlicerMarkupsWidgetRepresentation3D::GetBackgroundVolumeRASCenter(double centerPos[3])
+{
+    vtkMRMLSliceCompositeNode* compositeNode = nullptr;
+    vtkMRMLViewNode* viewNode = vtkMRMLViewNode::SafeDownCast(this->ViewNode);
+    if (viewNode)
+    {
+        compositeNode = vtkMRMLSliceCompositeNode::SafeDownCast(viewNode->GetScene()->GetFirstNodeByClass("vtkMRMLSliceCompositeNode"));
+        if (compositeNode)
+        {
+            const char* backgroundVolumeID = compositeNode->GetBackgroundVolumeID();
+
+            double volumeBounds[6] = { 0.0 };
+            double volumeCenterRAS[4] = { 0.0 };
+            double centerPosDisplay[4] = { 0.0 };
+            if (backgroundVolumeID)
+            {
+                vtkMRMLScalarVolumeNode* sliceBackgroundVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(viewNode->
+                    GetScene()->GetNodeByID(backgroundVolumeID));
+                if (sliceBackgroundVolumeNode)
+                {
+                    sliceBackgroundVolumeNode->GetRASBounds(volumeBounds);
+                    // xmin,ymax,ymin,ymax,zmin,zmax
+                    volumeCenterRAS[0] = (volumeBounds[1] + volumeBounds[0]) / 2.;
+                    volumeCenterRAS[1] = (volumeBounds[3] + volumeBounds[2]) / 2.;
+                    volumeCenterRAS[2] = (volumeBounds[5] + volumeBounds[4]) / 2.;
+                    volumeCenterRAS[3] = 1.;
+                }
+            }
+            centerPos[0] = volumeCenterRAS[0];
+            centerPos[1] = volumeCenterRAS[1];
+            centerPos[2] = volumeCenterRAS[2];
+        }
+    }
+}
+
+
+//----------------------------------------------------------------------
+void vtkSlicerMarkupsWidgetRepresentation3D::GetLabelTextRASOffsets(double backgroundVolumeCenterRAS[3], double  slicePos[3], double leadersLineOffset[3])
+{
+    double pi = 3.14159;
+
+    class myTriangle
+    {
+    public:
+        double a = 0;
+        double b = 0;
+        double c = 0;
+        double AlphaRad = 0;
+        double BetaRad = 0;
+        double GammaRad = 0;
+        double AlphaDeg = 0;
+        double BetaDeg = 0;
+        double GammaDeg = 0;
+    };
+
+    myTriangle tr,tr2;
+
+    const int* screenSize = this->Renderer->GetRenderWindow()->GetSize();
+    int screenWidth = screenSize[0];
+    int screenHeight = screenSize[1];
+
+    double sliceRCenterOffsAbs = abs(slicePos[0] - backgroundVolumeCenterRAS[0]);
+    double sliceACenterOffsAbs = abs(slicePos[1] - backgroundVolumeCenterRAS[1]);
+    double sliceSCenterOffsAbs = abs(slicePos[2] - backgroundVolumeCenterRAS[2]);
+
+    double screenDiagonal = sqrt(pow(screenWidth, 2.) + pow(screenHeight, 2.));
+    double leaderLinesLength = (this->MarkupsDisplayNode->GetPointLabelsDistanceScale() * screenDiagonal) / 100.;
+
+    // calculating a triangle between control point and displaycenter
+    // known are two sides of the triangle
+    // a (x-offset between center and ctrl point pos)
+    // c (y-offset between center and ctrl point pos)
+    // and the 90 degree angle (beta)
+
+
+    tr.a = sliceRCenterOffsAbs;
+    tr.c = sliceSCenterOffsAbs;
+    tr.BetaDeg = 90.;
+    tr.BetaRad = (tr.BetaDeg * pi) / 180.;
+
+    tr.b = sqrt(pow(tr.a, 2.) + pow(tr.c, 2.) - (2. * tr.a * tr.c * cos(tr.BetaRad)));
+    tr.AlphaRad = acos((pow(tr.b, 2.) + pow(tr.c, 2.) - pow(tr.a, 2.)) / (2 * tr.b * tr.c));
+    tr.GammaRad = acos((pow(tr.b, 2.) + pow(tr.a, 2.) - pow(tr.c, 2.)) / (2 * tr.b * tr.a));
+    tr.AlphaDeg = tr.AlphaRad * (180 / pi);
+    tr.GammaDeg = tr.GammaRad * (180 / pi);
+
+    // calculating a triangle between control point and labeltext
+    // known are two angles of the triangle (alpha,gamma, see above)
+    // and one side (b, leader line length) )
+
+
+    tr2.b = leaderLinesLength;
+    tr2.GammaDeg = tr.GammaDeg;
+    tr2.GammaRad = (tr2.GammaDeg * pi) / 180.;
+    tr2.BetaDeg = 90.;
+    tr2.BetaRad = (tr2.BetaDeg * pi) / 180.;
+
+
+    tr2.AlphaDeg = 180. - tr2.GammaDeg - tr2.BetaDeg;
+    tr2.AlphaRad = (tr2.AlphaDeg * pi) / 180.;
+    tr2.a = tr2.b * sin(tr2.AlphaRad) / tr2.BetaRad;
+    tr2.c = tr2.b * sin(tr2.GammaRad) / tr2.BetaRad;
+
+    // right/left offset
+    leadersLineOffset[0] = tr2.a;
+    // superior/inferior offset
+    leadersLineOffset[2] = tr2.c;
+
+    // calculating a triangle between control point and displaycenter
+    // known are two sides of the triangle
+    // a (x-offset between center and ctrl point pos)
+    // c (y-offset between center and ctrl point pos)
+    // and the 90 degree angle (beta)
+
+    tr.a = sliceRCenterOffsAbs;
+    tr.c = sliceACenterOffsAbs;
+    tr.BetaDeg = 90.;
+    tr.BetaRad = (tr.BetaDeg * pi) / 180.;
+
+    tr.b = sqrt(pow(tr.a, 2.) + pow(tr.c, 2.) - (2. * tr.a * tr.c * cos(tr.BetaRad)));
+    tr.AlphaRad = acos((pow(tr.b, 2.) + pow(tr.c, 2.) - pow(tr.a, 2.)) / (2 * tr.b * tr.c));
+    tr.GammaRad = acos((pow(tr.b, 2.) + pow(tr.a, 2.) - pow(tr.c, 2.)) / (2 * tr.b * tr.a));
+    tr.AlphaDeg = tr.AlphaRad * (180 / pi);
+    tr.GammaDeg = tr.GammaRad * (180 / pi);
+
+    // calculating a triangle between control point and labeltext
+    // known are two angles of the triangle (alpha,gamma, see above)
+    // and one side (b, leader line length) )
+
+    tr2.b = leaderLinesLength;
+    tr2.GammaDeg = tr.GammaDeg;
+    tr2.GammaRad = (tr2.GammaDeg * pi) / 180.;
+    tr2.BetaDeg = 90.;
+    tr2.BetaRad = (tr2.BetaDeg * pi) / 180.;
+
+
+    tr2.AlphaDeg = 180. - tr2.GammaDeg - tr2.BetaDeg;
+    tr2.AlphaRad = (tr2.AlphaDeg * pi) / 180.;
+    tr2.a = tr2.b * sin(tr2.AlphaRad) / tr2.BetaRad;
+    tr2.c = tr2.b * sin(tr2.GammaRad) / tr2.BetaRad;
+
+    // anterior/posterior offset
+    leadersLineOffset[1] = tr2.c;
+
+}
+
+//----------------------------------------------------------------------
 void vtkSlicerMarkupsWidgetRepresentation3D::UpdateAllPointsAndLabelsFromMRML()
 {
+  vtkNew<vtkPoints> pts;
+  vtkNew<vtkCellArray> line;
+  int ptcnt = 0;
+  std::string labelStdStr;
+  int labelLength = 0;
+
   if (!this->MarkupsDisplayNode)
     {
     return;
@@ -262,6 +440,9 @@ void vtkSlicerMarkupsWidgetRepresentation3D::UpdateAllPointsAndLabelsFromMRML()
       controlPoints->LabelsOccludedActor->SetVisibility(false);
       continue;
       }
+
+    // in order to avoid non-updated label connector lines when label scale changes
+    controlPoints->LabelsLinePolyData->Initialize();
 
     this->UpdateRelativeCoincidentTopologyOffsets(controlPoints->GlyphMapper, controlPoints->OccludedGlyphMapper);
 
@@ -300,16 +481,158 @@ void vtkSlicerMarkupsWidgetRepresentation3D::UpdateAllPointsAndLabelsFromMRML()
 
       controlPoints->ControlPoints->InsertNextPoint(worldPos);
 
-      /* No offset for 3D actors - we may revisit this in the future
-      (we could also use text margins to add some space).
-      worldPos[0] += this->ControlPointSize;
-      worldPos[1] += this->ControlPointSize;
-      worldPos[2] += this->ControlPointSize;
-      */
-      controlPoints->LabelControlPoints->InsertNextPoint(worldPos);
+      // No offset for 3D actors - we may revisit this in the future
+      //(we could also use text margins to add some space).
+
+      //double labelsOffset = this->ControlPointSize * 0.5 + this->PickingTolerance * 0.5 * this->ScreenScaleFactor * 5.;
+
+      //worldPos[0] += labelsOffset;
+      //worldPos[1] += labelsOffset;
+      //worldPos[2] += labelsOffset
+
+      std::string labelStr;
+      int labelLength = 0;
+
+      labelStr = markupsNode->GetNthControlPointLabel(pointIndex);
+
+      // make label texts multiline if they hold <br>
+      std::string from = "<br>";
+      std::string to = "\n";
+      int start_pos = 0;
+      while ((start_pos = labelStr.find(from, start_pos)) != std::string::npos)
+      {
+          labelStr.replace(start_pos, from.length(), to);
+          start_pos += to.length();
+      }
+
+      // find length of longest string segment after splitting up into multiline segments
+      std::string s = labelStr;
+      std::string delimiter = "\n";
+      int longestStringLen = 0;
+      int numberLines = 1;
+
+      size_t pos = 0;
+      std::string token;
+      while ((pos = s.find(delimiter)) != std::string::npos)
+      {
+          numberLines++;
+          token = s.substr(0, pos);
+          if (token.length() > longestStringLen)
+          {
+              longestStringLen = token.length();
+          }
+          s.erase(0, pos + delimiter.length());
+      }
+      if (s.length() > longestStringLen)
+      {
+          longestStringLen = s.length();
+      }
+
+      double labelTextPos[3] = { 0.0 };
+
+      labelTextPos[0] = worldPos[0];
+      labelTextPos[1] = worldPos[1];
+      labelTextPos[2] = worldPos[2];
+
+      if (this->MarkupsDisplayNode->GetPointLabelsDistanceScale() > 0 &&
+          markupsNode->GetNthControlPointPositionVisibility(pointIndex) &&
+            this->MarkupsDisplayNode->GetPointLabelsVisibility() &&
+                 !markupsNode->GetNthControlPointLabel(pointIndex).empty())
+        {
+        double lineStartPos[3] = { 0.0 };
+        double lineEndPos[3] = { 0.0 };
+
+        double rOffs = 0.;
+        double aOffs = 0.;
+        double sOffs = 0.;
+
+        double focalPoint[3] = { 0.0, 0.0, 0.0 };
+        this->Renderer->GetActiveCamera()->GetFocalPoint(focalPoint);
+
+        double centerPoint[3] = { 0.0, 0.0, 0.0 };
+        this->GetBackgroundVolumeRASCenter(centerPoint);
+
+        double _fps = this->Renderer->GetActiveCamera()->GetViewAngle();
+        const int* screenSize = this->Renderer->GetRenderWindow()->GetSize();
+        int screenWidth = screenSize[0];
+        int screenHeight = screenSize[1];
+        labelLength = longestStringLen;
+
+        double labelCharWidth = this->MarkupsDisplayNode->GetTextScale() * 3.;
+        double labelTextWidth = labelCharWidth * labelLength;
+        double labelTextHeight = this->MarkupsDisplayNode->GetTextScale() * 3.;
+        double lineRSpacer = labelCharWidth;
+        double lineSSpacer = labelTextHeight * numberLines;
+
+        lineStartPos[0] = worldPos[0];
+        lineStartPos[1] = worldPos[1];
+        lineStartPos[2] = worldPos[2];
+
+        double leaderLinesOffset[3] = { 0.0, 0.0, 0.0 };
+        this->GetLabelTextRASOffsets(centerPoint,worldPos,leaderLinesOffset);
+
+        if (worldPos[0] > centerPoint[0])
+        {
+            rOffs = leaderLinesOffset[0];
+        }
+        else
+        {
+            rOffs = leaderLinesOffset[0] * -1.;
+        }
+
+        if (worldPos[1] > centerPoint[1])
+        {
+            aOffs = leaderLinesOffset[1];
+        }
+        else
+        {
+            aOffs = leaderLinesOffset[1] * -1.;
+        }
+
+        if (worldPos[2] > centerPoint[2])
+        {
+            sOffs = leaderLinesOffset[2];
+        }
+        else
+        {
+            sOffs = leaderLinesOffset[2] * -1.;
+        }
+
+        labelTextPos[0] = worldPos[0] + rOffs;
+        labelTextPos[1] = worldPos[1] + aOffs;
+        labelTextPos[2] = worldPos[2] + sOffs;
+
+        lineEndPos[0] = worldPos[0] + rOffs;
+        lineEndPos[1] = worldPos[1] + aOffs;
+        lineEndPos[2] = worldPos[2] + sOffs;
+
+        pts->InsertPoint(ptcnt, lineStartPos[0], lineStartPos[1], lineStartPos[2]);
+        pts->InsertPoint(ptcnt + 1, lineEndPos[0], lineEndPos[1], lineEndPos[2]);
+        line->InsertNextCell(2);
+        line->InsertCellPoint(ptcnt);
+        line->InsertCellPoint(ptcnt + 1);
+        ptcnt += 2;
+        controlPoints->LabelsLinePolyData->SetPoints(pts);
+        controlPoints->LabelsLinePolyData->SetLines(line);
+
+        // make the connector tube color a bit lighter then the selected glyph/text color
+        double color[3] = { 0,0,0 };
+        this->MarkupsDisplayNode->GetSelectedColor(color);
+        double hsv[3] = { 0,0,0 };
+        vtkMath::RGBToHSV(color, hsv);
+        hsv[0] *= 0.8;
+        hsv[1] *= 0.3;
+        vtkMath::HSVToRGB(hsv, color);
+        controlPoints->LabelLeaderLinesProperty->SetColor(color);
+        controlPoints->LabelsLineTubeFilter->SetRadius(this->ControlPointSize * .25);
+
+        controlPoints->LabelsLineActor->SetVisibility(true);
+        controlPoints->LabelsLineActor->Modified();
+      }
+      controlPoints->LabelControlPoints->InsertNextPoint(labelTextPos);
       controlPoints->ControlPointsPolyData->GetPointData()->GetNormals()->InsertNextTuple(pointNormalWorld);
       controlPoints->LabelControlPointsPolyData->GetPointData()->GetNormals()->InsertNextTuple(pointNormalWorld);
-      controlPoints->Labels->InsertNextValue(markupsNode->GetNthControlPointLabel(pointIndex));
+      controlPoints->Labels->InsertNextValue(labelStr);
       controlPoints->LabelsPriority->InsertNextValue(std::to_string(pointIndex));
       controlPoints->ControlPointIndices->InsertNextValue(pointIndex);
       }
@@ -494,7 +817,7 @@ void vtkSlicerMarkupsWidgetRepresentation3D::CanInteract(
         }
       }
     }
-
+  this->UpdateAllPointsAndLabelsFromMRML();
   /* This would probably faster for many points:
 
   this->BuildLocator();
@@ -792,6 +1115,7 @@ void vtkSlicerMarkupsWidgetRepresentation3D::GetActors(vtkPropCollection *pc)
     controlPoints->Actor->GetActors(pc);
     controlPoints->OccludedActor->GetActors(pc);
     controlPoints->LabelsActor->GetActors(pc);
+    controlPoints->LabelsLineActor->GetActors(pc);
     controlPoints->LabelsOccludedActor->GetActors(pc);
     }
   this->TextActor->GetActors(pc);
@@ -808,6 +1132,7 @@ void vtkSlicerMarkupsWidgetRepresentation3D::ReleaseGraphicsResources(
     controlPoints->Actor->ReleaseGraphicsResources(win);
     controlPoints->OccludedActor->ReleaseGraphicsResources(win);
     controlPoints->LabelsActor->ReleaseGraphicsResources(win);
+    controlPoints->LabelsLineActor->ReleaseGraphicsResources(win);
     controlPoints->LabelsOccludedActor->ReleaseGraphicsResources(win);
     }
   this->TextActor->ReleaseGraphicsResources(win);
@@ -856,6 +1181,10 @@ int vtkSlicerMarkupsWidgetRepresentation3D::RenderOverlay(vtkViewport *viewport)
       if (controlPoints->LabelsActor->GetVisibility())
         {
         count += controlPoints->LabelsActor->RenderOverlay(viewport);
+        }
+      if (controlPoints->LabelsLineActor->GetVisibility())
+        {
+        count += controlPoints->LabelsLineActor->RenderOverlay(viewport);
         }
       if (controlPoints->LabelsOccludedActor->GetVisibility())
         {
@@ -1019,6 +1348,7 @@ int vtkSlicerMarkupsWidgetRepresentation3D::RenderOpaqueGeometry(
         controlPoints->GlyphMapper->SetScaleFactor(this->ControlPointSize);
         controlPoints->OccludedGlyphMapper->SetScaleFactor(this->ControlPointSize);
         controlPoints->SelectVisiblePoints->SetToleranceWorld(this->ControlPointSize * 0.7);
+        controlPoints->LabelsLineTubeFilter->SetRadius(this->ControlPointSize * .25);
         }
       count += controlPoints->Actor->RenderOpaqueGeometry(viewport);
       }
@@ -1029,6 +1359,10 @@ int vtkSlicerMarkupsWidgetRepresentation3D::RenderOpaqueGeometry(
     if (controlPoints->LabelsActor->GetVisibility())
       {
       count += controlPoints->LabelsActor->RenderOpaqueGeometry(viewport);
+      }
+    if (controlPoints->LabelsLineActor->GetVisibility())
+      {
+      count += controlPoints->LabelsLineActor->RenderOpaqueGeometry(viewport);
       }
     if (controlPoints->LabelsOccludedActor->GetVisibility())
       {
@@ -1064,6 +1398,10 @@ int vtkSlicerMarkupsWidgetRepresentation3D::RenderTranslucentPolygonalGeometry(
       {
       count += controlPoints->LabelsActor->RenderTranslucentPolygonalGeometry(viewport);
       }
+    if (controlPoints->LabelsLineActor->GetVisibility())
+      {
+        count += controlPoints->LabelsLineActor->RenderTranslucentPolygonalGeometry(viewport);
+      }
     if (controlPoints->LabelsOccludedActor->GetVisibility())
       {
       count += controlPoints->LabelsOccludedActor->RenderTranslucentPolygonalGeometry(viewport);
@@ -1095,6 +1433,10 @@ vtkTypeBool vtkSlicerMarkupsWidgetRepresentation3D::HasTranslucentPolygonalGeome
       return true;
       }
     if (controlPoints->LabelsActor->GetVisibility() && controlPoints->LabelsActor->HasTranslucentPolygonalGeometry())
+      {
+      return true;
+      }
+    if (controlPoints->LabelsLineActor->GetVisibility() && controlPoints->LabelsLineActor->HasTranslucentPolygonalGeometry())
       {
       return true;
       }
@@ -1151,6 +1493,14 @@ void vtkSlicerMarkupsWidgetRepresentation3D::PrintSelf(ostream& os,
     else
       {
       os << indent << "Labels Points: (none)\n";
+      }
+    if (controlPoints->LabelsLineActor)
+      {
+      os << indent << "Labels Line Visibility: " << controlPoints->LabelsLineActor->GetVisibility() << "\n";
+      }
+    else
+      {
+      os << indent << "Labels Line Visibility: (none)\n";
       }
     if (controlPoints->Property)
       {

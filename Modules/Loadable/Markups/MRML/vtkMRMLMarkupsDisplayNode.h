@@ -159,6 +159,14 @@ public:
   //@}
 
   //@{
+  /// Control distance of point label from the point glyph.
+  /// If the label is not right at the point then a line is drawn between them.
+  /// The length of the line is defined as "scale" percentage of diagonal size of the window.
+  vtkSetMacro(PointLabelsDistanceScale, double);
+  vtkGetMacro(PointLabelsDistanceScale, double);
+  //@}
+
+  //@{
   /**
    * Control visibility of information box.
    */
@@ -500,6 +508,7 @@ protected:
 
   bool PropertiesLabelVisibility;
   bool PointLabelsVisibility;
+  double PointLabelsDistanceScale;
   bool FillVisibility;
   bool OutlineVisibility;
   double FillOpacity;
