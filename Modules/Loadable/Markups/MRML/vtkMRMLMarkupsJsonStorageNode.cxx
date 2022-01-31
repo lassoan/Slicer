@@ -727,6 +727,15 @@ bool vtkMRMLMarkupsJsonStorageNode::vtkInternal::UpdateMarkupsDisplayNodeFromJso
     displayNode->SetPointLabelsVisibility(displayItem["pointLabelsVisibility"].GetBool());
     }
 
+  if (displayItem.HasMember("labelLeaderLinesVisibility"))
+    {
+      displayNode->SetLabelLeaderLinesVisibility(displayItem["labelLeaderLinesVisibility"].GetBool());
+    }
+  if (displayItem.HasMember("labelLeaderLinesScale"))
+    {
+      displayNode->SetLabelLeaderLinesScale(displayItem["labelLeaderLinesScale"].GetDouble());
+    }
+
   if (displayItem.HasMember("textScale"))
     {
     displayNode->SetTextScale(displayItem["textScale"].GetDouble());
@@ -1081,6 +1090,8 @@ bool vtkMRMLMarkupsJsonStorageNode::vtkInternal::WriteDisplayProperties(
 
   writer.Key("propertiesLabelVisibility"); writer.Bool(markupsDisplayNode->GetPropertiesLabelVisibility());
   writer.Key("pointLabelsVisibility"); writer.Bool(markupsDisplayNode->GetPointLabelsVisibility());
+  writer.Key("labelLeaderLinesVisibility"); writer.Bool(markupsDisplayNode->GetLabelLeaderLinesVisibility());
+  writer.Key("labelLeaderLinesScale"); writer.Double(markupsDisplayNode->GetLabelLeaderLinesScale());
   writer.Key("textScale"); writer.Double(markupsDisplayNode->GetTextScale());
   writer.Key("glyphType"); writer.String(markupsDisplayNode->GetGlyphTypeAsString(markupsDisplayNode->GetGlyphType()));
   writer.Key("glyphScale"); writer.Double(markupsDisplayNode->GetGlyphScale());

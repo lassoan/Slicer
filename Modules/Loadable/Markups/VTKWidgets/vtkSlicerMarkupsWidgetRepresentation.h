@@ -53,6 +53,7 @@
 #include "vtkArrowSource.h"
 #include "vtkGlyph3D.h"
 #include "vtkLookupTable.h"
+#include "vtkLineSource.h"
 #include "vtkMarkupsGlyphSource2D.h"
 #include "vtkPointPlacer.h"
 #include "vtkPointSetToLabelHierarchy.h"

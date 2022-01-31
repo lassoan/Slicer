@@ -40,6 +40,7 @@
 #include <vtkProperty.h>
 #include <vtkSmartPointer.h>
 #include <vtkTextProperty.h>
+#include <vtkSlicerMarkupsWidgetRepresentation2D.h>
 
 //------------------------------------------------------------------------------
 /// \ingroup Slicer_QtModules_Markupss
@@ -78,6 +79,10 @@ void qMRMLMarkupsDisplayNodeWidgetPrivate::init()
   // set up the display properties
   QObject::connect(this->VisibilityCheckBox, SIGNAL(toggled(bool)),
     q, SLOT(setVisibility(bool)));
+  QObject::connect(this->connectorLineVisibilityCheckBox, SIGNAL(toggled(bool)),
+      q, SLOT(setLabelLeaderLinesVisibility(bool)));
+  QObject::connect(this->connectorLineScaleSliderWidget, SIGNAL(valueChanged(double)),
+    q, SLOT(onConnectorLineScaleSliderWidgetChanged(double)));
   QObject::connect(this->selectedColorPickerButton, SIGNAL(colorChanged(QColor)),
     q, SLOT(onSelectedColorPickerButtonChanged(QColor)));
   QObject::connect(this->unselectedColorPickerButton, SIGNAL(colorChanged(QColor)),
@@ -336,7 +341,17 @@ void qMRMLMarkupsDisplayNodeWidget::updateWidgetFromMRML()
 
   d->PropertiesLabelVisibilityCheckBox->setChecked(markupsDisplayNode->GetPropertiesLabelVisibility());
 
+  // label line connector scale
+  double labelLeaderLinesScale = markupsDisplayNode->GetLabelLeaderLinesScale();
+  // make sure that the slider can accommodate this scale
+  if (labelLeaderLinesScale > d->connectorLineScaleSliderWidget->maximum())
+  {
+      d->connectorLineScaleSliderWidget->setMaximum(labelLeaderLinesScale);
+  }
+  d->connectorLineScaleSliderWidget->setValue(labelLeaderLinesScale);
   d->PointLabelsVisibilityCheckBox->setChecked(markupsDisplayNode->GetPointLabelsVisibility());
+
+  d->connectorLineVisibilityCheckBox->setChecked(markupsDisplayNode->GetLabelLeaderLinesVisibility());
 
   // text scale
   double textScale = markupsDisplayNode->GetTextScale();
@@ -422,6 +437,23 @@ vtkMRMLSelectionNode* qMRMLMarkupsDisplayNodeWidget::getSelectionNode(vtkMRMLSce
       vtkMRMLSelectionNode::SafeDownCast(mrmlScene->GetNodeByID("vtkMRMLSelectionNodeSingleton"));
     }
   return selectionNode;
+}
+
+//------------------------------------------------------------------------------
+void qMRMLMarkupsDisplayNodeWidget::setLabelLeaderLinesVisibility(bool visible)
+{
+    Q_D(qMRMLMarkupsDisplayNodeWidget);
+    if (!d->MarkupsDisplayNode.GetPointer())
+    {
+        return;
+    }
+    d->MarkupsDisplayNode->SetLabelLeaderLinesVisibility(visible);
+    // workaround to force render all views
+    if (d->MarkupsDisplayNode->GetVisibility())
+        {
+        d->MarkupsDisplayNode->SetVisibility(false);
+        d->MarkupsDisplayNode->SetVisibility(true);
+        }
 }
 
 //------------------------------------------------------------------------------
@@ -514,6 +546,7 @@ bool qMRMLMarkupsDisplayNodeWidget::curveLineSizeIsAbsolute()const
   Q_D(const qMRMLMarkupsDisplayNodeWidget);
   return d->curveLineSizeIsAbsoluteButton->isChecked();
 }
+
 
 //-----------------------------------------------------------------------------
 void qMRMLMarkupsDisplayNodeWidget::onSelectedColorPickerButtonChanged(QColor color)
@@ -616,6 +649,17 @@ void qMRMLMarkupsDisplayNodeWidget::onTextScaleSliderWidgetChanged(double value)
     return;
     }
   d->MarkupsDisplayNode->SetTextScale(value);
+}
+
+//-----------------------------------------------------------------------------
+void qMRMLMarkupsDisplayNodeWidget::onConnectorLineScaleSliderWidgetChanged(double value)
+{
+  Q_D(qMRMLMarkupsDisplayNodeWidget);
+  if (!d->MarkupsDisplayNode)
+  {
+    return;
+  }
+  d->MarkupsDisplayNode->SetLabelLeaderLinesScale(value);
 }
 
 //-----------------------------------------------------------------------------

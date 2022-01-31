@@ -99,6 +99,10 @@ vtkMRMLMarkupsDisplayNode::vtkMRMLMarkupsDisplayNode()
   this->LineThickness = 0.2;
   this->LineDiameter = 1.0;
 
+  // Leader lines variables
+  this->LabelLeaderLinesVisibility = false;
+  this->LabelLeaderLinesScale = 0.;
+
   // Line color variables
   this->LineColorFadingStart = 1.;
   this->LineColorFadingEnd = 10.;
@@ -120,6 +124,10 @@ vtkMRMLMarkupsDisplayNode::vtkMRMLMarkupsDisplayNode()
   this->ActiveColor[0] = 0.4; // bright green
   this->ActiveColor[1] = 1.0;
   this->ActiveColor[2] = 0.0;
+
+  this->LabelLeaderLinesColor[0] = 1.0; // white
+  this->LabelLeaderLinesColor[1] = 1.0;
+  this->LabelLeaderLinesColor[2] = 1.0;
 
   this->HandlesInteractive = false;
   this->TranslationHandleVisibility = true;
@@ -161,6 +169,8 @@ void vtkMRMLMarkupsDisplayNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLBooleanMacro(propertiesLabelVisibility, PropertiesLabelVisibility);
   vtkMRMLWriteXMLBooleanMacro(pointLabelsVisibility, PointLabelsVisibility);
   vtkMRMLWriteXMLFloatMacro(textScale, TextScale);
+  vtkMRMLWriteXMLBooleanMacro(labelLeaderLinesVisibility,LabelLeaderLinesVisibility);
+  vtkMRMLWriteXMLFloatMacro(labelLeaderLinesScale,LabelLeaderLinesScale);
   vtkMRMLWriteXMLFloatMacro(glyphScale, GlyphScale);
   vtkMRMLWriteXMLFloatMacro(glyphSize, GlyphSize);
   vtkMRMLWriteXMLBooleanMacro(useGlyphScale, UseGlyphScale);
@@ -229,6 +239,8 @@ void vtkMRMLMarkupsDisplayNode::ReadXMLAttributes(const char** atts)
   vtkMRMLReadXMLBooleanMacro(propertiesLabelVisibility, PropertiesLabelVisibility);
   vtkMRMLReadXMLBooleanMacro(pointLabelsVisibility, PointLabelsVisibility);
   vtkMRMLReadXMLFloatMacro(textScale, TextScale);
+  vtkMRMLReadXMLBooleanMacro(labelLeaderLinesVisibility, LabelLeaderLinesVisibility);
+  vtkMRMLReadXMLFloatMacro(labelLeaderLinesScale, LabelLeaderLinesScale);
   vtkMRMLReadXMLFloatMacro(glyphScale, GlyphScale);
   vtkMRMLReadXMLFloatMacro(glyphSize, GlyphSize);
   vtkMRMLReadXMLBooleanMacro(useGlyphScale, UseGlyphScale);
@@ -311,6 +323,8 @@ void vtkMRMLMarkupsDisplayNode::CopyContent(vtkMRMLNode* anode, bool deepCopy/*=
   vtkMRMLCopyBooleanMacro(PropertiesLabelVisibility);
   vtkMRMLCopyBooleanMacro(PointLabelsVisibility);
   vtkMRMLCopyFloatMacro(TextScale);
+  vtkMRMLCopyBooleanMacro(LabelLeaderLinesVisibility);
+  vtkMRMLCopyFloatMacro(LabelLeaderLinesScale);
   vtkMRMLCopyFloatMacro(GlyphScale);
   vtkMRMLCopyFloatMacro(GlyphSize);
   vtkMRMLCopyBooleanMacro(UseGlyphScale);
@@ -492,6 +506,8 @@ void vtkMRMLMarkupsDisplayNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintBeginMacro(os,indent);
   vtkMRMLPrintBooleanMacro(PropertiesLabelVisibility);
   vtkMRMLPrintBooleanMacro(PointLabelsVisibility);
+  vtkMRMLPrintBooleanMacro(LabelLeaderLinesVisibility);
+  vtkMRMLPrintFloatMacro(LabelLeaderLinesScale);
   vtkMRMLPrintFloatMacro(TextScale);
   vtkMRMLPrintFloatMacro(GlyphScale);
   vtkMRMLPrintFloatMacro(GlyphSize);
@@ -684,6 +700,18 @@ std::vector<std::string> vtkMRMLMarkupsDisplayNode::GetActiveComponentInteractio
 void vtkMRMLMarkupsDisplayNode::SetActiveControlPoint(int controlPointIndex)
 {
   this->SetActiveComponent(ComponentControlPoint, controlPointIndex);
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLMarkupsDisplayNode::SetLabelLeaderLinesVisibility(bool visibility)
+{
+  this->LabelLeaderLinesVisibility = visibility;
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLMarkupsDisplayNode::GetLabelLeaderLinesVisibility()
+{
+    return this->LabelLeaderLinesVisibility;
 }
 
 //---------------------------------------------------------------------------

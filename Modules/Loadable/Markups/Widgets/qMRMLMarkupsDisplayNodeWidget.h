@@ -74,6 +74,7 @@ public slots:
   void setMRMLMarkupsNode(vtkMRMLNode* node);
 
   void setVisibility(bool);
+  void setLabelLeaderLinesVisibility(bool);
 
   void setGlyphSizeIsAbsolute(bool absolute);
   void setCurveLineSizeIsAbsolute(bool absolute);
@@ -105,6 +106,7 @@ protected slots:
   void onCurveLineDiameterSliderWidgetChanged(double value);
   void onTextScaleSliderWidgetChanged(double value);
   void onOpacitySliderWidgetChanged(double value);
+  void onConnectorLineScaleSliderWidgetChanged(double value);
   void onSnapModeWidgetChanged();
   void onTextPropertyWidgetsChanged();
 
