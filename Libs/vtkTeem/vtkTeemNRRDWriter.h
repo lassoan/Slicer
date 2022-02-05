@@ -63,7 +63,46 @@ public:
   void SetFileTypeToASCII() {this->SetFileType(VTK_ASCII);};
   void SetFileTypeToBinary() {this->SetFileType(VTK_BINARY);};
 
-  /// Flag that is set by WriteData() if writing fails.
+#ifdef NRRD_CHUNK_IO_AVAILABLE
+  ///
+  /// the nrrd file will be written as a list of images.
+  /// The method vtkWriter::Write will write only one component at time on file.
+  /// The volume that will be written on file is given by CurrentImageIndex
+  ///
+  /// It is assumed that the nrrd file will be formatted such as:
+  /// "kinds: domain domain domain list"
+  ///
+  /// \sa NumberOfImages, CurrentImageIndex
+  void WriteMultipleImagesAsImageListsOn()
+  {
+    WriteMultipleImagesAsImageList = true;
+  }
+
+  ///
+  /// the volume to be saved is not a multi-component image list
+  void WriteMultipleImagesAsImageListOff()
+  {
+    WriteMultipleImagesAsImageList = false;
+  }
+
+  ///
+  /// Set/Get ReadImageListAsMultipleImages (true/false).
+  /// \sa SetReadImageListAsMultipleImages(), GetReadImageListAsMultipleImages()
+  vtkSetMacro(WriteMultipleImagesAsImageList,bool);
+  vtkGetMacro(WriteMultipleImagesAsImageList,bool);
+
+  ///
+  /// Number of images
+  vtkSetMacro(NumberOfImages,int);
+  vtkGetMacro(NumberOfImages,int);
+
+  ///
+  /// Sequences frame to be read/written.
+  /// The first image index must be zero
+  vtkSetMacro(CurrentImageIndex,int);
+  vtkGetMacro(CurrentImageIndex,int);
+#endif
+
   vtkBooleanMacro(WriteError, int);
   vtkSetMacro(WriteError, int);
   vtkGetMacro(WriteError, int);
@@ -71,6 +110,10 @@ public:
   /// Method to set an attribute that will be passed into the NRRD
   /// file on write
   void SetAttribute(const std::string& name, const std::string& value);
+
+  /// Method to get an attribute that will be passed into the NRRD
+  /// file on write
+  std::string GetAttribute(const std::string& name);
 
   /// Method to set label for each axis
   void SetAxisLabel(unsigned int axis, const char* label);
@@ -83,37 +126,36 @@ public:
   /// from the number of components and scalar type.
   void SetVectorAxisKind(int kind);
 
-  /// Method to set the coordinate system written to the NRRD file.
-  /// Currently the only valid coordinate systems are: RAS, RAST, LPS, and LPST.
-  vtkSetMacro(Space, int);
-  vtkGetMacro(Space, int);
-
-  /// Set coordinate system to RAS
-  void vtkSetSpaceToRAS()  { this->SetSpace(nrrdSpaceRightAnteriorSuperior);  };
-  void vtkSetSpaceToRAST() { this->SetSpace(nrrdSpaceRightAnteriorSuperiorTime);  };
-
-  /// Set coordinate system to LPS
-  void vtkSetSpaceToLPS()  { this->SetSpace(nrrdSpaceLeftPosteriorSuperior); };
-  void vtkSetSpaceToLPST() { this->SetSpace(nrrdSpaceLeftPosteriorSuperiorTime); };
-
   /// Utility function to return image as a Nrrd*
   void* MakeNRRD();
 
+  /// Get the teem nrrd pointer
+  Nrrd* GetNRRDTeem();
+
+  /// Get the teem nrrdIo state pointer
+  NrrdIoState* GetNRRDIoTeem();
+
 protected:
   vtkTeemNRRDWriter();
-  ~vtkTeemNRRDWriter() override;
+  ~vtkTeemNRRDWriter();
 
-  int FillInputPortInformation(int port, vtkInformation *info) override;
+  virtual int FillInputPortInformation(int port, vtkInformation *info) override;
 
   ///
   /// Write method. It is called by vtkWriter::Write();
   void WriteData() override;
+
+  /// Initialize the teem nrrd pointer
+  void InitializeNRRDTeem();
 
   ///
   /// Flag to set to on when a write error occurred
   int WriteError;
 
   char *FileName;
+
+  Nrrd* nrrd;
+  NrrdIoState *nio;
 
   vtkDoubleArray* BValues;
   vtkDoubleArray* DiffusionGradients;
@@ -123,20 +165,25 @@ protected:
 
   int UseCompression;
   int CompressionLevel;
+#ifdef NRRD_CHUNK_IO_AVAILABLE
+  int NumberOfImages;
+  int CurrentImageIndex;
+  bool WriteMultipleImagesAsImageList;
+#endif
   int FileType;
 
   AttributeMapType *Attributes;
   AxisInfoMapType *AxisLabels;
   AxisInfoMapType *AxisUnits;
   int VectorAxisKind;
-  int Space;
 
 private:
-  vtkTeemNRRDWriter(const vtkTeemNRRDWriter&) = delete;
-  void operator=(const vtkTeemNRRDWriter&) = delete;
+  vtkTeemNRRDWriter(const vtkTeemNRRDWriter&);  /// Not implemented.
+  void operator=(const vtkTeemNRRDWriter&);  /// Not implemented.
   void vtkImageDataInfoToNrrdInfo(vtkImageData *in, int &nrrdKind, size_t &numComp, int &vtkType, void **buffer);
+  void updateNRRDDatapointer(vtkImageData *in);
   int VTKToNrrdPixelType( const int vtkPixelType );
-  int DiffusionWeightedData;
+  int DiffusionWeigthedData;
 };
 
 #endif

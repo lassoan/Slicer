@@ -32,22 +32,23 @@
 #include "vtkBitArray.h"
 #include "vtkCharArray.h"
 #include "vtkDoubleArray.h"
+#include "vtkErrorCode.h"
 #include "vtkFloatArray.h"
 #include "vtkImageData.h"
-#include <vtkInformation.h>
-#include <vtkInformationVector.h>
+#include "vtkInformation.h"
+#include "vtkInformationVector.h"
 #include "vtkIntArray.h"
 #include "vtkLongArray.h"
 #include "vtkMath.h"
 #include "vtkNew.h"
 #include "vtkObjectFactory.h"
 #include "vtkShortArray.h"
-#include <vtkStreamingDemandDrivenPipeline.h>
+#include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkUnsignedCharArray.h"
 #include "vtkUnsignedShortArray.h"
 #include "vtkUnsignedIntArray.h"
 #include "vtkUnsignedLongArray.h"
-#include <vtksys/SystemTools.hxx>
+#include "vtksys/SystemTools.hxx"
 
 // Teem includes
 #include "teem/ten.h"
@@ -66,14 +67,19 @@ vtkTeemNRRDReader::vtkTeemNRRDReader()
   this->PointDataType = -1;
   this->DataType = -1;
   this->NumberOfComponents = -1;
-  this->DataArrayName = "NRRDImage";
+#ifdef NRRD_CHUNK_IO_AVAILABLE
+  this->ReadImageListAsMultipleImages = false;
+  this->IsCompressed = -1;
+  this->NumberOfImages = 1;
+  this->CurrentImageIndex = 0;
+#endif
 }
 
 //----------------------------------------------------------------------------
 vtkTeemNRRDReader::~vtkTeemNRRDReader()
 {
   nrrdNuke(this->nrrd);
-  this->nrrd = nullptr;
+  this->nrrd = NULL;
 }
 
 //----------------------------------------------------------------------------
@@ -132,7 +138,7 @@ const char* vtkTeemNRRDReader::GetHeaderValue(const char *key)
   }
   else
   {
-    return nullptr;
+    return NULL;
   }
 }
 
@@ -141,7 +147,7 @@ const char* vtkTeemNRRDReader::GetAxisLabel(unsigned int axis)
 {
   if (this->AxisLabels.find(axis) == this->AxisLabels.end())
     {
-    return nullptr;
+    return NULL;
     }
   return this->AxisLabels[axis].c_str();
 }
@@ -151,7 +157,7 @@ const char* vtkTeemNRRDReader::GetAxisUnit(unsigned int axis)
 {
   if (this->AxisUnits.find(axis) == this->AxisUnits.end())
     {
-    return nullptr;
+    return NULL;
     }
   return this->AxisUnits[axis].c_str();
 }
@@ -228,9 +234,55 @@ int vtkTeemNRRDReader::CanReadFile(const char* filename)
     supported = false;
     }
 
+  this->IsCompressed = nio->encoding->isCompression;
+
   nrrdNuke(nrrdTemp);
   nrrdIoStateNix(nio);
   return supported;
+}
+
+//----------------------------------------------------------------------------
+bool vtkTeemNRRDReader::ReadImageListAsMultipleImagesOn()
+{
+  if (this->IsCompressed < 0)
+    {
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ReadImageListAsMultipleImagesOn :"
+                     " this method can be used only after invoking vtkTeemNRRDReader::CanReadFile.");
+    return false;
+    }
+  else if (this->IsCompressed)
+    {
+    vtkDebugMacro(<< "vtkTeemNRRDReader::ReadImageListAsMultipleImagesOn :"
+                     " reading an image list as multiple image feature"
+                     " is not available for compressed data."
+                     " The data will be read a single multi-component image.");
+    return false;
+    }
+
+  this->ReadImageListAsMultipleImages = true;
+  return true;
+}
+
+//----------------------------------------------------------------------------
+bool vtkTeemNRRDReader::SetReadImageListAsMultipleImages(bool activate)
+{
+  if (this->IsCompressed < 0)
+    {
+    vtkErrorMacro(<< "vtkTeemNRRDReader::SetReadImageListAsMultipleImages :"
+                     " this method can be used only after invoking vtkTeemNRRDReader::CanReadFile.");
+    return false;
+    }
+  else if (activate && this->IsCompressed)
+    {
+    vtkDebugMacro(<< "vtkTeemNRRDReader::SetReadImageListAsMultipleImages :"
+                     " reading an image list as multiple image feature"
+                     " is not available for compressed data."
+                     " The data will be read a single multi-component image.");
+    return false;
+    }
+
+  this->ReadImageListAsMultipleImages = activate;
+  return true;
 }
 
 //----------------------------------------------------------------------------
@@ -327,6 +379,30 @@ bool vtkTeemNRRDReader::GetPointType(Nrrd* nrrdTemp, int& pointDataType, int &nu
 }
 
 //----------------------------------------------------------------------------
+bool vtkTeemNRRDReader::IsNrrdList(Nrrd *nrrdTemp)
+{
+  // 4D volume?
+  if (nrrdTemp->dim  != 4)
+    {
+    return false;
+    }
+
+  // 4D volume is a list?
+  unsigned int rangeAxisKind = nrrdTemp->axis[0].kind;
+  if (rangeAxisKind == nrrdKindList)
+    {
+    return true;
+    }
+  rangeAxisKind = nrrdTemp->axis[3].kind;
+  if (rangeAxisKind == nrrdKindList)
+    {
+    return true;
+    }
+
+  return false;
+}
+
+//----------------------------------------------------------------------------
 void vtkTeemNRRDReader::ExecuteInformation()
 {
   // This method determines the following and sets the appropriate value in
@@ -362,9 +438,10 @@ void vtkTeemNRRDReader::ExecuteInformation()
   if (nrrdLoad(this->nrrd, this->GetFileName(), nio) != 0)
     {
     char *err = biffGetDone(NRRD);
-    vtkErrorMacro("Error reading " << this->GetFileName() << ": " << err);
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteInformation: "
+                     " reading " << this->GetFileName() << ": " << err);
     free(err); // err points to malloc'd data!!
-    err = nullptr;
+    err = NULL;
     nio = nrrdIoStateNix(nio);
     this->ReadStatus = 1;
     return;
@@ -378,11 +455,14 @@ void vtkTeemNRRDReader::ExecuteInformation()
 
   if (nrrdTypeBlock == this->nrrd->type)
     {
-    vtkErrorMacro("ReadImageInformation: Cannot currently handle nrrdTypeBlock");
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteInformation :"
+                     " Cannot currently handle nrrdTypeBlock");
     nio = nrrdIoStateNix(nio);
     this->ReadStatus = 1;
     return;
     }
+
+  this->IsCompressed = nio->encoding->isCompression;
 
   if (nio->endian == airEndianLittle)
     {
@@ -407,7 +487,8 @@ void vtkTeemNRRDReader::ExecuteInformation()
   unsigned int domainAxisNum = nrrdDomainAxesGet(this->nrrd, domainAxisIdx);
   if (this->nrrd->spaceDim && this->nrrd->spaceDim != domainAxisNum)
     {
-    vtkErrorMacro("ReadImageInformation: this->nrrd's # independent axes ("
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteInformation:"
+                     " this->nrrd's # independent axes ("
       << domainAxisNum << ") doesn't match dimension of space"
       " in which orientation is defined ("
       << this->nrrd->spaceDim << "); not currently handled");
@@ -420,13 +501,36 @@ void vtkTeemNRRDReader::ExecuteInformation()
   int numOfComponents = -1;
   if (!vtkTeemNRRDReader::GetPointType(this->nrrd, pointDataType, numOfComponents))
     {
-    vtkErrorMacro("ReadImageInformation: only 3 spatial dimension and 1 optional range axis is supported");
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteInformation :"
+                     " only 3 spatial dimension and 1 optional"
+                     " range axis is supported");
     nio = nrrdIoStateNix(nio);
     this->ReadStatus = 1;
     return;
     }
   this->SetPointDataType(pointDataType);
+
+#ifdef NRRD_CHUNK_IO_AVAILABLE
+  // Check if nrrd file has multiple images and
+  // ReadImageListAsMultipleImages is on.
+  // If yes set each component of a list (nrrd) as an individual input connection.
+  // In this way the reader can provide N 3D volumes instead of a huge 4D volume.
+  // This provides much better RAM performance.
+  if (this->GetReadImageListAsMultipleImages() &&
+      vtkTeemNRRDReader::IsNrrdList(this->nrrd) &&
+      !this->IsCompressed)
+    {
+    this->SetNumberOfComponents(1);
+    this->SetNumberOfImages(numOfComponents);
+    }
+  else
+    {
+    this->SetNumberOfComponents(numOfComponents);
+    this->SetNumberOfImages(1);
+    }
+#else
   this->SetNumberOfComponents(numOfComponents);
+#endif
 
   // Set type information
   this->SetDataType(this->NrrdToVTKScalarType(this->nrrd->type));
@@ -438,18 +542,18 @@ void vtkTeemNRRDReader::ExecuteInformation()
   double origin[3] = { 0 };
   vtkNew<vtkMatrix4x4> ijkToRasMatrix;
   if (domainAxisNum > 3)
-  {
-    vtkErrorMacro("ReadImageInformation: only up to 3 domain axes are supported");
+    {
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteInformation :"
+                     " only up to 3 domain axes are supported");
     nio = nrrdIoStateNix(nio);
     this->ReadStatus = 1;
     return;
-  }
+    }
   for (unsigned int axii = 0; axii < domainAxisNum; axii++)
     {
     unsigned int naxi = domainAxisIdx[axii];
     dataExtent[2 * axii] = 0;
     dataExtent[2 * axii + 1] = static_cast<int>(this->nrrd->axis[naxi].size) - 1;
-
     double spaceDir[NRRD_SPACE_DIM_MAX];
     double axisSpacing = 1.0;
     int spacingStatus = nrrdSpacingCalculate(this->nrrd, naxi, &axisSpacing, spaceDir);
@@ -500,10 +604,12 @@ void vtkTeemNRRDReader::ExecuteInformation()
         break;
       default:
       case nrrdSpacingStatusUnknown:
-        vtkErrorMacro("ReadImageInformation: Error interpreting nrrd spacing (nrrdSpacingStatusUnknown)");
+        vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteInformation : "
+                         "Error interpreting nrrd spacing (nrrdSpacingStatusUnknown)");
         break;
       case nrrdSpacingStatusScalarWithSpace:
-        vtkErrorMacro("ReadImageInformation: Error interpreting nrrd spacing (nrrdSpacingStatusScalarWithSpace)");
+        vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteInformation : "
+                         "Error interpreting nrrd spacing (nrrdSpacingStatusScalarWithSpace)");
         break;
       }
     }
@@ -558,7 +664,8 @@ void vtkTeemNRRDReader::ExecuteInformation()
         default:
         case nrrdOriginStatusUnknown:
         case nrrdOriginStatusDirection:
-          vtkErrorMacro("ReadImageInformation: Error interpreting nrrd origin status");
+          vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteInformation :"
+                           " Error interpreting nrrd origin status");
           nio = nrrdIoStateNix(nio);
           this->ReadStatus = 1;
           break;
@@ -592,31 +699,31 @@ void vtkTeemNRRDReader::ExecuteInformation()
   // Push extra key/value pair data into std::map
   for (unsigned int i = 0; i < nrrdKeyValueSize(this->nrrd); i++)
     {
-    char *key = nullptr;
-    char *val = nullptr;
+    char *key = NULL;
+    char *val = NULL;
     nrrdKeyValueIndex(this->nrrd, &key, &val, i);
     HeaderKeyValue[std::string(key)] = std::string(val);
     free(key);  // key and val point to malloc'd data!!
     free(val);
     }
 
-  const char* labels[NRRD_DIM_MAX] = { nullptr };
+  const char* labels[NRRD_DIM_MAX] = { 0 };
   nrrdAxisInfoGet_nva(nrrd, nrrdAxisInfoLabel, labels);
   this->AxisLabels.clear();
   for (unsigned int axi = 0; axi < NRRD_DIM_MAX; axi++)
     {
-    if (labels[axi] != nullptr)
+    if (labels[axi] != NULL)
       {
       this->AxisLabels[axi] = labels[axi];
       }
     }
 
-  const char* units[NRRD_DIM_MAX] = { nullptr };
+  const char* units[NRRD_DIM_MAX] = { 0 };
   nrrdAxisInfoGet_nva(nrrd, nrrdAxisInfoUnits, units);
   this->AxisUnits.clear();
   for (unsigned int axi = 0; axi < NRRD_DIM_MAX; axi++)
     {
-    if (units[axi] != nullptr)
+    if (units[axi] != NULL)
       {
       this->AxisUnits[axi] = units[axi];
       }
@@ -676,7 +783,7 @@ vtkImageData *vtkTeemNRRDReader::AllocateOutputData(vtkDataObject *out, vtkInfor
   if (!res)
     {
     vtkWarningMacro("Call to AllocateOutputData with non vtkImageData output");
-    return nullptr;
+    return NULL;
     }
 
   // I would like to eliminate this method which requires extra "information"
@@ -684,12 +791,10 @@ vtkImageData *vtkTeemNRRDReader::AllocateOutputData(vtkDataObject *out, vtkInfor
   // Until I can eliminate the method, I will reexecute the ExecuteInformation
   // before the execute.
   this->ExecuteInformation();
-
   res->SetExtent(this->GetUpdateExtent());
   this->AllocatePointData(res, outInfo);
 
   return res;
-
 }
 
 //----------------------------------------------------------------------------
@@ -698,7 +803,8 @@ void vtkTeemNRRDReader::AllocatePointData(vtkImageData *out, vtkInformation* out
   // if the scalar type has not been set then we have a problem
   if (this->DataType == VTK_VOID)
     {
-    vtkErrorMacro("Attempt to allocate scalars before scalar type was set!.");
+    vtkErrorMacro(<< "vtkTeemNRRDReader::AllocatePointData : "
+                     "Attempt to allocate scalars before scalar type was set!.");
     return;
     }
 
@@ -719,7 +825,8 @@ void vtkTeemNRRDReader::AllocatePointData(vtkImageData *out, vtkInformation* out
       pd = out->GetPointData()->GetTensors();
       break;
     default:
-      vtkErrorMacro("Unknown PointData Type.");
+      vtkErrorMacro(<< "vtkTeemNRRDReader::AllocatePointData: "
+                       "Unknown PointData Type.");
       return;
     }
 
@@ -776,7 +883,8 @@ void vtkTeemNRRDReader::AllocatePointData(vtkImageData *out, vtkInformation* out
       pd = vtkSmartPointer<vtkFloatArray>::New();
       break;
     default:
-      vtkErrorMacro("Could not allocate data type.");
+      vtkErrorMacro(<< "vtkTeemNRRDReader::AllocatePointData: "
+                       "Could not allocate data type.");
       return;
     }
   vtkDataObject::SetPointDataActiveScalarInfo(outInfo, this->DataType, this->GetNumberOfComponents());
@@ -803,9 +911,10 @@ void vtkTeemNRRDReader::AllocatePointData(vtkImageData *out, vtkInformation* out
       out->GetPointData()->SetTensors(pd);
       break;
     default:
-      vtkErrorMacro("Unknown PointData Type.");
+      vtkErrorMacro(<< "vtkTeemNRRDReader::AllocatePointData :"
+                       "Unknown PointData Type.");
       return;
-    }
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -816,7 +925,7 @@ int vtkTeemNRRDReader::tenSpaceDirectionReduce(Nrrd *nout, const Nrrd *nin, doub
 
   if (!(nout && nin))
     {
-    sprintf(err, "%s: got nullptr pointer", me);
+    sprintf(err, "%s: got NULL pointer", me);
     biffAdd(TEN, err);
     return 1;
     }
@@ -894,70 +1003,249 @@ int vtkTeemNRRDReader::tenSpaceDirectionReduce(Nrrd *nout, const Nrrd *nin, doub
 
 
 //----------------------------------------------------------------------------
-// This function reads a data from a file.  The data extent/axes
+// This function reads a data from a file.  The datas extent/axes
 // are assumed to be the same as the file extent/order.
 void vtkTeemNRRDReader::ExecuteDataWithInformation(vtkDataObject *output, vtkInformation* outInfo)
 {
-  if (this->GetOutputInformation(0))
+  // Update Extent
+  if (outInfo)
     {
-    this->GetOutputInformation(0)->Set(
-      vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT(),
-      this->GetOutputInformation(0)->Get(
-        vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT()), 6);
+    outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT(),
+      outInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT()), 6);
     }
 
-  vtkImageData *imageData = this->AllocateOutputData(output, outInfo);
-
-  if (this->GetFileName() == nullptr)
+#ifdef NRRD_CHUNK_IO_AVAILABLE
+  // Check if ReadImageListAsMultipleImages is on
+  int imageIndex = 0;
+  int numberOfImages = 1;
+  if (this->GetReadImageListAsMultipleImages() &&
+      !this->IsCompressed)
     {
-    vtkErrorMacro(<< "Either a FileName or FilePrefix must be specified.");
+    imageIndex = this->GetCurrentImageIndex();
+    numberOfImages = this->GetNumberOfImages();
+    }
+#endif
+
+  // Allocate the imageData
+  vtkImageData *imageData = this->AllocateOutputData(output, outInfo);
+  if (imageData == NULL)
+    {
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation : "
+                     "imageData not found!");
     return;
     }
 
-  // Read in the this->nrrd.  Yes, this means that the header is being read
-  // twice: once by ExecuteInformation, and once here
-  if ( nrrdLoad(this->nrrd, this->GetFileName(), nullptr) != 0 )
+  if (this->GetFileName() == NULL)
+    {
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation : "
+                     "Either a FileName or FilePrefix must be specified.");
+    return;
+    }
+
+  void *ptr = NULL;
+  switch(this->PointDataType)
+    {
+    case vtkDataSetAttributes::SCALARS:
+      imageData->GetPointData()->GetScalars()->SetName("NRRDImage");
+      //get pointer
+      ptr = imageData->GetPointData()->GetScalars()->GetVoidPointer(0);
+      break;
+    case vtkDataSetAttributes::VECTORS:
+      imageData->GetPointData()->GetVectors()->SetName("NRRDImage");
+      //get pointer
+      ptr = imageData->GetPointData()->GetVectors()->GetVoidPointer(0);
+      break;
+    case vtkDataSetAttributes::NORMALS:
+      imageData->GetPointData()->GetNormals()->SetName("NRRDImage");
+      ptr = imageData->GetPointData()->GetNormals()->GetVoidPointer(0);
+      break;
+    case vtkDataSetAttributes::TENSORS:
+      imageData->GetPointData()->GetTensors()->SetName("NRRDImage");
+      ptr = imageData->GetPointData()->GetTensors()->GetVoidPointer(0);
+      break;
+    }
+  this->ComputeDataIncrements();
+
+  if (ptr == NULL)
+    {
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation : "
+                     "ptr to imageData not found!");
+    return;
+    }
+
+  // Read in the this->nrrd.
+#ifdef NRRD_CHUNK_IO_AVAILABLE
+  // In the case of ReadImageListAsMultipleImages is On,
+  // it is assumed that the nrrd file is formatted such as:
+  // "kinds: domain domain domain list"
+  // or
+  // "kinds: list domain domain domain"
+  long int numberOfImageElements = nrrdElementNumber(this->nrrd) / numberOfImages;
+  long int numberOfElementsPerChunk = 1E+6;
+  // Check if the file is compressed. In this case, accessing the data at different location is too slow.
+  // Therefore, the streaming is disabled and the full nrrd is read at once.
+  if (this->IsCompressed)
+    {
+    numberOfElementsPerChunk = numberOfImageElements;
+    }
+  long int numberOfChunks = (long int) floor(numberOfImageElements / numberOfElementsPerChunk);
+  long int numberOfElementsPerFinalChunk = numberOfImageElements - (numberOfChunks * numberOfElementsPerChunk);
+  long int elementSize = nrrdElementSize(this->nrrd);
+  long int chunksize = numberOfElementsPerChunk * elementSize;
+  long int temporalSize = numberOfImages * elementSize;
+
+  int frameAxis = -1;
+  if ((this->GetReadImageListAsMultipleImages()
+      && numberOfImages > 1) ||
+      this->IsCompressed)
+    {
+    unsigned int rangeAxisIdx[NRRD_DIM_MAX];
+    nrrdRangeAxesGet(this->nrrd, rangeAxisIdx);
+    frameAxis = rangeAxisIdx[0];
+    }
+
+  // Read the chunks.
+  for (long int chunkIndex = 0; chunkIndex <= numberOfChunks; ++chunkIndex)
+    {	if (chunkIndex == numberOfChunks && numberOfElementsPerFinalChunk < 1)
+	  {
+	  continue;
+	  }
+    NrrdIoState *nio = nrrdIoStateNew();
+    if (nio == NULL)
+      {
+      vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation: "
+                       "could not allocate NRRD Teem I/O struct");
+      return;
+      }
+
+    if (frameAxis == 0)
+      {
+      nio->chunkStartElement = chunkIndex * numberOfElementsPerChunk * numberOfImages + imageIndex;
+      if (chunkIndex < numberOfChunks)
+        {
+        nio->chunkElementCount = numberOfElementsPerChunk * numberOfImages - imageIndex;
+        }
+      else
+        {
+        nio->chunkElementCount = numberOfElementsPerFinalChunk * numberOfImages - imageIndex;
+        }
+      }
+    else if (frameAxis == 3)
+      {
+      nio->chunkStartElement = chunkIndex * numberOfElementsPerChunk + imageIndex * numberOfImageElements;
+      if (chunkIndex < numberOfChunks)
+        {
+        nio->chunkElementCount = numberOfElementsPerChunk;
+        }
+      else
+        {
+        nio->chunkElementCount = numberOfElementsPerFinalChunk;
+        }
+      }
+    else if (frameAxis == -1)
+      {
+      nio->chunkStartElement = chunkIndex * numberOfElementsPerChunk;
+      if (chunkIndex < numberOfChunks)
+        {
+        nio->chunkElementCount = numberOfElementsPerChunk;
+        }
+      else
+        {
+        nio->chunkElementCount = numberOfElementsPerFinalChunk;
+        }
+      }
+
+    if (this->IsCompressed)
+      {
+      nio->chunkStartElement = 0;
+      nio->chunkElementCount = 0;
+      }
+
+    if (nrrdLoad(this->nrrd, this->GetFileName(), nio) != 0)
+      {
+      char *err =  biffGetDone(NRRD); // would be nice to free(err)
+      vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation :"
+                       " Error reading " << this->GetFileName() << ":\n" << err);
+      return;
+      }
+
+    if (this->nrrd->data == NULL)
+      {
+      vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation : "
+                       "data is null.");
+      return;
+      }
+
+    char *data_c = (char*) this->nrrd->data;
+    char *ptr_c = (char*) ptr;
+    long int subsetNumberOfElements;
+    long int chunkIndexSize = chunkIndex * chunksize;
+    long int sizeToCopy = chunksize;
+    if (chunkIndex < numberOfChunks)
+      {
+      subsetNumberOfElements = numberOfElementsPerChunk;
+      }
+    else
+      {
+      subsetNumberOfElements = numberOfElementsPerFinalChunk;
+      sizeToCopy = numberOfElementsPerFinalChunk * elementSize;
+      }
+
+    if (frameAxis == 0)
+      {
+      for (long int ii = 0; ii < subsetNumberOfElements; ii++)
+        {
+        memcpy(ptr_c + (chunkIndexSize + (ii * elementSize)),
+               data_c + (ii * temporalSize),
+               elementSize);
+        }
+      }
+    else if (this->IsCompressed && frameAxis == 3)
+      {
+      long int oneElmentFullComponentsSize = this->NumberOfComponents * elementSize;
+      long int componentNumberOfElements = numberOfImageElements / this->NumberOfComponents;
+      long int oneFullComponentSize = elementSize * componentNumberOfElements;
+      for (long int jj = 0; jj < this->NumberOfComponents; jj++)
+        {
+        long int jjElementSize = jj * elementSize;
+        long int jjComponentSize = jj * oneFullComponentSize;
+        for (long int ii = 0; ii < componentNumberOfElements ; ii++)
+          {
+          memcpy(ptr_c + (ii * oneElmentFullComponentsSize + jjElementSize),
+                 data_c + (jjComponentSize + ii * elementSize),
+                 elementSize);
+          }
+        }
+      }
+    else
+      {
+      memcpy(ptr_c + chunkIndexSize, data_c, sizeToCopy);
+      }
+
+    this->nrrd->data = airFree(this->nrrd->data);
+    delete nio;
+    }
+
+#else
+  if ( nrrdLoad(this->nrrd, this->GetFileName(), NULL) != 0 )
     {
     char *err =  biffGetDone(NRRD); // would be nice to free(err)
     vtkErrorMacro("Read: Error reading " << this->GetFileName() << ":\n" << err);
     return;
     }
 
-  if (this->nrrd->data == nullptr)
+  if (this->nrrd->data == NULL)
     {
     vtkErrorMacro(<< "data is null.");
     return;
     }
 
-  void *ptr = nullptr;
-  switch(this->PointDataType)
-    {
-    case vtkDataSetAttributes::SCALARS:
-      imageData->GetPointData()->GetScalars()->SetName(this->DataArrayName.c_str());
-      //get pointer
-      ptr = imageData->GetPointData()->GetScalars()->GetVoidPointer(0);
-      break;
-    case vtkDataSetAttributes::VECTORS:
-      imageData->GetPointData()->GetVectors()->SetName(this->DataArrayName.c_str());
-      //get pointer
-      ptr = imageData->GetPointData()->GetVectors()->GetVoidPointer(0);
-      break;
-    case vtkDataSetAttributes::NORMALS:
-      imageData->GetPointData()->GetNormals()->SetName(this->DataArrayName.c_str());
-      ptr = imageData->GetPointData()->GetNormals()->GetVoidPointer(0);
-      break;
-    case vtkDataSetAttributes::TENSORS:
-      imageData->GetPointData()->GetTensors()->SetName(this->DataArrayName.c_str());
-      ptr = imageData->GetPointData()->GetTensors()->GetVoidPointer(0);
-      break;
-    }
-  this->ComputeDataIncrements();
-
   unsigned int rangeAxisIdx[NRRD_DIM_MAX] = { 0 };
   unsigned int rangeAxisNum = nrrdRangeAxesGet(this->nrrd, rangeAxisIdx);
   if (rangeAxisNum > 1)
     {
-    vtkErrorMacro("Read: handling more than one non-scalar axis not currently handled");
+    vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation: "
+     "handling more than one non-scalar axis not currently handled");
     return;
     }
   if (rangeAxisNum == 1 && rangeAxisIdx[0] != 0)
@@ -974,16 +1262,16 @@ void vtkTeemNRRDReader::ExecuteDataWithInformation(vtkDataObject *output, vtkInf
       }
     // The memory size of the input and output of nrrdAxesPermute is
     // the same; the existing this->nrrd->data is re-used.
-    if (nrrdCopy(ntmp, this->nrrd)
-      || nrrdAxesPermute(this->nrrd, ntmp, axmap))
+    if (nrrdCopy(ntmp, this->nrrd) || nrrdAxesPermute(this->nrrd, ntmp, axmap))
       {
       char *err = biffGetDone(NRRD); // would be nice to free(err)
-      vtkErrorMacro("Read: Error permuting independent axis in " << this->GetFileName() << ":\n" << err);
+      vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation :"
+        " Error permuting independent axis in " << this->GetFileName() << ":\n" << err);
       return;
       }
-
     nrrdNuke(ntmp);
     }
+#endif
 
   // "the famous y-flip": we always flip along the second domain axis
   //Nrrd *nflip = nrrdNew();
@@ -1016,7 +1304,8 @@ void vtkTeemNRRDReader::ExecuteDataWithInformation(vtkDataObject *output, vtkInf
         || nrrdPad_nva(this->nrrd, ntmp, minIdx, maxIdx, nrrdBoundaryPad, 1.0))
         {
         char *err = biffGetDone(NRRD); // would be nice to free(err)
-        vtkErrorMacro("Read: Error padding on conf mask in " << this->GetFileName() << ":\n" << err);
+        vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation: "
+                         "Error padding on conf mask in " << this->GetFileName() << ":\n" << err);
         return;
         }
       }
@@ -1078,7 +1367,8 @@ void vtkTeemNRRDReader::ExecuteDataWithInformation(vtkDataObject *output, vtkInf
     if (errorCode)
       {
       char *err = biffGetDone(key); // would be nice to free(err)
-      vtkErrorMacro("Read: Error copying, crapping or cropping:\n" << err);
+      vtkErrorMacro(<< "vtkTeemNRRDReader::ExecuteDataWithInformation : "
+                       "Error copying, crapping or cropping:\n" << err);
       return;
       }
     nrrdNuke(ntmp);
@@ -1090,6 +1380,7 @@ void vtkTeemNRRDReader::ExecuteDataWithInformation(vtkDataObject *output, vtkInf
     // be called here if it existed.
     }
 
+#ifndef NRRD_CHUNK_IO_AVAILABLE
   if (ptr)
     {
     memcpy(ptr, this->nrrd->data, nrrdElementSize(this->nrrd)*nrrdElementNumber(this->nrrd));
@@ -1097,6 +1388,7 @@ void vtkTeemNRRDReader::ExecuteDataWithInformation(vtkDataObject *output, vtkInf
 
   // release the memory while keeping the struct
   nrrdEmpty(this->nrrd);
+#endif
 }
 
 //----------------------------------------------------------------------------

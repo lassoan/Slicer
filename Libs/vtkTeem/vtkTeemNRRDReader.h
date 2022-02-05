@@ -82,6 +82,7 @@ public:
   /// supports spaces in key names.
   const std::map<std::string, std::string> GetHeaderKeysMap();
 
+
   ///
   /// Get a value given a key in the header
   const char* GetHeaderValue(const char *key);
@@ -92,21 +93,21 @@ public:
   /// Get unit for specified axis
   const char* GetAxisUnit(unsigned int axis);
 
-  void PrintSelf(ostream& os, vtkIndent indent) override;
+  virtual void PrintSelf(ostream& os, vtkIndent indent) override;
 
   ///  is the given file name a NRRD file?
-  int CanReadFile(const char* filename) override;
+  virtual int CanReadFile(const char* filename) override;
 
   ///
   /// Valid extentsions
-  const char* GetFileExtensions() override
+  virtual const char* GetFileExtensions() override
     {
       return ".nhdr .nrrd";
     }
 
   ///
   /// A descriptive name for this format
-  const char* GetDescriptiveName() override
+  virtual const char* GetDescriptiveName() override
     {
       return "NRRD - Nearly Raw Raster Data";
     }
@@ -128,10 +129,54 @@ public:
   vtkGetMacro(DataType,int);
 
   ///
-  //Number of components
+  /// Number of components
   vtkSetMacro(NumberOfComponents,int);
   vtkGetMacro(NumberOfComponents,int);
 
+#ifdef NRRD_CHUNK_IO_AVAILABLE
+  ///
+  /// If NumberOfComponents > 1,
+  /// the nrrd file will be read as a list of images.
+  /// The method Update will return only one component at time (as a vtkImageData).
+  /// The component that will be read is given by CurrentImageIndex
+  ///
+  /// These methods have to be used after CanReadFile.
+  /// For compressed file this option is not available
+  /// (the data will be read a single multi-component image)
+  /// and in this case the value will be forced to Off.
+  ///
+  /// It is assumed that the nrrd file is formatted such as:
+  /// "kinds: domain domain domain list"
+  /// or
+  /// "kinds: list domain domain domain"
+  ///
+  /// \sa NumberOfImages, CurrentImageIndex
+  bool ReadImageListAsMultipleImagesOn();
+
+  ///
+  /// If NumberOfComponents > 1,
+  /// the nrrd file will be read as a single multi-component
+  void ReadImageListAsMultipleImagesOff()
+  {
+    ReadImageListAsMultipleImages = false;
+  }
+
+  ///
+  /// Set/Get ReadImageListAsMultipleImages (true/false).
+  /// \sa SetReadImageListAsMultipleImages(), GetReadImageListAsMultipleImages()
+  bool SetReadImageListAsMultipleImages(bool);
+  vtkGetMacro(ReadImageListAsMultipleImages,bool);
+
+  ///
+  /// Number of images
+  vtkSetMacro(NumberOfImages,int);
+  vtkGetMacro(NumberOfImages,int);
+
+  ///
+  /// List image index to be read/written
+  vtkSetMacro(CurrentImageIndex,int);
+  vtkGetMacro(CurrentImageIndex,int);
+#endif
 
   ///
   /// Use image origin from the file
@@ -146,14 +191,6 @@ public:
   {
     UseNativeOrigin = false;
   }
-
-  ///
-  /// Name of the point data array that voxel data will be stored in.
-  /// Setting a custom value may be useful for example when probing the
-  /// image because then the probing result will be stored using this array name.
-  /// Default value is NRRDImage.
-  vtkSetMacro(DataArrayName, std::string);
-  vtkGetMacro(DataArrayName, std::string);
 
   int NrrdToVTKScalarType( const int nrrdPixelType ) const
   {
@@ -239,16 +276,18 @@ public:
       break;
     }
   }
-vtkImageData * AllocateOutputData(vtkDataObject *out, vtkInformation* outInfo) override;
-void AllocateOutputData(vtkImageData *out, vtkInformation* outInfo, int *uExtent) override
+
+virtual vtkImageData * AllocateOutputData(vtkDataObject *out, vtkInformation* outInfo) override;
+virtual void AllocateOutputData(vtkImageData *out, vtkInformation* outInfo, int *uExtent) override
     { Superclass::AllocateOutputData(out, outInfo, uExtent); }
 void AllocatePointData(vtkImageData *out, vtkInformation* outInfo);
 
 protected:
   vtkTeemNRRDReader();
-  ~vtkTeemNRRDReader() override;
+  ~vtkTeemNRRDReader();
 
   static bool GetPointType(Nrrd* nrrdTemp, int& pointDataType, int &numOfComponents);
+  static bool IsNrrdList(Nrrd* nrrdTemp);
 
   vtkSmartPointer<vtkMatrix4x4> RasToIjkMatrix;
   vtkSmartPointer<vtkMatrix4x4> MeasurementFrameMatrix;
@@ -264,7 +303,12 @@ protected:
   int DataType;
   int NumberOfComponents;
   bool UseNativeOrigin;
-  std::string DataArrayName;
+#ifdef NRRD_CHUNK_IO_AVAILABLE
+  int NumberOfImages;
+  int CurrentImageIndex;
+  bool ReadImageListAsMultipleImages;
+  int IsCompressed;
+#endif
 
   std::map <std::string, std::string> HeaderKeyValue;
   std::string HeaderKeys; // buffer for returning key list
@@ -272,14 +316,14 @@ protected:
   std::map<unsigned int, std::string> AxisLabels;
   std::map<unsigned int, std::string> AxisUnits;
 
-  void ExecuteInformation() override;
-  void ExecuteDataWithInformation(vtkDataObject *output, vtkInformation* outInfo) override;
+  virtual void ExecuteInformation() override;
+  virtual void ExecuteDataWithInformation(vtkDataObject *output, vtkInformation* outInfo) override;
 
   int tenSpaceDirectionReduce(Nrrd *nout, const Nrrd *nin, double SD[9]);
 
 private:
-  vtkTeemNRRDReader(const vtkTeemNRRDReader&) = delete;
-  void operator=(const vtkTeemNRRDReader&) = delete;
+  vtkTeemNRRDReader(const vtkTeemNRRDReader&);  /// Not implemented.
+  void operator=(const vtkTeemNRRDReader&);  /// Not implemented.
 
 };
 

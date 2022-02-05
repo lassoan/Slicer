@@ -1206,7 +1206,7 @@ int vtkMRMLSegmentationStorageNode::WriteBinaryLabelmapRepresentation(vtkMRMLSeg
   vtkNew<vtkTeemNRRDWriter> writer;
   writer->SetFileName(fullName.c_str());
   writer->SetUseCompression(this->GetUseCompression());
-  writer->SetSpace(nrrdSpaceLeftPosteriorSuperior);
+  //writer->SetSpace(nrrdSpaceLeftPosteriorSuperior);
   writer->SetMeasurementFrameMatrix(nullptr);
 
   // Create metadata dictionary
