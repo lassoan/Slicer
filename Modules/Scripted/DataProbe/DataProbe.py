@@ -284,10 +284,11 @@ class DataProbeInfoWidget:
 
     if hasattr(self.frame.parent(), 'text'):
       sceneName = slicer.mrmlScene.GetURL()
+      dataProbeTitle = _("Data Probe")
       if sceneName != "":
-        self.frame.parent().text = "Data Probe: %s" % self.fitName(sceneName,nameSize=2*self.nameSize)
+        self.frame.parent().text = dataProbeTitle + ": " + self.fitName(sceneName,nameSize=2*self.nameSize)
       else:
-        self.frame.parent().text = "Data Probe"
+        self.frame.parent().text = dataProbeTitle
 
   def generateViewDescription(self, xyz, ras, sliceNode, sliceLogic):
 

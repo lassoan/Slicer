@@ -4,8 +4,24 @@ import vtk, qt, ctk, slicer
 import logging
 import importlib
 
-__all__ = ['ScriptedLoadableModule', 'ScriptedLoadableModuleWidget', 'ScriptedLoadableModuleLogic', 'ScriptedLoadableModuleTest']
+__all__ = ['ScriptedLoadableModule', 'ScriptedLoadableModuleWidget', 'ScriptedLoadableModuleLogic', 'ScriptedLoadableModuleTest', '_']
 
+def _(sourceText, disambiguation=None, n=-1, context=None):
+  """Translate the source text using the QApplication::translate.
+
+  :param disambiguation: Identifying string, for when the same sourceText is used in different roles within the same context.
+  :param n: It is used in conjunction with %n to support plural forms. See QObject::tr() for details.
+  :param context: Context used for translation. By default the module and name of the caller class is used.
+  """
+  if not context:
+    import inspect
+    callerClass = inspect.currentframe().f_back.f_locals["self"].__class__
+    context = f"{callerClass.__module__}.{callerClass.__name__}"
+
+  # TODO: remove the next line, it is just for debugging
+  print(f"slicer.app.translate({repr(context)}, {repr(sourceText)}, {repr(disambiguation)}, {repr(n)})")
+
+  return slicer.app.translate(context, sourceText, disambiguation, n)
 
 class ScriptedLoadableModule:
   def __init__(self, parent):
