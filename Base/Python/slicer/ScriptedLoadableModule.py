@@ -12,6 +12,7 @@ import slicer
 
 __all__ = ['ScriptedLoadableModule', 'ScriptedLoadableModuleWidget', 'ScriptedLoadableModuleLogic', 'ScriptedLoadableModuleTest', '_']
 
+
 def _(sourceText, disambiguation=None, n=-1, context=None):
   """Translate the source text using the QApplication::translate.
 
@@ -28,6 +29,7 @@ def _(sourceText, disambiguation=None, n=-1, context=None):
   print(f"slicer.app.translate({repr(context)}, {repr(sourceText)}, {repr(disambiguation)}, {repr(n)})")
 
   return slicer.app.translate(context, sourceText, disambiguation, n)
+
 
 class ScriptedLoadableModule:
   def __init__(self, parent):
