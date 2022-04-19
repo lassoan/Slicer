@@ -26,7 +26,7 @@ def _(sourceText, disambiguation=None, n=-1, context=None):
     context = f"{callerClass.__module__}.{callerClass.__name__}"
 
   # TODO: remove the next line, it is just for debugging
-  print(f"slicer.app.translate({repr(context)}, {repr(sourceText)}, {repr(disambiguation)}, {repr(n)})")
+  #print(f"slicer.app.translate({repr(context)}, {repr(sourceText)}, {repr(disambiguation)}, {repr(n)})")
 
   return slicer.app.translate(context, sourceText, disambiguation, n)
 
