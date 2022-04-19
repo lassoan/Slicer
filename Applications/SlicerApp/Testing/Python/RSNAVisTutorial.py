@@ -315,6 +315,7 @@ class RSNAVisTutorialTest(ScriptedLoadableModuleTest):
     self.takeScreenshot('Head-Downloaded','Finished with download and loading',-1)
 
     try:
+      slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
       mainWindow = slicer.util.mainWindow()
       layoutManager = slicer.app.layoutManager()
       threeDView = layoutManager.threeDWidget(0).threeDView()
