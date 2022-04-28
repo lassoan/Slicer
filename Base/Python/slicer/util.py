@@ -2109,7 +2109,7 @@ def arrayFromMarkupsCurvePoints(markupsNode, world = False):
   return narray
 
 
-def arrayFromMarkupsCurveData(markupsNode, arrayName, world=False):
+def arrayFromMarkupsCurvePointData(markupsNode, arrayName, world=False):
   """Return curve measurement results from a markups node as a numpy array.
 
   :param markupsNode: node to get the curve point data from.
@@ -2131,7 +2131,7 @@ def arrayFromMarkupsCurveData(markupsNode, arrayName, world=False):
     curvePolyData = markupsNode.GetCurve()
   pointData = curvePolyData.GetPointData()
   if not pointData or pointData.GetNumberOfArrays() == 0:
-    raise ValueError(f"Input markups curve does not contain point data")
+    raise ValueError("Input markups curve does not contain point data")
 
   arrayVtk = pointData.GetArray(arrayName)
   if not arrayVtk:
