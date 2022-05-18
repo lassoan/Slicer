@@ -10,6 +10,13 @@ set(${KIT}_INCLUDE_DIRECTORIES
   )
 
 set(${KIT}_SRCS
+  qMRML${MODULE_NAME}ControlPointsModel.cxx
+  qMRML${MODULE_NAME}ControlPointsModel.h
+  qMRML${MODULE_NAME}ControlPointsModel_p.h
+  qMRML${MODULE_NAME}ControlPointsSortFilterProxyModel.cxx
+  qMRML${MODULE_NAME}ControlPointsSortFilterProxyModel.h
+  qMRML${MODULE_NAME}ControlPointsTableView.cxx
+  qMRML${MODULE_NAME}ControlPointsTableView.h
   qMRML${MODULE_NAME}DisplayNodeWidget.cxx
   qMRML${MODULE_NAME}DisplayNodeWidget.h
   qMRML${MODULE_NAME}FiducialProjectionPropertyWidget.cxx
@@ -38,6 +45,10 @@ set(${KIT}_SRCS
   )
 
 set(${KIT}_MOC_SRCS
+  qMRML${MODULE_NAME}ControlPointsModel.h
+  qMRML${MODULE_NAME}ControlPointsModel_p.h
+  qMRML${MODULE_NAME}ControlPointsSortFilterProxyModel.h
+  qMRML${MODULE_NAME}ControlPointsTableView.h
   qMRML${MODULE_NAME}DisplayNodeWidget.h
   qMRML${MODULE_NAME}FiducialProjectionPropertyWidget.h
   qMRML${MODULE_NAME}InteractionHandleWidget.h
@@ -54,6 +65,7 @@ set(${KIT}_MOC_SRCS
   )
 
 set(${KIT}_UI_SRCS
+  Resources/UI/qMRML${MODULE_NAME}ControlPointsTableView.ui
   Resources/UI/qMRML${MODULE_NAME}DisplayNodeWidget.ui
   Resources/UI/qMRML${MODULE_NAME}FiducialProjectionPropertyWidget.ui
   Resources/UI/qMRML${MODULE_NAME}InteractionHandleWidget.ui

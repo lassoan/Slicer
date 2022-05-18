@@ -25,6 +25,7 @@
 #include <QtUiPlugin/QDesignerCustomWidgetCollectionInterface>
 
 // Markups includes
+#include "qMRMLMarkupsControlPointsTableViewPlugin.h"
 #include "qMRMLMarkupsDisplayNodeWidgetPlugin.h"
 #include "qMRMLMarkupsFiducialProjectionPropertyWidgetPlugin.h"
 #include "qMRMLMarkupsInteractionHandleWidgetPlugin.h"
@@ -45,6 +46,7 @@ public:
   QList<QDesignerCustomWidgetInterface*> customWidgets() const override
     {
     QList<QDesignerCustomWidgetInterface *> plugins;
+    plugins << new qMRMLMarkupsControlPointsTableViewPlugin;
     plugins << new qMRMLMarkupsDisplayNodeWidgetPlugin;
     plugins << new qMRMLMarkupsFiducialProjectionPropertyWidgetPlugin;
     plugins << new qMRMLMarkupsInteractionHandleWidgetPlugin;

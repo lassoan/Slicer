@@ -8,6 +8,8 @@ set(${KIT}_SRCS
   qSlicer${MODULE_NAME}ModuleWidgetsAbstractPlugin.h
   qSlicer${MODULE_NAME}ModuleWidgetsPlugin.cxx
   qSlicer${MODULE_NAME}ModuleWidgetsPlugin.h
+  qMRML${MODULE_NAME}ControlPointsTableViewPlugin.cxx
+  qMRML${MODULE_NAME}ControlPointsTableViewPlugin.h
   qMRML${MODULE_NAME}DisplayNodeWidgetPlugin.cxx
   qMRML${MODULE_NAME}DisplayNodeWidgetPlugin.h
   qMRML${MODULE_NAME}FiducialProjectionPropertyWidgetPlugin.cxx
@@ -24,6 +26,7 @@ set(${KIT}_SRCS
 
 set(${KIT}_MOC_SRCS
   qSlicer${MODULE_NAME}ModuleWidgetsPlugin.h
+  qMRML${MODULE_NAME}ControlPointsTableViewPlugin.h
   qMRML${MODULE_NAME}DisplayNodeWidgetPlugin.h
   qMRML${MODULE_NAME}FiducialProjectionPropertyWidgetPlugin.h
   qMRML${MODULE_NAME}InteractionHandleWidgetPlugin.h
