@@ -269,6 +269,8 @@ public:
   /// \param markupsNode MRMLMakrups node to be unregistered.
   void UnregisterMarkupsNode(vtkMRMLMarkupsNode*  markupsNode);
 
+  bool IsMarkupsNodeRegistered(const char* nodeType) const;
+
   /// This returns an instance to a corresponding vtkSlicerMarkupsWidget associated
   /// to the indicated markups name.
   /// \param markupsType registered class to retrieve the associated widget.
