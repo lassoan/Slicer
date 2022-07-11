@@ -872,7 +872,7 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
     {
     vtkFixedPointVolumeRayCastMapper* cpuMapper = vtkFixedPointVolumeRayCastMapper::SafeDownCast(mapper);
 
-    switch (viewNode->GetRaycastTechnique())
+    switch (viewNode->GetVolumeRenderingQuality())
       {
       case vtkMRMLViewNode::Adaptive:
         cpuMapper->SetAutoAdjustSampleDistances(true);
@@ -950,7 +950,9 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
       vtkMRMLMultiVolumeRenderingDisplayNode::SafeDownCast(displayNode);
     vtkGPUVolumeRayCastMapper* gpuMultiMapper = vtkGPUVolumeRayCastMapper::SafeDownCast(mapper);
 
-    switch (viewNode->GetRaycastTechnique())
+    this->UpdateMultiVolumeMapperSampleDistance();
+
+    switch (viewNode->GetVolumeRenderingQuality())
       {
       case vtkMRMLViewNode::Adaptive:
         gpuMultiMapper->SetAutoAdjustSampleDistances(true);
@@ -959,7 +961,8 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
         break;
       case vtkMRMLViewNode::Normal:
         gpuMultiMapper->SetAutoAdjustSampleDistances(false);
-        gpuMultiMapper->SetLockSampleDistanceToInputSpacing(true);
+        // need to disable LockSampleDistanceToInputSpacing because the dummy volume would interfere with the computation
+        gpuMultiMapper->SetLockSampleDistanceToInputSpacing(false);
         gpuMultiMapper->SetUseJittering(viewNode->GetVolumeRenderingSurfaceSmoothing());
         break;
       case vtkMRMLViewNode::Maximum:
@@ -1233,7 +1236,8 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateMultiVolumeMap
     return;
     }
 
-  double minimumSampleDistance = VTK_DOUBLE_MAX;
+  bool foundVolume = false;
+  double minimumSampleDistance = 1.0;
   for (Pipeline* pipeline : this->DisplayPipelines)
     {
     vtkMRMLMultiVolumeRenderingDisplayNode* multiDisplayNode =
@@ -1245,7 +1249,15 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateMultiVolumeMap
     double currentSampleDistance = multiDisplayNode->GetSampleDistance();
     if (this->IsVisible(multiDisplayNode))
       {
-      minimumSampleDistance = std::min(minimumSampleDistance, currentSampleDistance);
+      if (foundVolume)
+        {
+        minimumSampleDistance = std::min(minimumSampleDistance, currentSampleDistance);
+        }
+      else
+        {
+        minimumSampleDistance = currentSampleDistance;
+        foundVolume = true;
+        }
       }
     }
 
