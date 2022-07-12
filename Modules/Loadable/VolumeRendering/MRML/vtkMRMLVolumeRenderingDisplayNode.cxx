@@ -281,31 +281,12 @@ double vtkMRMLVolumeRenderingDisplayNode::GetSampleDistance()
     return 1.0 / firstViewNode->GetVolumeRenderingOversamplingFactor();
     }
 
-  double sampleDistance = 1.0;
-  int renderingQuality = firstViewNode->GetVolumeRenderingQuality();
-  if (renderingQuality == vtkMRMLViewNode::Normal)
+  const double minSpacing = volumeNode->GetMinSpacing() > 0 ? volumeNode->GetMinSpacing() : 1.;
+  double sampleDistance = minSpacing / firstViewNode->GetVolumeRenderingOversamplingFactor();
+  if ( firstViewNode
+    && firstViewNode->GetVolumeRenderingQuality() == vtkMRMLViewNode::Maximum)
     {
-    // In this mode normally VTK would compute the spacing (LockSampleDistanceToInputSpacing=true),
-    // it is only used in multi-volume rendering mode because there the automatic spacing computation
-    // does now work correctly (due to interference of the "dummy imaage").
-    // We use 1/2 the average spacing, to simulate LockSampleDistanceToInputSpacing=true behavior,
-    // as this is the way it is done in vtkVolumeMapper::SpacingAdjustedSampleDistance.
-    double* inputSpacing = volumeNode->GetSpacing();
-    sampleDistance = (inputSpacing[0] + inputSpacing[1] + inputSpacing[2]) / 6.0;
-    }
-  else
-    {
-    // Use minimum spacing along all axes (maybe average would be just as good or better,
-    // but the minimum has always been the behavior in Slicer)
-    if (volumeNode->GetMinSpacing() > 0)
-      {
-      sampleDistance = volumeNode->GetMinSpacing();
-      }
-    sampleDistance = sampleDistance / firstViewNode->GetVolumeRenderingOversamplingFactor();
-    if (firstViewNode->GetVolumeRenderingQuality() == vtkMRMLViewNode::Maximum)
-      {
-      sampleDistance /= 10.; // =10x smaller than pixel is high quality
-      }
+    sampleDistance = minSpacing / 10.; // =10x smaller than pixel is high quality
     }
   return sampleDistance;
 }
