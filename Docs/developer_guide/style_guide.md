@@ -384,9 +384,9 @@ In VTK classes:
 - `vtkDebugMacro("CreateWidget: found a glyph type already defined for this node: " << iter->second);`
 
 In QT classes:
-- `qCritical() << "qSlicerUtils::setPermissionsRecursively: Failed to set permissions on file" << info.filePath();`
-- `qWarning() << "qSlicerIOManager::openScreenshotDialog: Unable to get Annotations module (annotations), using the CTK screen shot dialog.";`
-- `qDebug() << "qMRMLSceneFactoryWidget::deleteNode(" <<className <<") no node";`
+- `qCritical() << Q_FUNC_INFO << "Failed to set permissions on file" << info.filePath();`
+- `qWarning()  << Q_FUNC_INFO << "Unable to get Annotations module (annotations), using the CTK screen shot dialog.";`
+- `qDebug() << << Q_FUNC_INFO << "No node was found of class" << className;`
 
 In Python:
 - `logging.error("This is an error message. It is printed on the console (to standard error) and to the application log.")`
