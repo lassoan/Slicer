@@ -169,8 +169,8 @@ See examples and other developer information in [Developer guide](../../develope
 
 ## Related modules
 
-- This module will replace [Annotations](annotations.md) module.
 - [Endoscopy](endoscopy.md) module uses control points
+- This module replaced the legacy Annotations module.
 
 ## Contributors
 
