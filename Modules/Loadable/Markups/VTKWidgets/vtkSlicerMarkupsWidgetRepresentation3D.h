@@ -80,7 +80,7 @@ public:
   void CanInteractWithLine(vtkMRMLInteractionEventData* interactionEventData,
     int &foundComponentType, int &foundComponentIndex, double &closestDistance2);
 
-  bool AccuratePick(int x, int y, double pickPoint[3], double pickNormal[3]=nullptr);
+  bool AccuratePick(vtkMRMLInteractionEventData* eventData, int x, int y, double pickPoint[3], double pickNormal[3]);
 
   /// Return true if the control point is actually visible
   /// (displayed and not occluded by other objects in the view).
@@ -156,8 +156,6 @@ protected:
   /// - RelativeCoincidentTopologyPointOffsetParameter
   void UpdateRelativeCoincidentTopologyOffsets(vtkMapper* mapper, vtkMapper* occludedMapper);
   using vtkMRMLAbstractWidgetRepresentation::UpdateRelativeCoincidentTopologyOffsets;
-
-  vtkSmartPointer<vtkCellPicker> AccuratePicker;
 
   double TextActorPositionWorld[3];
   bool TextActorOccluded;

@@ -197,12 +197,12 @@ bool vtkSlicerPlaneWidget::ProcessUpdatePlaneFromViewNormal(vtkMRMLInteractionEv
     {
     int displayPos[2] = { 0 };
     eventData->GetDisplayPosition(displayPos);
-    if (!this->ConvertDisplayPositionToWorld(displayPos, eventPos_World, eventOrientation_World))
+    if (!this->ConvertDisplayPositionToWorld(eventData, displayPos, eventPos_World, eventOrientation_World))
       {
       eventData->GetWorldPosition(eventPos_World);
       }
     }
-  eventData->SetWorldPosition(eventPos_World);
+  eventData->SetWorldPosition(eventPos_World, true);
 
   vtkSlicerPlaneRepresentation2D* rep2d = vtkSlicerPlaneRepresentation2D::SafeDownCast(this->WidgetRep);
   vtkSlicerPlaneRepresentation3D* rep3d = vtkSlicerPlaneRepresentation3D::SafeDownCast(this->WidgetRep);
@@ -234,7 +234,7 @@ bool vtkSlicerPlaneWidget::ProcessUpdatePlaneFromViewNormal(vtkMRMLInteractionEv
     eventData->GetDisplayPosition(displayPos);
     double pickPos[3] = { 0.0, 0.0, 0.0 };
     double zAxis_World[3] = { 0.0, 0.0, 0.0 };
-    bool pickSuccessful = rep3d->AccuratePick(displayPos[0], displayPos[1], pickPos, zAxis_World);
+    bool pickSuccessful = rep3d->AccuratePick(eventData, displayPos[0], displayPos[1], pickPos, zAxis_World);
 
     double yAxis_World[3] = { 0.0, 1.0, 0.0 };
     vtkCamera* camera = this->Renderer->GetActiveCamera();
@@ -355,7 +355,7 @@ bool vtkSlicerPlaneWidget::ProcessPlaneTranslate(vtkMRMLInteractionEventData* ev
     displayPos[0] = static_cast<int>(std::floor(this->LastEventPosition[0]));
     displayPos[1] = static_cast<int>(std::floor(this->LastEventPosition[1]));
 
-    if (!this->ConvertDisplayPositionToWorld(displayPos, worldPos, worldOrient))
+    if (!this->ConvertDisplayPositionToWorld(eventData, displayPos, worldPos, worldOrient))
       {
       return false;
       }
@@ -366,7 +366,7 @@ bool vtkSlicerPlaneWidget::ProcessPlaneTranslate(vtkMRMLInteractionEventData* ev
     displayPos[0] = eventPos[0];
     displayPos[1] = eventPos[1];
 
-    if (!this->ConvertDisplayPositionToWorld(displayPos, worldPos, worldOrient))
+    if (!this->ConvertDisplayPositionToWorld(eventData, displayPos, worldPos, worldOrient))
       {
       return false;
       }

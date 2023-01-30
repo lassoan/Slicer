@@ -318,7 +318,7 @@ bool vtkMRMLViewInteractorStyle::DelegateInteractionEventToDisplayableManagers(v
   if (inputEventDataDevice3D)
     {
     ed->SetDevice(inputEventDataDevice3D->GetDevice());
-    ed->SetWorldPosition(inputEventDataDevice3D->GetWorldPosition());
+    ed->SetWorldPosition(inputEventDataDevice3D->GetWorldPosition(), true);
     ed->SetWorldOrientation(inputEventDataDevice3D->GetWorldOrientation());
     ed->SetWorldDirection(inputEventDataDevice3D->GetWorldDirection());
     ed->SetInput(inputEventDataDevice3D->GetInput());

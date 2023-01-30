@@ -55,12 +55,21 @@ public:
   /// It may be expensive to compute world position accurately (e.g., in a 3D view).
   /// If accurate parameter is set to false then it indicates
   /// that the position may be inaccurate.
-  void SetWorldPosition(const double p[3], bool accurate = true);
+  void SetWorldPosition(const double position[3], bool accurate);
+  void SetWorldPositionInvalid();
   bool IsWorldPositionValid();
   bool IsWorldPositionAccurate();
-  void SetWorldPositionInvalid();
 
+  void SetWorldNormal(const double normal[3]);
+  void SetWorldNormalInvalid();
+  void GetWorldNormal(double normal[3]) const;
+  const double* GetWorldNormal() const VTK_SIZEHINT(2);
+  bool IsWorldNormalValid();
+
+  // Accurate 3D picking at the current display position
   bool ComputeAccurateWorldPosition(bool force = false);
+  // Accurate 3D picking at arbitrary display position
+  bool GetAccurateWorldPositionNormal(const int displayPosition[2], double worldPosition[3], double worldNormal[3]);
   //@}
 
   void GetDisplayPosition(int v[2]) const;
@@ -120,8 +129,10 @@ public:
 protected:
   int Modifiers;
   int DisplayPosition[2];
+  double WorldNormal[3]; // surface normal at the picked world position
   bool DisplayPositionValid;
   bool WorldPositionValid;
+  bool WorldNormalValid;
   bool WorldPositionAccurate;
   bool ComputeAccurateWorldPositionAttempted;
   vtkMRMLAbstractViewNode* ViewNode;

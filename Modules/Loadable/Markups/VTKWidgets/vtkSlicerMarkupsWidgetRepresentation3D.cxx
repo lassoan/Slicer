@@ -153,10 +153,12 @@ vtkSlicerMarkupsWidgetRepresentation3D::ControlPointsPipeline3D::ControlPointsPi
   this->Actor = vtkSmartPointer<vtkActor>::New();
   this->Actor->SetMapper(this->GlyphMapper);
   this->Actor->SetProperty(this->Property);
+  this->Actor->PickableOff();
 
   this->OccludedActor = vtkSmartPointer<vtkActor>::New();
   this->OccludedActor->SetMapper(this->OccludedGlyphMapper);
   this->OccludedActor->SetProperty(this->OccludedProperty);
+  this->OccludedActor->PickableOff();
 
   this->LabelsActor = vtkSmartPointer<vtkActor2D>::New();
   this->LabelsActor->SetMapper(this->LabelsMapper);
@@ -197,9 +199,6 @@ vtkSlicerMarkupsWidgetRepresentation3D::vtkSlicerMarkupsWidgetRepresentation3D()
   this->HideTextActorIfAllPointsOccluded = false;
 
   this->ControlPointSize = 10; // will be set from the markup's GlyphScale
-
-  this->AccuratePicker = vtkSmartPointer<vtkCellPicker>::New();
-  this->AccuratePicker->SetTolerance(.005);
 
   // Using the minimum value of -65000 creates a lot of rendering artifacts on the occluded objects, as all of the
   // pixels in the occluded object will have the same depth buffer value (0.0).
@@ -1229,43 +1228,32 @@ void vtkSlicerMarkupsWidgetRepresentation3D::SetRenderer(vtkRenderer *ren)
 }
 
 //---------------------------------------------------------------------------
-bool vtkSlicerMarkupsWidgetRepresentation3D::AccuratePick(int x, int y, double pickPoint[3], double pickNormal[3]/*=nullptr*/)
+bool vtkSlicerMarkupsWidgetRepresentation3D::AccuratePick(vtkMRMLInteractionEventData* eventData, int x, int y, double pickPoint[3], double pickNormal[3])
 {
-  bool success = this->AccuratePicker->Pick(x, y, 0, this->Renderer);
-  if (pickNormal)
-    {
-    this->AccuratePicker->GetPickNormal(pickNormal);
-    }
-  if (!success)
-    {
-    return false;
-    }
+  bool requireAccurate = false; // TODO
 
-  vtkPoints* pickPositions = this->AccuratePicker->GetPickedPositions();
-  vtkIdType numberOfPickedPositions = pickPositions->GetNumberOfPoints();
-  if (numberOfPickedPositions<1)
+  // If pick position matches requested position, use cached value in eventData
+  if (eventData->IsDisplayPositionValid())
     {
-    return false;
-    }
-
-  // There may be multiple picked positions, choose the one closest to the camera
-  double cameraPosition[3] = { 0,0,0 };
-  this->Renderer->GetActiveCamera()->GetPosition(cameraPosition);
-  pickPositions->GetPoint(0, pickPoint);
-  double minDist2 = vtkMath::Distance2BetweenPoints(pickPoint, cameraPosition);
-  for (vtkIdType i = 1; i < numberOfPickedPositions; i++)
-    {
-    double currentMinDist2 = vtkMath::Distance2BetweenPoints(pickPositions->GetPoint(i), cameraPosition);
-    if (currentMinDist2<minDist2)
+    const int* eventDataPickPosition = eventData->GetDisplayPosition();
+    if (x == eventDataPickPosition[0] && y == eventDataPickPosition[1])
       {
-      pickPositions->GetPoint(i, pickPoint);
-      minDist2 = currentMinDist2;
+      if (requireAccurate)
+        {
+        // Get accurate world position (by default FastPick3D is false
+        // because fast picking from Z buffer of the renderer is inaccurate
+        // especially when semi-transparent actors are visible)
+        eventData->ComputeAccurateWorldPosition();
+        }
+      eventData->GetWorldPosition(pickPoint);
+      eventData->GetWorldNormal(pickNormal);
+      bool success = eventData->IsWorldPositionValid();
+      return success;
       }
     }
-  return true;
+  int displayPosition[2] = { x, y };
+  return eventData->GetAccurateWorldPositionNormal(displayPosition, pickPoint, pickNormal);
 }
-
-
 
 //----------------------------------------------------------------------
 double vtkSlicerMarkupsWidgetRepresentation3D::GetViewScaleFactorAtPosition(double positionWorld[3], vtkMRMLInteractionEventData* interactionEventData)

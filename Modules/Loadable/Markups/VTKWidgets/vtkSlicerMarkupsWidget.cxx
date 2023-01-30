@@ -268,7 +268,7 @@ bool vtkSlicerMarkupsWidget::ProcessMouseMove(vtkMRMLInteractionEventData* event
     };
     if (state == WidgetStateTranslateControlPoint)
       {
-      this->TranslatePoint(eventPos);
+      this->TranslatePoint(eventData, eventPos);
       }
     else if (state == WidgetStateTranslate)
       {
@@ -372,7 +372,7 @@ bool vtkSlicerMarkupsWidget::ProcessControlPointSnapToSlice(vtkMRMLInteractionEv
     static_cast<double>(eventData->GetDisplayPosition()[1]),
   };
   this->StartWidgetInteraction(eventData);
-  this->TranslatePoint(eventPos, true);
+  this->TranslatePoint(eventData, eventPos, true);
   return true;
 }
 
@@ -475,7 +475,7 @@ bool vtkSlicerMarkupsWidget::ProcessWidgetJumpCursor(vtkMRMLInteractionEventData
       {
       double position_World[3] = { 0.0, 0.0, 0.0 };
       rep->GetInteractionHandlePositionWorld(componentType, markupsDisplayNode->GetActiveComponentIndex(), position_World);
-      jumpToPointEventData->SetWorldPosition(position_World);
+      jumpToPointEventData->SetWorldPosition(position_World, true);
       }
     }
 
@@ -484,7 +484,7 @@ bool vtkSlicerMarkupsWidget::ProcessWidgetJumpCursor(vtkMRMLInteractionEventData
 }
 
 //-------------------------------------------------------------------------
-bool vtkSlicerMarkupsWidget::ConvertDisplayPositionToWorld(const int displayPos[2],
+bool vtkSlicerMarkupsWidget::ConvertDisplayPositionToWorld(vtkMRMLInteractionEventData* eventData, const int displayPos[2],
   double worldPos[3], double worldOrientationMatrix[9], double* refWorldPos/*=nullptr*/)
 {
   vtkSlicerMarkupsWidgetRepresentation2D* rep2d = vtkSlicerMarkupsWidgetRepresentation2D::SafeDownCast(this->WidgetRep);
@@ -513,7 +513,8 @@ bool vtkSlicerMarkupsWidget::ConvertDisplayPositionToWorld(const int displayPos[
       {
       // SnapModeToVisibleSurface
       // Try to pick on surface and pick on camera plane if nothing is found.
-      if (rep3d->AccuratePick(displayPos[0], displayPos[1], worldPos))
+      double worldNormal[3]; // not used
+      if (rep3d->AccuratePick(eventData, displayPos[0], displayPos[1], worldPos, worldNormal))
         {
         return true;
         }
@@ -539,7 +540,8 @@ bool vtkSlicerMarkupsWidget::ConvertDisplayPositionToWorld(const int displayPos[
         // Reference position is unavailable (e.g., not moving of an existing point but first placement)
         // Even if the constraining on the surface is no preferred, it is still better to
         // place it on a visible surface in 3D views rather on the .
-        if (rep3d->AccuratePick(displayPos[0], displayPos[1], worldPos))
+        double worldNormal[3]; // not used
+        if (rep3d->AccuratePick(eventData, displayPos[0], displayPos[1], worldPos, worldNormal))
           {
           return true;
           }
@@ -584,10 +586,12 @@ void vtkSlicerMarkupsWidget::UpdatePreviewPoint(vtkMRMLInteractionEventData* eve
     return;
     }
 
+  bool requireAccurate = false;
+
   // Get accurate world position
   double accurateWorldPos[3] = { 0.0 };
   double accurateWorldOrientationMatrix[9] = { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 };
-  if (eventData->IsWorldPositionValid() && eventData->IsWorldPositionAccurate())
+  if (eventData->IsWorldPositionValid() && (!requireAccurate || eventData->IsWorldPositionAccurate()))
     {
     eventData->GetWorldPosition(accurateWorldPos);
 
@@ -599,12 +603,12 @@ void vtkSlicerMarkupsWidget::UpdatePreviewPoint(vtkMRMLInteractionEventData* eve
     {
     int displayPos[2] = { 0 };
     eventData->GetDisplayPosition(displayPos);
-    if (!this->ConvertDisplayPositionToWorld(displayPos, accurateWorldPos, accurateWorldOrientationMatrix))
+    if (!this->ConvertDisplayPositionToWorld(eventData, displayPos, accurateWorldPos, accurateWorldOrientationMatrix))
       {
       eventData->GetWorldPosition(accurateWorldPos);
       }
     }
-  eventData->SetWorldPosition(accurateWorldPos);
+  eventData->SetWorldPosition(accurateWorldPos, true);
 
   // Add/update control point position and orientation
 
@@ -744,9 +748,9 @@ bool vtkSlicerMarkupsWidget::ProcessWidgetMenu(vtkMRMLInteractionEventData* even
     double worldOrientationMatrix[9] = { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 };
     int displayPos[2] = { 0 };
     eventData->GetDisplayPosition(displayPos);
-    if (this->ConvertDisplayPositionToWorld(displayPos, worldPos, worldOrientationMatrix))
+    if (this->ConvertDisplayPositionToWorld(eventData, displayPos, worldPos, worldOrientationMatrix))
       {
-      menuEventData->SetWorldPosition(worldPos);
+      menuEventData->SetWorldPosition(worldPos, true);
       }
     }
 
@@ -1024,7 +1028,7 @@ void vtkSlicerMarkupsWidget::EndWidgetInteraction()
 }
 
 //----------------------------------------------------------------------
-void vtkSlicerMarkupsWidget::TranslatePoint(double eventPos[2], bool snapToSlice /* = false*/)
+void vtkSlicerMarkupsWidget::TranslatePoint(vtkMRMLInteractionEventData* eventData, double eventPos[2], bool snapToSlice /* = false*/)
 {
   vtkMRMLMarkupsNode* markupsNode = this->GetMarkupsNode();
   vtkMRMLMarkupsDisplayNode* markupsDisplayNode = this->GetMarkupsDisplayNode();
@@ -1062,7 +1066,7 @@ void vtkSlicerMarkupsWidget::TranslatePoint(double eventPos[2], bool snapToSlice
   int displayPos[2] = { int(eventPos[0] + 0.5), int(eventPos[1] + 0.5) };
   double worldPos[3] = { 0.0 };
   double worldOrientationMatrix[9] = { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 };
-  if (!this->ConvertDisplayPositionToWorld(displayPos, worldPos, worldOrientationMatrix, oldWorldPos))
+  if (!this->ConvertDisplayPositionToWorld(eventData, displayPos, worldPos, worldOrientationMatrix, oldWorldPos))
     {
     vtkSlicerMarkupsWidgetRepresentation* rep = this->GetMarkupsRepresentation();
     if (!rep || !rep->GetPointPlacer()->ComputeWorldPosition(this->Renderer, eventPos, oldWorldPos, worldPos, worldOrientationMatrix))

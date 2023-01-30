@@ -139,7 +139,7 @@ protected:
   void StartWidgetInteraction(vtkMRMLInteractionEventData* eventData);
   void EndWidgetInteraction();
 
-  virtual void TranslatePoint(double eventPos[2], bool snapToSlice = false);
+  virtual void TranslatePoint(vtkMRMLInteractionEventData* eventData, double eventPos[2], bool snapToSlice = false);
   virtual void TranslateWidget(double eventPos[2]);
   virtual void ScaleWidget(double eventPos[2]);
   virtual void RotateWidget(double eventPos[2]);
@@ -151,7 +151,7 @@ protected:
   // Returns true on success.
   // refWorldPos is an optional reference position: if point distance from camera cannot be determined then
   // depth of this reference position is used.
-  bool ConvertDisplayPositionToWorld(const int displayPos[2], double worldPos[3], double worldOrientationMatrix[9],
+  bool ConvertDisplayPositionToWorld(vtkMRMLInteractionEventData* eventData, const int displayPos[2], double worldPos[3], double worldOrientationMatrix[9],
     double* refWorldPos = nullptr);
 
   /// Index of the control point that is currently being previewed (follows the mouse pointer).

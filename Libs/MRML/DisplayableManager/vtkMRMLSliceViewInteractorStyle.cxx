@@ -115,7 +115,10 @@ bool vtkMRMLSliceViewInteractorStyle::DelegateInteractionEventToDisplayableManag
   ed->SetType(inputEventData->GetType());
   int displayPositionCorrected[2] = { displayPositionInt[0] - pokedRenderer->GetOrigin()[0], displayPositionInt[1] - pokedRenderer->GetOrigin()[1] };
   ed->SetDisplayPosition(displayPositionCorrected);
-  ed->SetWorldPosition(worldPosition);
+  ed->SetWorldPosition(worldPosition, true);
+  vtkMatrix4x4* sliceToRas = sliceNode->GetSliceToRAS();
+  double sliceNormal[3] = { sliceToRas->GetElement(0, 2), sliceToRas->GetElement(1, 2) , sliceToRas->GetElement(2, 2) };
+  ed->SetWorldNormal(sliceNormal);
   ed->SetMouseMovedSinceButtonDown(this->MouseMovedSinceButtonDown);
   ed->SetAttributesFromInteractor(this->GetInteractor());
 

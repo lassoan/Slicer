@@ -45,10 +45,11 @@ void doTranslate(vtkRenderer* renderer, vtkMRMLViewNode* viewNode, vtkMRMLCamera
   wp[0] = 0;
   wp[1] = 0;
   wp[2] = 0;
+  double wn[3] = { 1,0,0 };
   int dp[2];
   dp[0] = 0;
   dp[1] = 0;
-  ev->SetWorldPosition(wp);
+  ev->SetWorldPosition(wp, wn);
   ev->SetDisplayPosition(dp);
   cameraWidget->ProcessInteractionEvent(ev);
 
@@ -60,7 +61,7 @@ void doTranslate(vtkRenderer* renderer, vtkMRMLViewNode* viewNode, vtkMRMLCamera
   wp[2] = 0;
   dp[0] = 100;
   dp[1] = 0;
-  ev->SetWorldPosition(wp);
+  ev->SetWorldPosition(wp, wn);
   ev->SetDisplayPosition(dp);
   cameraWidget->ProcessInteractionEvent(ev);
 

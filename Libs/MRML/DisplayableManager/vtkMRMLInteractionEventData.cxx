@@ -39,6 +39,9 @@ vtkMRMLInteractionEventData::vtkMRMLInteractionEventData()
   this->WorldPosition[0] = 0.0;
   this->WorldPosition[1] = 0.0;
   this->WorldPosition[2] = 0.0;
+  this->WorldNormal[0] = 0.0;
+  this->WorldNormal[1] = 0.0;
+  this->WorldNormal[2] = 0.0;
   this->WorldOrientation[0] = 0.0;
   this->WorldOrientation[1] = 0.0;
   this->WorldOrientation[2] = 0.0;
@@ -50,6 +53,7 @@ vtkMRMLInteractionEventData::vtkMRMLInteractionEventData()
   this->TrackPadPosition[1] = 0.0;
   this->DisplayPositionValid = false;
   this->WorldPositionValid = false;
+  this->WorldNormalValid = false;
   this->WorldPositionAccurate = false;
   this->ComputeAccurateWorldPositionAttempted = false;
   this->AccuratePicker = nullptr;
@@ -99,11 +103,11 @@ int vtkMRMLInteractionEventData::GetModifiers()
 }
 
 //---------------------------------------------------------------------------
-void vtkMRMLInteractionEventData::SetWorldPosition(const double p[3], bool accurate/*=true*/)
+void vtkMRMLInteractionEventData::SetWorldPosition(const double position[3], bool accurate)
 {
-  this->WorldPosition[0] = p[0];
-  this->WorldPosition[1] = p[1];
-  this->WorldPosition[2] = p[2];
+  this->WorldPosition[0] = position[0];
+  this->WorldPosition[1] = position[1];
+  this->WorldPosition[2] = position[2];
   this->WorldPositionValid = true;
   this->WorldPositionAccurate = accurate;
 }
@@ -125,6 +129,41 @@ void vtkMRMLInteractionEventData::SetWorldPositionInvalid()
 {
   this->WorldPositionValid = false;
   this->WorldPositionAccurate = false;
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLInteractionEventData::SetWorldNormal(const double normal[3])
+{
+  this->WorldNormal[0] = normal[0];
+  this->WorldNormal[1] = normal[1];
+  this->WorldNormal[2] = normal[2];
+  this->WorldNormalValid = true;
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLInteractionEventData::GetWorldNormal(double normal[3]) const
+{
+  normal[0] = this->WorldNormal[0];
+  normal[1] = this->WorldNormal[1];
+  normal[2] = this->WorldNormal[2];
+}
+
+//---------------------------------------------------------------------------
+const double* vtkMRMLInteractionEventData::GetWorldNormal() const
+{
+  return this->WorldNormal;
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLInteractionEventData::IsWorldNormalValid()
+{
+  return this->WorldNormalValid;
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLInteractionEventData::SetWorldNormalInvalid()
+{
+  this->WorldNormalValid = false;
 }
 
 //---------------------------------------------------------------------------
@@ -358,32 +397,49 @@ bool vtkMRMLInteractionEventData::ComputeAccurateWorldPosition(bool force/*=fals
     return false;
     }
   this->ComputeAccurateWorldPositionAttempted = true;
-  if (!this->AccuratePicker->Pick(static_cast<double>(this->DisplayPosition[0]), static_cast<double>(this->DisplayPosition[1]), 0, this->Renderer))
+  bool success = this->GetAccurateWorldPositionNormal(this->DisplayPosition, this->WorldPosition, this->WorldNormal);
+  this->WorldPositionValid = success;
+  this->WorldPositionAccurate = success;
+  this->WorldNormalValid = success;
+  return success;
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLInteractionEventData::GetAccurateWorldPositionNormal(const int displayPosition[2], double worldPosition[3], double worldNormal[3])
+{
+  if (!this->AccuratePicker || !this->Renderer)
     {
     return false;
     }
+
+  bool success = this->AccuratePicker->Pick(static_cast<double>(displayPosition[0]), static_cast<double>(displayPosition[1]), 0, this->Renderer);
+  this->AccuratePicker->GetPickNormal(worldNormal);
+  if (!success)
+    {
+    return false;
+    }
+
   vtkPoints* pickPositions = this->AccuratePicker->GetPickedPositions();
-  int numberOfPickedPositions = pickPositions->GetNumberOfPoints();
-  if (numberOfPickedPositions < 1)
+  vtkIdType numberOfPickedPositions = pickPositions->GetNumberOfPoints();
+  if (numberOfPickedPositions<1)
     {
     return false;
     }
+
   // There may be multiple picked positions, choose the one closest to the camera
   double cameraPosition[3] = { 0,0,0 };
   this->Renderer->GetActiveCamera()->GetPosition(cameraPosition);
-  pickPositions->GetPoint(0, this->WorldPosition);
-  double minDist2 = vtkMath::Distance2BetweenPoints(this->WorldPosition, cameraPosition);
-  for (int i = 1; i < numberOfPickedPositions; i++)
+  pickPositions->GetPoint(0, worldPosition);
+  double minDist2 = vtkMath::Distance2BetweenPoints(worldPosition, cameraPosition);
+  for (vtkIdType i = 1; i < numberOfPickedPositions; i++)
     {
     double currentMinDist2 = vtkMath::Distance2BetweenPoints(pickPositions->GetPoint(i), cameraPosition);
-    if (currentMinDist2 < minDist2)
+    if (currentMinDist2<minDist2)
       {
-      pickPositions->GetPoint(i, this->WorldPosition);
+      pickPositions->GetPoint(i, worldPosition);
       minDist2 = currentMinDist2;
       }
     }
-  this->WorldPositionValid = true;
-  this->WorldPositionAccurate = true;
   return true;
 }
 
