@@ -136,16 +136,18 @@ class VTK_MRML_EXPORT vtkMRMLSelectionNode : public vtkMRMLNode
   void SetReferenceActivePlotChartID (const char *id) { this->SetActivePlotChartID(id); };
 
   /// A list of events that this node can throw
-  /// ActivePlaceNodeIDChangedEvent: is no longer observed by the Mouse mode
-  /// tool bar, it only watches for the ActivePlaceNodeClassNameChangedEvent
-  /// ActivePlaceNodeClassNameChangedEvent: is observed by the Mouse mode tool
-  /// bar class to update that widget to the current place node
-  /// PlaceNodeClassNameListModifiedEvent: this is fired when new place node
-  /// class names are added, watched for by the Mouse mode tool bar so that it
-  /// can offer the user all the valid types of nodes to place.
-  /// UnitModifiedEvent: Fired every time a quantity unit node is changed
-  /// or an active quantity unit node is modified. The calldata contains
-  /// the node quantity
+  /// - ActivePlaceNodeIDChangedEvent: is no longer observed by the Mouse mode
+  ///   tool bar, it only watches for the ActivePlaceNodeClassNameChangedEvent
+  /// - ActivePlaceNodeClassNameChangedEvent: is observed by the Mouse mode tool
+  ///   bar class to update that widget to the current place node
+  /// - PlaceNodeClassNameListModifiedEvent: this is fired when new place node
+  ///   class names are added, watched for by the Mouse mode tool bar so that it
+  ///   can offer the user all the valid types of nodes to place.
+  /// - UnitModifiedEvent: Fired every time a quantity unit node is changed
+  ///   or an active quantity unit node is modified. The calldata contains
+  ///   the node quantity
+  /// - ActivePlaceNodePlacementValidChangedEvent: Fired when ActivePlaceNodePlacementValid
+  ///   property is changed.
   /// \sa AddNewPlaceNodeClassNameToList
   enum
   {
@@ -153,7 +155,7 @@ class VTK_MRML_EXPORT vtkMRMLSelectionNode : public vtkMRMLNode
     ActivePlaceNodeClassNameChangedEvent,
     PlaceNodeClassNameListModifiedEvent,
     UnitModifiedEvent,
-    ActivePlaceNodePlacementValidEvent
+    ActivePlaceNodePlacementValidChangedEvent
   };
 
   /// Add a new valid placeNode class name to the list, with optional qt resource

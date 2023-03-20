@@ -186,11 +186,9 @@ public:
   /// Create and observe default display node(s)
   void CreateDefaultDisplayNodes() override;
 
-  ///@{
-  /**
-   * Get measurement data, such as length, angle, diameter, cross-section area.
-   * Add/remove/clear measurements.
-   */
+  //@{
+  /// Get measurement data, such as length, angle, diameter, cross-section area.
+  /// Add/remove/clear measurements.
   int GetNumberOfMeasurements();
   int GetNumberOfEnabledMeasurements();
   int GetNumberOfEnabledAndDefinedMeasurements();
@@ -206,50 +204,46 @@ public:
   void DisableAllMeasurements();
   void DisableMeasurement(const char* name);
   void ClearValueForAllMeasurements();
-  ///@}
+  //@}
 
-  ///@{
-  /**
-   * Utility method to override the list DefaultMeasurements which in default is empty.
-   * DefaultMeasurements values have to be the measurement names.
-   * The list will used by the MarkupsMeasurementPanel to set which measurements will
-   * be enabled when a markup is added.
-   *
-   * Python pseudocode
-   * curve = slicer.vtkMRMLMarkupsClosedCurveNode()
-   * defaultMeasurements = vtk.vtkStringArray()
-   * defaultMeasurements.SetNumberOfTuples(2)
-   * defaultMeasurements.SetValue(0, "length")
-   * defaultMeasurements.SetValue(1, "curvature max")
-   * curve.SetDefaultMeasurements(defaultMeasurements)
-   * slicer.mrmlScene.AddDefaultNode(curve)
-   *
-   */
+  //@{
+  /// Utility method to override the list DefaultMeasurements which in default is empty.
+  /// DefaultMeasurements values have to be the measurement names.
+  /// The list will used by the MarkupsMeasurementPanel to set which measurements will
+  /// be enabled when a markup is added.
+  ///
+  /// \code
+  /// curve = slicer.vtkMRMLMarkupsClosedCurveNode()
+  /// defaultMeasurements = vtk.vtkStringArray()
+  /// defaultMeasurements.SetNumberOfTuples(2)
+  /// defaultMeasurements.SetValue(0, "length")
+  /// defaultMeasurements.SetValue(1, "curvature max")
+  /// curve.SetDefaultMeasurements(defaultMeasurements)
+  /// slicer.mrmlScene.AddDefaultNode(curve)
+  /// \endcode
   void SetDefaultMeasurements(vtkStringArray *defaultMeasurements);
   vtkStringArray* GetDefaultMeasurements();
-  ///@}
+  //@}
 
   /// Update all measurements.
   /// It should not be necessary for users to call this method.
   void UpdateAllMeasurements();
 
-  ///@{
-  /**
-   * Set measurement data, such as length, angle, diameter, cross-section area.
-   *
-   * IMPORTANT: These functions should not be used any more. Setting measurements now
-   * happens in the \sa UpdateMeasurementsInternal functions by calling Compute on the
-   * measurements. Similarly, RemoveAllMeasurements should not be called to clear the values,
-   * because the measurements are not set externally but added internally in the constructors
-   * and only updated (Compute called) as needed.
-   */
+  //@{
+  /// Set measurement data, such as length, angle, diameter, cross-section area.
+  ///
+  /// IMPORTANT: These functions should not be used any more. Setting measurements now
+  /// happens in the \sa UpdateMeasurementsInternal functions by calling Compute on the
+  /// measurements. Similarly, RemoveAllMeasurements should not be called to clear the values,
+  /// because the measurements are not set externally but added internally in the constructors
+  /// and only updated (Compute called) as needed.
   void SetNthMeasurement(int id, vtkMRMLMeasurement* measurement);
   void SetNthMeasurement(int id, const std::string& name, double value, const std::string &units,
     std::string printFormat = "", const std::string description = "",
     vtkCodedEntry* quantityCode = nullptr, vtkCodedEntry* derivationCode = nullptr,
     vtkCodedEntry* unitsCode = nullptr, vtkCodedEntry* methodCode = nullptr);
   void RemoveAllMeasurements();
-  ///@}
+  //@}
 
   /// Invoke events when control points change, passing the control point index if applicable.
   ///

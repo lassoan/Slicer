@@ -20,10 +20,8 @@
 #include <QButtonGroup>
 #include <QClipboard>
 #include <QDebug>
-#include <QDockWidget>
 #include <QInputDialog>
 #include <QList>
-#include <QMainWindow>
 #include <QMenu>
 #include <QMessageBox>
 #include <QModelIndex>
@@ -75,7 +73,6 @@
 #include "qMRMLMarkupsToolBar.h"
 
 // VTK includes
-#include <vtkCollectionIterator.h>
 #include <vtkMath.h>
 #include <vtkNew.h>
 #include <vtkPoints.h>
@@ -191,6 +188,8 @@ private:
 qSlicerMarkupsModuleWidgetPrivate::qSlicerMarkupsModuleWidgetPrivate(qSlicerMarkupsModuleWidget& object)
   : q_ptr(&object)
 {
+  Q_Q(qSlicerMarkupsModuleWidget);
+
   this->columnLabels << qSlicerMarkupsModuleWidget::tr("Selected") << qSlicerMarkupsModuleWidget::tr("Locked") << qSlicerMarkupsModuleWidget::tr("Visible")
     << qSlicerMarkupsModuleWidget::tr("Name") << qSlicerMarkupsModuleWidget::tr("Description") << qSlicerMarkupsModuleWidget::tr("R")
     << qSlicerMarkupsModuleWidget::tr("A") << qSlicerMarkupsModuleWidget::tr("S") << qSlicerMarkupsModuleWidget::tr("Position");
@@ -223,7 +222,7 @@ qSlicerMarkupsModuleWidgetPrivate::qSlicerMarkupsModuleWidgetPrivate(qSlicerMark
   this->ImportExportCoordinateSystemButtonGroup = nullptr;
 
   this->updateMarkupsOptionsWidgets();
-  }
+}
 
 //-----------------------------------------------------------------------------
 qSlicerMarkupsModuleWidgetPrivate::~qSlicerMarkupsModuleWidgetPrivate() = default;

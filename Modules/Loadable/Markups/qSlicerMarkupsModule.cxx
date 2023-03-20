@@ -86,9 +86,9 @@ public:
   bool MarkupsModuleOwnsToolBar{ true };
   bool AutoShowToolBar{ true };
   vtkWeakPointer<vtkMRMLMarkupsNode> MarkupsToShow;
-  QDockWidget* MeasurementPanelDockWidget;
-  QAction* MeasurementPanelDockWidgetViewAction;
-  qSlicerMarkupsMeasurementsWidget* MeasurementPanelWidget;
+  QDockWidget* MeasurementPanelDockWidget{ nullptr };
+  QAction* MeasurementPanelDockWidgetViewAction{ nullptr };
+  qSlicerMarkupsMeasurementsWidget* MeasurementPanelWidget{ nullptr };
 };
 
 //-----------------------------------------------------------------------------
@@ -178,7 +178,7 @@ void qSlicerMarkupsModulePrivate::addToolBar()
     this->MeasurementPanelDockWidgetViewAction->setToolTip(qSlicerMainWindow::tr("Show Markups Measurement Panel"));
     this->MeasurementPanelDockWidgetViewAction->setShortcuts({qSlicerMainWindow::tr("Ctrl+7"),});
     QObject::connect(this->MeasurementPanelDockWidgetViewAction, SIGNAL(toggled(bool)),
-        q, SLOT(onMarkupsMeasurementsPanelToggled(bool)));
+      q, SLOT(onMarkupsMeasurementsPanelToggled(bool)));
     this->MeasurementPanelDockWidgetViewAction->setIcon(QIcon(":/Icons/Measurements.svg"));
 
     // Set up show/hide action
@@ -190,7 +190,8 @@ void qSlicerMarkupsModulePrivate::addToolBar()
 
     this->MeasurementPanelDockWidget->setWidget(this->MeasurementPanelWidget);
 
-    mainWindow->addDockWidget(Qt::RightDockWidgetArea, this->MeasurementPanelDockWidget);
+    //TODO: check this
+    //mainWindow->addDockWidget(Qt::RightDockWidgetArea, this->MeasurementPanelDockWidget);
     }
 }
 
@@ -206,7 +207,7 @@ qSlicerMarkupsModule::qSlicerMarkupsModule(QObject* _parent)
   vtkMRMLScene* scene = qSlicerCoreApplication::application()->mrmlScene();
   if (scene)
     {
-    // Need to listen for any new makrups nodes being added to show toolbar
+    // Need to listen for any new markups nodes being added to show toolbar
     this->qvtkConnect(scene, vtkMRMLScene::NodeAddedEvent, this, SLOT(onNodeAddedEvent(vtkObject*, vtkObject*)));
     }
     */
@@ -410,7 +411,6 @@ void qSlicerMarkupsModule::readDefaultMarkupsDisplaySettings(vtkMRMLMarkupsDispl
     markupsDisplayNode->SetSliceProjectionOpacity(settings.value("Markups/SliceProjectionOpacity").toDouble());
     }
 
-
   if (settings.contains("Markups/CurveLineSizeMode"))
     {
     markupsDisplayNode->SetCurveLineSizeMode(vtkMRMLMarkupsDisplayNode::GetCurveLineSizeModeFromString(
@@ -600,6 +600,7 @@ void qSlicerMarkupsModule::onMarkupsMeasurementsPanelToggled(bool toggled)
     {
     d->MeasurementPanelDockWidget->activateWindow();
     }
+  // TODO: hide the widget when toggled=false?
 }
 
 //-----------------------------------------------------------------------------

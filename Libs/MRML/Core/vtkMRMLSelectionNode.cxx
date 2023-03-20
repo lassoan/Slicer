@@ -584,7 +584,7 @@ void vtkMRMLSelectionNode::SetActivePlaceNodePlacementValid(bool valid)
     return;
     }
   this->ActivePlaceNodePlacementValid = valid;
-  this->InvokeEvent(vtkMRMLSelectionNode::ActivePlaceNodePlacementValidEvent);
+  this->InvokeEvent(vtkMRMLSelectionNode::ActivePlaceNodePlacementValidChangedEvent);
 }
 
 //----------------------------------------------------------------------------

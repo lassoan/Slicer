@@ -383,7 +383,6 @@ void vtkMRMLMarkupsNode::PrintSelf(ostream& os, vtkIndent indent)
       }
     }
 
-
   if  (this->GetNumberOfMeasurements()>0)
     {
     os << indent << "Measurements:\n";

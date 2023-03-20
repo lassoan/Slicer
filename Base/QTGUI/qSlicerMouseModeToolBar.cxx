@@ -215,7 +215,7 @@ void qSlicerMouseModeToolBarPrivate::setMRMLScene(vtkMRMLScene* newScene)
                       this, SLOT(updateWidgetFromMRML()));
   this->qvtkReconnect(selectionNode, vtkMRMLSelectionNode::ActivePlaceNodeIDChangedEvent,
     this, SLOT(updateWidgetFromMRML()));
-  this->qvtkReconnect(selectionNode, vtkMRMLSelectionNode::ActivePlaceNodePlacementValidEvent,
+  this->qvtkReconnect(selectionNode, vtkMRMLSelectionNode::ActivePlaceNodePlacementValidChangedEvent,
     this, SLOT(updateWidgetFromMRML()));
 
   // Update UI
