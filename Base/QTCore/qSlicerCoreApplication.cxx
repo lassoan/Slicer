@@ -1083,6 +1083,23 @@ void qSlicerCoreApplication::handlePreApplicationCommandLineArguments()
     this->setAttribute(AA_DisablePython);
     }
 #endif
+
+#ifdef Slicer_BUILD_I18N_SUPPORT
+  if (options->disableInternationalization())
+    {
+    this->userSettings()->setValue("Internationalization/Enabled", false);
+    }
+  else
+    {
+    QString language = options->language();
+    if (!language.isEmpty())
+      {
+      this->userSettings()->setValue("Internationalization/Enabled", true);
+      this->userSettings()->setValue("language", language);
+      }
+    }
+#endif
+
 }
 
 //-----------------------------------------------------------------------------

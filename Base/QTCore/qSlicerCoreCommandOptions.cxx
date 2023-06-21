@@ -156,6 +156,31 @@ bool qSlicerCoreCommandOptions::ignoreSlicerRC()const
       this->isTestingEnabled();
 }
 
+#ifdef Slicer_BUILD_I18N_SUPPORT
+//-----------------------------------------------------------------------------
+QString qSlicerCoreCommandOptions::language() const
+{
+  Q_D(const qSlicerCoreCommandOptions);
+  if (!this->argumentParsed("language"))
+    {
+    // This option is not specified using command-line arguments.
+    // In this case d->ParsedArgs.value(...) would return the value stored in the
+    // application settings. We return empty string here to only use the value
+    // that is explicitly set in the application settings.
+    return QString();
+    }
+  return d->ParsedArgs.value("language").toString();
+}
+
+//-----------------------------------------------------------------------------
+bool qSlicerCoreCommandOptions::disableInternationalization() const
+{
+  return this->language() == "disabled";
+}
+#endif
+
+
+
 //-----------------------------------------------------------------------------
 QStringList qSlicerCoreCommandOptions::additionalModulePaths()const
 {
@@ -423,6 +448,12 @@ void qSlicerCoreCommandOptions::addArguments()
 
   this->addArgument("ignore-slicerrc", "", QVariant::Bool,
                     /*no tr*/"Do not load the Slicer resource file (~/.slicerrc.py).");
+#endif
+
+#ifdef Slicer_BUILD_I18N_SUPPORT
+  this->addArgument("language", "", QVariant::String,
+                    /*no tr*/"Specify a locale code (such as 'en_us') to enable internationalization and set application language."
+                    "Set to 'disabled' to disable internationalization");
 #endif
 
   this->addArgument("additional-module-path", "", QVariant::String,

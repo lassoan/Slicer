@@ -59,6 +59,10 @@ class Q_SLICER_BASE_QTCORE_EXPORT qSlicerCoreCommandOptions : public ctkCommandL
 #ifdef Slicer_USE_PYTHONQT
   Q_PROPERTY(bool pythonDisabled READ isPythonDisabled CONSTANT)
 #endif
+#ifdef Slicer_BUILD_I18N_SUPPORT
+  Q_PROPERTY(QString language READ language CONSTANT)
+  Q_PROPERTY(bool disableInternationalization READ disableInternationalization CONSTANT)
+#endif
   Q_PROPERTY(QStringList additionalModulePaths READ additionalModulePaths CONSTANT)
   Q_PROPERTY(QStringList modulesToIgnore READ modulesToIgnore CONSTANT)
 public:
@@ -205,6 +209,19 @@ public:
   bool isPythonDisabled()const;
 #endif
 
+#ifdef Slicer_BUILD_I18N_SUPPORT
+  /// Return the locale code (e.g., en_us) requested via command-line argument.
+  /// If a code is specified then it starts the application in that language
+  /// and it also enables internationalization.
+  /// This choice is stored in the application settings so that the language
+  /// selection is preserved after restarting the application.
+  /// If the value is "disabled" then it internationalization is disabled.
+  QString language()const;
+
+  /// Return trueif internationalization is explicitly disabled
+  /// by setting language to "disabled" via command line.
+  bool disableInternationalization()const;
+#endif
 
 protected:
   /// Add arguments - Called from parse() method
