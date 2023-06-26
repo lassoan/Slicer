@@ -345,9 +345,11 @@ void vtkSlicerSequencesLogic::UpdateProxyNodesFromSequences(vtkMRMLSequenceBrows
       continue;
       }
 
-    vtkMRMLNode* sourceDataNode = nullptr;
+    vtkSmartPointer<vtkMRMLNode> sourceDataNode;
     if (browserNode->GetSaveChanges(synchronizedSequenceNode))
       {
+      int missingItemMode = browserNode->GetMissingItemMode(synchronizedSequenceNode);
+
       // we want to save changes, therefore we have to make sure a data node is available for the current index
       if (synchronizedSequenceNode->GetNumberOfDataNodes() > 0)
         {
@@ -355,11 +357,35 @@ void vtkSlicerSequencesLogic::UpdateProxyNodesFromSequences(vtkMRMLSequenceBrows
         if (sourceDataNode == nullptr)
           {
           // No source node is available for the current exact index.
-          // Add a copy of the closest (previous) item into the sequence at the exact index.
-          sourceDataNode = synchronizedSequenceNode->GetDataNodeAtValue(indexValue, false /*closest match*/);
-          if (sourceDataNode)
+
+          if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCopyPrevious)
             {
-            sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(sourceDataNode, indexValue);
+            // Add a copy of the closest (previous) item into the sequence at the exact index.
+            sourceDataNode = synchronizedSequenceNode->GetDataNodeAtValue(indexValue, false /*closest match*/);
+            if (sourceDataNode)
+              {
+              sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(sourceDataNode, indexValue);
+              }
+            }
+          else
+            {
+            sourceDataNode = synchronizedSequenceNode->GetNthDataNode(0);
+            if (sourceDataNode)
+              {
+              vtkSmartPointer<vtkMRMLNode> emptyNode = vtkSmartPointer<vtkMRMLNode>::Take(sourceDataNode->CreateNodeInstance());
+              if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCreateEmpty)
+                {
+                // Add an empty node at the index
+                sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(emptyNode, indexValue);
+                }
+              else // missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemStopRecording
+                {
+                // Do not add a node at this index, instead disable saving of changes
+                sourceDataNode = emptyNode;
+                browserNode->SetSaveChanges(synchronizedSequenceNode, false);
+                }
+
+              }
             }
           }
         }
@@ -368,10 +394,30 @@ void vtkSlicerSequencesLogic::UpdateProxyNodesFromSequences(vtkMRMLSequenceBrows
         // There are no data nodes in the sequence.
         // Insert the current proxy node in the sequence.
         sourceDataNode = browserNode->GetProxyNode(synchronizedSequenceNode);
-        if (sourceDataNode)
+
+        if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCopyPrevious)
           {
-          sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(sourceDataNode, indexValue);
+          // Add proxy node at the index
+          if (sourceDataNode)
+            {
+            sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(sourceDataNode, indexValue);
+            }
           }
+        else if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCreateEmpty)
+          {
+          // Add an empty node at the index
+          if (sourceDataNode)
+            {
+            vtkSmartPointer<vtkMRMLNode> emptyNode = vtkSmartPointer<vtkMRMLNode>::Take(sourceDataNode->CreateNodeInstance());
+            sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(emptyNode, indexValue);
+            }
+          }
+        else if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemStopRecording)
+          {
+          // Do not add a node at this index, instead disable saving of changes
+          browserNode->SetSaveChanges(synchronizedSequenceNode, false);
+          }
+
         }
       }
     else
