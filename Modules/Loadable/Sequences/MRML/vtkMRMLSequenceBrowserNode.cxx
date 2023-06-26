@@ -70,6 +70,7 @@ struct vtkMRMLSequenceBrowserNode::SynchronizationProperties
   bool Recording{false};
   bool OverwriteProxyName{false}; // change proxy node name during replay (includes index value)
   bool SaveChanges{false}; // save proxy node changes into the sequence
+  MissingItemModeType MissingItemMode{MissingItemCopyPrevious};
 };
 
 void vtkMRMLSequenceBrowserNode::SynchronizationProperties::FromString( std::string str )
@@ -99,6 +100,10 @@ void vtkMRMLSequenceBrowserNode::SynchronizationProperties::FromString( std::str
         {
         this->SaveChanges=(!attValue.compare("true"));
         }
+      if (!attName.compare("saveChanges"))
+        {
+        this->MissingItemMode = vtkMRMLSequenceBrowserNode::GetMissingItemModeFromString(attValue);
+        }
       }
     }
 }
@@ -110,6 +115,7 @@ std::string vtkMRMLSequenceBrowserNode::SynchronizationProperties::ToString()
   ss << "recording" << " " << (this->Recording ? "true" : "false") << " ";
   ss << "overwriteProxyName" << " " << (this->OverwriteProxyName ? "true" : "false") << " ";
   ss << "saveChanges" << " " << (this->SaveChanges ? "true" : "false") << " ";
+  ss << "missingItemMode" << " " << (vtkMRMLSequenceBrowserNode::GetMissingItemModeAsString(this->MissingItemMode)) << " ";
   return ss.str();
 }
 
@@ -432,6 +438,7 @@ void vtkMRMLSequenceBrowserNode::PrintSelf(ostream& os, vtkIndent indent)
         os << ", Recording: " << syncProps->Recording;
         os << ", OverwriteProxyName: " << syncProps->OverwriteProxyName;
         os << ", SaveChanges: " << syncProps->SaveChanges;
+        os << ", MissingItemMode: " << vtkMRMLSequenceBrowserNode::GetMissingItemModeAsString(syncProps->MissingItemMode);
         }
       os << "\n";
       }
@@ -1259,6 +1266,18 @@ bool vtkMRMLSequenceBrowserNode::GetSaveChanges(vtkMRMLSequenceNode* sequenceNod
 }
 
 //---------------------------------------------------------------------------
+vtkMRMLSequenceBrowserNode::MissingItemModeType vtkMRMLSequenceBrowserNode::GetMissingItemMode(vtkMRMLSequenceNode* sequenceNode)
+{
+  SynchronizationProperties* syncProps = this->GetSynchronizationPropertiesForSequence(sequenceNode);
+  if (!syncProps)
+    {
+    vtkErrorMacro("vtkMRMLSequenceBrowserNode::GetSaveChanges failed: sequence node is invalid or does not belong to this browser node");
+    return MissingItemCopyPrevious;
+    }
+  return syncProps->MissingItemMode;
+}
+
+//---------------------------------------------------------------------------
 void vtkMRMLSequenceBrowserNode::SetRecording(vtkMRMLSequenceNode* sequenceNode, bool recording)
 {
   std::vector< vtkMRMLSequenceNode* > synchronizedSequenceNodes;
@@ -1390,6 +1409,39 @@ void vtkMRMLSequenceBrowserNode::SetSaveChanges(vtkMRMLSequenceNode* sequenceNod
     }
 }
 
+//---------------------------------------------------------------------------
+void vtkMRMLSequenceBrowserNode::SetMissingItemMode(vtkMRMLSequenceNode* sequenceNode, MissingItemModeType missingItemMode)
+{
+  std::vector< vtkMRMLSequenceNode* > synchronizedSequenceNodes;
+  if (sequenceNode)
+    {
+    synchronizedSequenceNodes.push_back(sequenceNode);
+    }
+  else
+    {
+    this->GetSynchronizedSequenceNodes(synchronizedSequenceNodes, true);
+    }
+  bool modified = false;
+  for (std::vector< vtkMRMLSequenceNode* >::iterator it = synchronizedSequenceNodes.begin(); it != synchronizedSequenceNodes.end(); ++it)
+    {
+    SynchronizationProperties* syncProps = this->GetSynchronizationPropertiesForSequence(*it);
+    if (!syncProps)
+      {
+      vtkErrorMacro("vtkMRMLSequenceBrowserNode::SetSaveChanges failed: sequence node is invalid or does not belong to this browser node");
+      continue;
+      }
+    if (syncProps->MissingItemMode != missingItemMode)
+      {
+      syncProps->MissingItemMode = missingItemMode;
+      modified = true;
+      }
+    }
+  if (modified)
+    {
+    this->Modified();
+    }
+}
+
 //-----------------------------------------------------------
 void vtkMRMLSequenceBrowserNode::SetRecordingSamplingModeFromString(const char *recordingSamplingModeString)
 {
@@ -1427,6 +1479,34 @@ int vtkMRMLSequenceBrowserNode::GetRecordingSamplingModeFromString(const std::st
       }
     }
   return -1;
+}
+
+//-----------------------------------------------------------
+std::string vtkMRMLSequenceBrowserNode::GetMissingItemModeAsString(int missingItemMode)
+{
+  switch (missingItemMode)
+    {
+    case vtkMRMLSequenceBrowserNode::MissingItemCopyPrevious: return "copyPrevious";
+    case vtkMRMLSequenceBrowserNode::MissingItemCreateEmpty: return "createEmpty";
+    case vtkMRMLSequenceBrowserNode::MissingItemStopRecording: return "stopRecording";
+    default:
+      return "";
+    }
+}
+
+//-----------------------------------------------------------
+vtkMRMLSequenceBrowserNode::MissingItemModeType vtkMRMLSequenceBrowserNode::GetMissingItemModeFromString(
+  const std::string& missingItemModeString)
+{
+  for (int i = 0; i<vtkMRMLSequenceBrowserNode::NumberOfMissingItemModes; i++)
+    {
+    if (missingItemModeString == GetRecordingSamplingModeAsString(i))
+      {
+      // found it
+      return MissingItemModeType(i);
+      }
+    }
+  return MissingItemInvalid;
 }
 
 //-----------------------------------------------------------
