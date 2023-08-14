@@ -976,6 +976,7 @@ void qSlicerSubjectHierarchySegmentationsPlugin::onSubjectHierarchyItemAboutToBe
     if (segmentationNode && segmentationNode->GetSegmentation()->GetSegment(segmentId))
       {
       d->SegmentSubjectHierarchyItemRemovalInProgress = true;
+      // TODO: the next line slows down deletion of large segmentations
       segmentationNode->GetSegmentation()->RemoveSegment(segmentId);
       d->SegmentSubjectHierarchyItemRemovalInProgress = false;
       }
