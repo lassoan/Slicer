@@ -18,39 +18,39 @@
 
 ==============================================================================*/
 
-///  vtkMRMLVolumeSequenceStorageNode - MRML node that can read/write
-///  a Sequence node containing volumes in a single NRRD file.
+///  vtkMRMLTransformSequenceStorageNode - MRML node that can read/write
+///  a Sequence node containing grid transforms in a single NRRD file
+///
 
-#ifndef __vtkMRMLVolumeSequenceStorageNode_h
-#define __vtkMRMLVolumeSequenceStorageNode_h
+#ifndef __vtkMRMLTransformSequenceStorageNode_h
+#define __vtkMRMLTransformSequenceStorageNode_h
 
 #include "vtkMRML.h"
 
-#include "vtkMRMLNRRDStorageNode.h"
+#include "vtkMRMLStorageNode.h"
+
 #include <string>
 
-class VTK_MRML_EXPORT vtkMRMLVolumeSequenceStorageNode : public vtkMRMLNRRDStorageNode
+class vtkMRMLSequenceNode;
+class vtkOrientedGridTransform;
+
+class VTK_MRML_EXPORT vtkMRMLTransformSequenceStorageNode : public vtkMRMLStorageNode
 {
 public:
-  static vtkMRMLVolumeSequenceStorageNode* New();
-  vtkTypeMacro(vtkMRMLVolumeSequenceStorageNode, vtkMRMLNRRDStorageNode);
+  static vtkMRMLTransformSequenceStorageNode* New();
+  vtkTypeMacro(vtkMRMLTransformSequenceStorageNode, vtkMRMLStorageNode);
 
   vtkMRMLNode* CreateNodeInstance() override;
 
   ///
   /// Get node XML tag name (like Storage, Model)
-  const char* GetNodeTagName() override { return "VolumeSequenceStorage"; };
+  const char* GetNodeTagName() override { return "TransformSequenceStorage"; };
 
-  int ConvertVoxelVectorTypeMRMLToVTKITK(int mrmlType);
-
-  /// Get node type to be displayed to the user.
-  std::string GetTypeDisplayName() override { return vtkMRMLTr("vtkMRMLVolumeSequenceStorageNode", "Volume Sequence Storage"); };
-
-  /// Return true if the node can be read in.  bool CanReadInReferenceNode(vtkMRMLNode* refNode) override;
+  /// Return true if the node can be read in.
+  bool CanReadInReferenceNode(vtkMRMLNode* refNode) override;
 
   /// Return true if the node can be written by using the writer.
   bool CanWriteFromReferenceNode(vtkMRMLNode* refNode) override;
-
 
   /// Write the data. Returns 1 on success, 0 otherwise.
   ///
@@ -62,11 +62,20 @@ public:
   /// Return a default file extension for writing
   const char* GetDefaultWriteFileExtension() override;
 
+  /// Check to see if this storage node can handle the file type. Returns
+  /// nonzero if supported, 0 otherwise. The higher the value, the higher
+  /// the confidence that this reader is the most suitable for reading the file.
+  /// This is an override of the generic method, because it looks into the
+  /// actual file content. It reads the header and checks if the intent code
+  /// is set to the value that indicates that it is a grid transform sequence
+  /// stored as a volume.
+  virtual int SupportedFileType(const char* fileName);
+
 protected:
-  vtkMRMLVolumeSequenceStorageNode();
-  ~vtkMRMLVolumeSequenceStorageNode() override;
-  vtkMRMLVolumeSequenceStorageNode(const vtkMRMLVolumeSequenceStorageNode&);
-  void operator=(const vtkMRMLVolumeSequenceStorageNode&);
+  vtkMRMLTransformSequenceStorageNode();
+  ~vtkMRMLTransformSequenceStorageNode() override;
+  vtkMRMLTransformSequenceStorageNode(const vtkMRMLTransformSequenceStorageNode&);
+  void operator=(const vtkMRMLTransformSequenceStorageNode&);
 
   /// Does the actual reading. Returns 1 on success, 0 otherwise.
   /// Returns 0 by default (read not supported).
@@ -82,6 +91,10 @@ protected:
 
   /// Initialize all the supported write file types
   void InitializeSupportedWriteFileTypes() override;
+
+  /// Get an oriented grid transform that is used as a common reference geometry.
+  /// Returns nullptr if not all transforms are grid transforms or identity.
+  vtkOrientedGridTransform* GetReferenceGridTransform(vtkMRMLSequenceNode* seqNode);
 };
 
 #endif

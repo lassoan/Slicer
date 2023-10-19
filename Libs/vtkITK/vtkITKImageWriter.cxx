@@ -322,7 +322,7 @@ void vtkITKImageWriter::Write()
 
   if (inputNumberOfScalarComponents == 1)
   {
-    // take into consideration the scalar type
+    // Scalar image
     switch (inputDataType)
     {
       case VTK_DOUBLE:
@@ -382,6 +382,7 @@ void vtkITKImageWriter::Write()
   {
     if (this->VoxelVectorType == vtkITKImageWriter::VoxelVectorTypeColorRGB)
     {
+      // RGB color image
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -411,8 +412,9 @@ void vtkITKImageWriter::Write()
         default: vtkErrorMacro(<< "Execute: Unknown output ScalarType"); return;
       }
     }
-    else if (this->VoxelVectorType == vtkITKImageWriter::VoxelVectorTypeSpatial)
+    else if (this->VoxelVectorType == vtkITKImageWriter::VoxelVectorTypeSpatialCovariant)
     {
+      // Covariant spatial vector (gradient image, etc.)
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -444,6 +446,7 @@ void vtkITKImageWriter::Write()
     }
     else
     {
+      // Displacement field or other 3-component contravariant vector image (such as velocity vector field)
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -478,6 +481,7 @@ void vtkITKImageWriter::Write()
   {
     if (this->VoxelVectorType == vtkITKImageWriter::VoxelVectorTypeColorRGBA)
     {
+      // RGBA image
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -509,6 +513,7 @@ void vtkITKImageWriter::Write()
     }
     else
     {
+      // Other 4-component vector image
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -541,7 +546,7 @@ void vtkITKImageWriter::Write()
   } // 4-vector
   else if (inputNumberOfScalarComponents == 9)
   {
-    // take into consideration the scalar type
+    // Diffusion tensor image
     switch (inputDataType)
     {
       case VTK_FLOAT:
