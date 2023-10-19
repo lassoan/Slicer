@@ -27,13 +27,14 @@ if(NOT DEFINED ITK_DIR AND NOT Slicer_USE_SYSTEM_${proj})
 
   ExternalProject_SetIfNotDefined(
     Slicer_${proj}_GIT_REPOSITORY
-    "${EP_GIT_PROTOCOL}://github.com/Slicer/ITK"
+    # "${EP_GIT_PROTOCOL}://github.com/Slicer/ITK"
+    "${EP_GIT_PROTOCOL}://github.com/cpinter/ITK"
     QUIET
     )
 
   ExternalProject_SetIfNotDefined(
     Slicer_${proj}_GIT_TAG
-    "20d9dc0c6b9de7e65aeb69d1d2fe6674939c0954" # slicer-v5.4.4-2025-06-11-f98d5fa
+    "6230caf455c25608ab4cab14e14a72f1408e417c" # nrrd-sequence-5d-io-543
     QUIET
     )
 
