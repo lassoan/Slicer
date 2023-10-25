@@ -1,7 +1,7 @@
 /*=========================================================================
 
   Program:   Visualization Toolkit
-  Module:    vtkImageMaskedMedian3D.h
+  Module:    vtkImageLabelDilate3D.h
 
   Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
   All rights reserved.
@@ -13,29 +13,24 @@
 
 =========================================================================*/
 /**
- * @class   vtkImageMaskedMedian3D
+ * @class   vtkImageLabelDilate3D
  * @brief   Median Filter
  *
- * vtkImageMaskedMedian3D is a modified a Median filter that works the same way as
- * vtkImageMaskedMedian3D filter except that it ignores 0 values. It can be
- * used for finding what is the most dominant non-background label value around each point.
- * This operation is intended for slightly expanding label boundaries in a labelmap volume.
- *
- * Implementation is based on vtkImageMedian3D, with only two small changes: do not include
- * background labels in the computation and do not interpolate values if kernel size is even.
+ * vtkImageLabelDilate3D dilates a labelmap by replacing each background voxel with the
+ * most dominant label voxel in its neighborhood.
  */
 
-#ifndef vtkImageMaskedMedian3D_h
-#define vtkImageMaskedMedian3D_h
+#ifndef vtkImageLabelDilate3D_h
+#define vtkImageLabelDilate3D_h
 
 #include "vtkImageSpatialAlgorithm.h"
 #include "vtkSlicerSegmentationsModuleLogicExport.h"
 
-class VTK_SLICER_SEGMENTATIONS_LOGIC_EXPORT vtkImageMaskedMedian3D : public vtkImageSpatialAlgorithm
+class VTK_SLICER_SEGMENTATIONS_LOGIC_EXPORT vtkImageLabelDilate3D : public vtkImageSpatialAlgorithm
 {
 public:
-  static vtkImageMaskedMedian3D* New();
-  vtkTypeMacro(vtkImageMaskedMedian3D, vtkImageSpatialAlgorithm);
+  static vtkImageLabelDilate3D* New();
+  vtkTypeMacro(vtkImageLabelDilate3D, vtkImageSpatialAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
@@ -51,19 +46,29 @@ public:
   vtkGetMacro(NumberOfElements, int);
   ///@}
 
+  ///@{
+  /**
+   * Set/Get the background voxel value that is excluded from the median computation.
+   * \sa
+   */
+  vtkSetMacro(BackgroundValue, double);
+  vtkGetMacro(BackgroundValue, double);
+  ///@}
+
 protected:
-  vtkImageMaskedMedian3D();
-  ~vtkImageMaskedMedian3D() override;
+  vtkImageLabelDilate3D();
+  ~vtkImageLabelDilate3D() override;
 
   int NumberOfElements;
+  double BackgroundValue;
 
   void ThreadedRequestData(vtkInformation* request, vtkInformationVector** inputVector,
     vtkInformationVector* outputVector, vtkImageData*** inData, vtkImageData** outData,
     int outExt[6], int id) override;
 
 private:
-  vtkImageMaskedMedian3D(const vtkImageMaskedMedian3D&) = delete;
-  void operator=(const vtkImageMaskedMedian3D&) = delete;
+  vtkImageLabelDilate3D(const vtkImageLabelDilate3D&) = delete;
+  void operator=(const vtkImageLabelDilate3D&) = delete;
 };
 
 #endif

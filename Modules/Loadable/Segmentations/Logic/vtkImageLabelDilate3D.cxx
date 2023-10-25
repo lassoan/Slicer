@@ -1,7 +1,7 @@
 /*=========================================================================
 
   Program:   Visualization Toolkit
-  Module:    vtkImageMaskedMedian3D.cxx
+  Module:    vtkImageLabelDilate3D.cxx
 
   Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
   All rights reserved.
@@ -12,7 +12,7 @@
      PURPOSE.  See the above copyright notice for more information.
 
 =========================================================================*/
-#include "vtkImageMaskedMedian3D.h"
+#include "vtkImageLabelDilate3D.h"
 
 #include "vtkCellData.h"
 #include "vtkDataArray.h"
@@ -23,34 +23,34 @@
 #include "vtkPointData.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
 
-#include <algorithm> // for std::nth_element
-
-vtkStandardNewMacro(vtkImageMaskedMedian3D);
+vtkStandardNewMacro(vtkImageLabelDilate3D);
 
 //------------------------------------------------------------------------------
-// Construct an instance of vtkImageMaskedMedian3D filter.
-vtkImageMaskedMedian3D::vtkImageMaskedMedian3D()
+// Construct an instance of vtkImageLabelDilate3D filter.
+vtkImageLabelDilate3D::vtkImageLabelDilate3D()
 {
   this->NumberOfElements = 0;
+  this->BackgroundValue = 0;
   this->SetKernelSize(1, 1, 1);
   this->HandleBoundaries = 1;
 }
 
 //------------------------------------------------------------------------------
-vtkImageMaskedMedian3D::~vtkImageMaskedMedian3D() = default;
+vtkImageLabelDilate3D::~vtkImageLabelDilate3D() = default;
 
 //------------------------------------------------------------------------------
-void vtkImageMaskedMedian3D::PrintSelf(ostream& os, vtkIndent indent)
+void vtkImageLabelDilate3D::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
 
   os << indent << "NumberOfElements: " << this->NumberOfElements << endl;
+  os << indent << "BackgroundValue: " << this->BackgroundValue << endl;
 }
 
 //------------------------------------------------------------------------------
 // This method sets the size of the neighborhood.  It also sets the
 // default middle of the neighborhood
-void vtkImageMaskedMedian3D::SetKernelSize(int size0, int size1, int size2)
+void vtkImageLabelDilate3D::SetKernelSize(int size0, int size1, int size2)
 {
   int volume;
   int modified = 1;
@@ -83,18 +83,29 @@ namespace
 {
 
 //------------------------------------------------------------------------------
-// Compute the median with std::nth_element
+// Compute the most frequently occurring number in the vector
 template <class T>
-T vtkComputeMedianOfArray(T* aBegin, T* aEnd)
-{
-  T* aMid = aBegin + (aEnd - aBegin) / 2;
-  std::nth_element(aBegin, aMid, aEnd);
-  T m = *aMid;
-
-  // VTK's median filter interpolates the array has even size,
-  // but we process labels, therefore we use the upper middle element as is.
-
-  return m;
+T vtkComputeModeOfArray(const std::vector<T>& values) {
+  // A map to store the count of each value
+  std::map<T, int> valueCount;
+  T maxValue = 0; // the most frequent value found so far
+  int maxCount = 0; // how many of this value are found so far
+  std::vector<T>::size_type countForMajority = std::vector<T>::size_type(values.size()/2); // more than this count means majority
+  for (T value : values)
+  {
+    int count = ++valueCount[value];
+    if (count > maxCount)
+    {
+      maxValue = value;
+      maxCount = count;
+      if (count > countForMajority)
+      {
+        // already more than half of the values are this, so we don't need to continue the search
+        break;
+      }
+    }
+  }
+  return maxValue;
 }
 
 } // end anonymous namespace
@@ -103,7 +114,7 @@ T vtkComputeMedianOfArray(T* aBegin, T* aEnd)
 // This method contains the second switch statement that calls the correct
 // templated function for the mask types.
 template <class T>
-void vtkImageMaskedMedian3DExecute(vtkImageMaskedMedian3D* self, vtkImageData* inData, T* inPtr,
+void vtkImageLabelDilate3DExecute(vtkImageLabelDilate3D* self, vtkImageData* inData, T* inPtr,
   vtkImageData* outData, T* outPtr, int outExt[6], int id, vtkDataArray* inArray)
 {
   int *kernelMiddle, *kernelSize;
@@ -130,8 +141,8 @@ void vtkImageMaskedMedian3DExecute(vtkImageMaskedMedian3D* self, vtkImageData* i
     return;
   }
 
-  // Array used to compute the median
-  T* workArray = new T[self->GetNumberOfElements()];
+  // Array used to compute the mode
+  std::vector<T> workArray;
 
   // Get information to march through data
   inData->GetIncrements(inInc0, inInc1, inInc2);
@@ -175,6 +186,8 @@ void vtkImageMaskedMedian3DExecute(vtkImageMaskedMedian3D* self, vtkImageData* i
     static_cast<unsigned long>((outExt[5] - outExt[4] + 1) * (outExt[3] - outExt[2] + 1) / 50.0);
   target++;
 
+  T backgroundValue = static_cast<T>(self->GetBackgroundValue());
+
   // loop through pixel of output
   inPtr = static_cast<T*>(inArray->GetVoidPointer((hoodMin0 - inExt[0]) * inInc0 +
     (hoodMin1 - inExt[2]) * inInc1 + (hoodMin2 - inExt[4]) * inInc2));
@@ -184,6 +197,7 @@ void vtkImageMaskedMedian3DExecute(vtkImageMaskedMedian3D* self, vtkImageData* i
     inPtr1 = inPtr2;
     hoodMin1 = hoodStartMin1;
     hoodMax1 = hoodStartMax1;
+    int hoodCenterOffset2 = (hoodMax2 - hoodMin2 ) / 2 * inInc2;
     for (outIdx1 = outExt[2]; !self->AbortExecute && outIdx1 <= outExt[3]; ++outIdx1)
     {
       if (!id)
@@ -197,12 +211,25 @@ void vtkImageMaskedMedian3DExecute(vtkImageMaskedMedian3D* self, vtkImageData* i
       inPtr0 = inPtr1;
       hoodMin0 = hoodStartMin0;
       hoodMax0 = hoodStartMax0;
+      int hoodCenterOffset1 = (hoodMax1 - hoodMin1) / 2 * inInc1;
       for (outIdx0 = outExt[0]; outIdx0 <= outExt[1]; ++outIdx0)
       {
+        int hoodCenterOffset = hoodCenterOffset2 + hoodCenterOffset1 + (hoodMax0 - hoodMin0) / 2 * inInc0;
+
         for (outIdxC = 0; outIdxC < numComp; outIdxC++)
         {
-          // Compute median of neighborhood
-          T* workEnd = workArray;
+          T centerVoxelValue = *(inPtr0 + hoodCenterOffset + +outIdxC);
+          if (centerVoxelValue != backgroundValue)
+          {
+            // Non-background voxel, leave it unchanged
+            *outPtr++ = centerVoxelValue;
+            continue;
+          }
+
+          // Background voxel, replace it with the most frequent non-background value
+
+          // Compute mode of neighborhood
+          workArray.clear();
 
           // loop through neighborhood pixels
           tmpPtr2 = inPtr0 + outIdxC;
@@ -214,10 +241,10 @@ void vtkImageMaskedMedian3DExecute(vtkImageMaskedMedian3D* self, vtkImageData* i
               tmpPtr0 = tmpPtr1;
               for (hoodIdx0 = hoodMin0; hoodIdx0 <= hoodMax0; ++hoodIdx0)
               {
-                if (*tmpPtr0 != 0)
+                if (*tmpPtr0 != backgroundValue)
                 {
-                  // Add this pixel to the median
-                  *workEnd++ = *tmpPtr0;
+                  // Add this pixel to the mode computation list
+                  workArray.push_back(*tmpPtr0);
                 }
                 tmpPtr0 += inInc0;
               }
@@ -227,13 +254,13 @@ void vtkImageMaskedMedian3DExecute(vtkImageMaskedMedian3D* self, vtkImageData* i
           }
 
           // Replace this pixel with the hood median
-          if (workEnd != workArray)
+          if (workArray.empty())
           {
-            *outPtr++ = vtkComputeMedianOfArray(workArray, workEnd);
+            *outPtr++ = backgroundValue;
           }
           else
           {
-            *outPtr++ = 0;
+            *outPtr++ = vtkComputeModeOfArray(workArray);
           }
         }
 
@@ -272,14 +299,12 @@ void vtkImageMaskedMedian3DExecute(vtkImageMaskedMedian3D* self, vtkImageData* i
     }
     outPtr += outIncZ;
   }
-
-  delete[] workArray;
 }
 
 //------------------------------------------------------------------------------
 // This method contains the first switch statement that calls the correct
 // templated function for the input and output region types.
-void vtkImageMaskedMedian3D::ThreadedRequestData(vtkInformation* vtkNotUsed(request),
+void vtkImageLabelDilate3D::ThreadedRequestData(vtkInformation* vtkNotUsed(request),
   vtkInformationVector** inputVector, vtkInformationVector* vtkNotUsed(outputVector),
   vtkImageData*** inData, vtkImageData** outData, int outExt[6], int id)
 {
@@ -304,7 +329,7 @@ void vtkImageMaskedMedian3D::ThreadedRequestData(vtkInformation* vtkNotUsed(requ
 
   switch (inArray->GetDataType())
   {
-    vtkTemplateMacro(vtkImageMaskedMedian3DExecute(this, inData[0][0], static_cast<VTK_TT*>(inPtr),
+    vtkTemplateMacro(vtkImageLabelDilate3DExecute(this, inData[0][0], static_cast<VTK_TT*>(inPtr),
       outData[0], static_cast<VTK_TT*>(outPtr), outExt, id, inArray));
     default:
       vtkErrorMacro(<< "Execute: Unknown input ScalarType");
