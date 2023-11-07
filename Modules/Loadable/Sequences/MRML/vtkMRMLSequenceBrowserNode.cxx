@@ -1488,7 +1488,7 @@ std::string vtkMRMLSequenceBrowserNode::GetMissingItemModeAsString(int missingIt
     {
     case vtkMRMLSequenceBrowserNode::MissingItemCopyPrevious: return "copyPrevious";
     case vtkMRMLSequenceBrowserNode::MissingItemCreateEmpty: return "createEmpty";
-    case vtkMRMLSequenceBrowserNode::MissingItemStopRecording: return "stopRecording";
+    case vtkMRMLSequenceBrowserNode::MissingItemDisableSaveChanges: return "disableSaveChanges";
     default:
       return "";
     }

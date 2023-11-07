@@ -378,7 +378,7 @@ void vtkSlicerSequencesLogic::UpdateProxyNodesFromSequences(vtkMRMLSequenceBrows
                 // Add an empty node at the index
                 sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(emptyNode, indexValue);
                 }
-              else // missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemStopRecording
+              else // missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemDisableSaveChanges
                 {
                 // Do not add a node at this index, instead disable saving of changes
                 sourceDataNode = emptyNode;
@@ -412,7 +412,7 @@ void vtkSlicerSequencesLogic::UpdateProxyNodesFromSequences(vtkMRMLSequenceBrows
             sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(emptyNode, indexValue);
             }
           }
-        else if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemStopRecording)
+        else if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemDisableSaveChanges)
           {
           // Do not add a node at this index, instead disable saving of changes
           browserNode->SetSaveChanges(synchronizedSequenceNode, false);

@@ -68,7 +68,7 @@ public:
     MissingItemInvalid = -1, ///< mode is invalid
     MissingItemCopyPrevious = 0, ///< previous item is used for initializing the new item (default)
     MissingItemCreateEmpty, ///< the new item is created from the default node
-    MissingItemStopRecording, ///< new item is not created but instead recording of this sequence is stopped
+    MissingItemDisableSaveChanges, ///< new item is not created but instead saving changes in this sequence is stopped
     NumberOfMissingItemModes // this line must be the last one
   };
 
