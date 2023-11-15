@@ -70,7 +70,7 @@ struct vtkMRMLSequenceBrowserNode::SynchronizationProperties
   bool Recording{false};
   bool OverwriteProxyName{false}; // change proxy node name during replay (includes index value)
   bool SaveChanges{false}; // save proxy node changes into the sequence
-  MissingItemModeType MissingItemMode{MissingItemCopyPrevious};
+  MissingItemModeType MissingItemMode{MissingItemCreateFromPrevious};
 };
 
 void vtkMRMLSequenceBrowserNode::SynchronizationProperties::FromString( std::string str )
@@ -1272,7 +1272,7 @@ vtkMRMLSequenceBrowserNode::MissingItemModeType vtkMRMLSequenceBrowserNode::GetM
   if (!syncProps)
     {
     vtkErrorMacro("vtkMRMLSequenceBrowserNode::GetSaveChanges failed: sequence node is invalid or does not belong to this browser node");
-    return MissingItemCopyPrevious;
+    return MissingItemCreateFromPrevious;
     }
   return syncProps->MissingItemMode;
 }
@@ -1486,9 +1486,9 @@ std::string vtkMRMLSequenceBrowserNode::GetMissingItemModeAsString(int missingIt
 {
   switch (missingItemMode)
     {
-    case vtkMRMLSequenceBrowserNode::MissingItemCopyPrevious: return "copyPrevious";
-    case vtkMRMLSequenceBrowserNode::MissingItemCreateEmpty: return "createEmpty";
-    case vtkMRMLSequenceBrowserNode::MissingItemDisableSaveChanges: return "disableSaveChanges";
+    case vtkMRMLSequenceBrowserNode::MissingItemCreateFromPrevious: return "createFromPrevious";
+    case vtkMRMLSequenceBrowserNode::MissingItemCreateFromDefault: return "createFromDefault";
+    case vtkMRMLSequenceBrowserNode::MissingItemSetToDefault: return "setToDefault";
     default:
       return "";
     }

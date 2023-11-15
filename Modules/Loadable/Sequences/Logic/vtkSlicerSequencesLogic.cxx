@@ -346,19 +346,20 @@ void vtkSlicerSequencesLogic::UpdateProxyNodesFromSequences(vtkMRMLSequenceBrows
       }
 
     vtkSmartPointer<vtkMRMLNode> sourceDataNode;
+    int missingItemMode = browserNode->GetMissingItemMode(synchronizedSequenceNode);
+    bool missingItem = false;
     if (browserNode->GetSaveChanges(synchronizedSequenceNode))
       {
-      int missingItemMode = browserNode->GetMissingItemMode(synchronizedSequenceNode);
-
       // we want to save changes, therefore we have to make sure a data node is available for the current index
       if (synchronizedSequenceNode->GetNumberOfDataNodes() > 0)
         {
+        // There are existing data nodes in the sequence.
         sourceDataNode = synchronizedSequenceNode->GetDataNodeAtValue(indexValue, true /*exact match*/);
         if (sourceDataNode == nullptr)
           {
-          // No source node is available for the current exact index.
-
-          if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCopyPrevious)
+          // No source node is available for the current exact index, add one now.
+          missingItem = true;
+          if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCreateFromPrevious)
             {
             // Add a copy of the closest (previous) item into the sequence at the exact index.
             sourceDataNode = synchronizedSequenceNode->GetDataNodeAtValue(indexValue, false /*closest match*/);
@@ -373,18 +374,16 @@ void vtkSlicerSequencesLogic::UpdateProxyNodesFromSequences(vtkMRMLSequenceBrows
             if (sourceDataNode)
               {
               vtkSmartPointer<vtkMRMLNode> emptyNode = vtkSmartPointer<vtkMRMLNode>::Take(sourceDataNode->CreateNodeInstance());
-              if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCreateEmpty)
+              if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCreateFromDefault)
                 {
                 // Add an empty node at the index
                 sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(emptyNode, indexValue);
                 }
-              else // missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemDisableSaveChanges
+              else if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemSetToDefault)
                 {
-                // Do not add a node at this index, instead disable saving of changes
+                // Do not add a node at this index
                 sourceDataNode = emptyNode;
-                browserNode->SetSaveChanges(synchronizedSequenceNode, false);
                 }
-
               }
             }
           }
@@ -394,36 +393,41 @@ void vtkSlicerSequencesLogic::UpdateProxyNodesFromSequences(vtkMRMLSequenceBrows
         // There are no data nodes in the sequence.
         // Insert the current proxy node in the sequence.
         sourceDataNode = browserNode->GetProxyNode(synchronizedSequenceNode);
-
-        if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCopyPrevious)
+        if (sourceDataNode)
           {
-          // Add proxy node at the index
-          if (sourceDataNode)
+          if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCreateFromPrevious)
             {
+            // Add proxy node at the index
             sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(sourceDataNode, indexValue);
             }
-          }
-        else if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCreateEmpty)
-          {
-          // Add an empty node at the index
-          if (sourceDataNode)
+          else
             {
             vtkSmartPointer<vtkMRMLNode> emptyNode = vtkSmartPointer<vtkMRMLNode>::Take(sourceDataNode->CreateNodeInstance());
-            sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(emptyNode, indexValue);
+            if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCreateFromDefault)
+              {
+              // Add an empty node at the index
+              sourceDataNode = synchronizedSequenceNode->SetDataNodeAtValue(emptyNode, indexValue);
+              }
+            else if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemSetToDefault)
+              {
+              // Do not add a node at this index
+              sourceDataNode = emptyNode;
+              }
             }
           }
-        else if (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemDisableSaveChanges)
-          {
-          // Do not add a node at this index, instead disable saving of changes
-          browserNode->SetSaveChanges(synchronizedSequenceNode, false);
-          }
-
         }
       }
     else
       {
-      // we just want to show a node, therefore we can just use closest data node
-      sourceDataNode = synchronizedSequenceNode->GetDataNodeAtValue(indexValue, false /*closest match*/);
+      // Save changes is disabled. We just want to show a node.
+      sourceDataNode = synchronizedSequenceNode->GetDataNodeAtValue(indexValue, false /*exactMatchRequired*/);
+      if (sourceDataNode &&
+        (missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemCreateFromDefault
+        || missingItemMode == vtkMRMLSequenceBrowserNode::MissingItemSetToDefault))
+        {
+        vtkSmartPointer<vtkMRMLNode> emptyNode = vtkSmartPointer<vtkMRMLNode>::Take(sourceDataNode->CreateNodeInstance());
+        sourceDataNode = emptyNode;
+        }
       }
     if (sourceDataNode==nullptr)
       {
@@ -592,14 +596,28 @@ void vtkSlicerSequencesLogic::UpdateSequencesFromProxyNodes(vtkMRMLSequenceBrows
     {
     // Update sequence item from proxy node
     vtkMRMLSequenceNode* sequenceNode = browserNode->GetSequenceNode(proxyNode);
-    if (sequenceNode && browserNode->GetSaveChanges(sequenceNode) && browserNode->GetSelectedItemNumber()>=0)
+    if (sequenceNode && browserNode->GetSelectedItemNumber()>=0)
       {
-      std::string indexValue = masterNode->GetNthIndexValue(browserNode->GetSelectedItemNumber());
-      int closestItemNumber = sequenceNode->GetItemNumberFromIndexValue(indexValue, false);
-      if (closestItemNumber >= 0)
+      if (browserNode->GetSaveChanges(sequenceNode))
         {
-        std::string closestIndexValue = sequenceNode->GetNthIndexValue(closestItemNumber);
-        sequenceNode->UpdateDataNodeAtValue(proxyNode, indexValue, true /* shallow copy*/);
+        std::string indexValue = masterNode->GetNthIndexValue(browserNode->GetSelectedItemNumber());
+        // If missing item mode is MissingItemSetToDefault then it means that the current time point
+        // may not have a corresponding item in the sequence.
+        // In this case we should not update the closest item but only if there is an exact match.
+        bool itemMayNotBeInSequence = (browserNode->GetMissingItemMode(sequenceNode) == vtkMRMLSequenceBrowserNode::MissingItemSetToDefault);
+        int closestItemNumber = sequenceNode->GetItemNumberFromIndexValue(indexValue, /* exactMatchRequired= */ itemMayNotBeInSequence);
+        if (closestItemNumber >= 0)
+          {
+          std::string closestIndexValue = sequenceNode->GetNthIndexValue(closestItemNumber);
+          sequenceNode->UpdateDataNodeAtValue(proxyNode, indexValue, true /* shallow copy*/);
+          }
+        else if (itemMayNotBeInSequence)
+          {
+          // This timepoint is not in the sequence, revert the modifications (reset the proxy node to default)
+          // to make it clear to the user that changes are not saved (even though "SaveChanges" was enabled).
+          vtkSmartPointer<vtkMRMLNode> emptyNode = vtkSmartPointer<vtkMRMLNode>::Take(proxyNode->CreateNodeInstance());
+          proxyNode->CopyContent(emptyNode);
+          }
         }
       }
     }
