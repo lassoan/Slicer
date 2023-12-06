@@ -25,7 +25,7 @@ def downloadFromURL(uris=None, fileNames=None, nodeNames=None, checksums=None, l
     :param checksums: Checksum(s) formatted as ``<algo>:<digest>`` to verify the downloaded file(s). For example, ``SHA256:cc211f0dfd9a05ca3841ce1141b292898b2dd2d3f08286affadf823a7e58df93``.
     :param loadFiles: Boolean indicating if file(s) should be loaded. By default, the function decides.
     :param customDownloader: Custom function for downloading.
-    :param loadFileTypes: file format name(s) ('VolumeFile' by default).
+    :param loadFileTypes: file format name(s) (if not specified then the default file reader will be used).
     :param loadFileProperties: custom properties passed to the IO plugin.
 
     If the given ``fileNames`` are not found in the application cache directory, they
@@ -156,7 +156,7 @@ class SampleDataSource:
         :param checksums: Checksum(s) formatted as ``<algo>:<digest>`` to verify the downloaded file(s). For example, ``SHA256:cc211f0dfd9a05ca3841ce1141b292898b2dd2d3f08286affadf823a7e58df93``.
         :param loadFiles: Boolean indicating if file(s) should be loaded.
         :param customDownloader: Custom function for downloading.
-        :param loadFileType: file format name(s) ('VolumeFile' by default if node name is specified).
+        :param loadFileType: file format name(s) (if not specified then the default file reader will be used).
         :param loadFileProperties: custom properties passed to the IO plugin.
         """
         self.sampleName = sampleName
@@ -204,10 +204,10 @@ class SampleDataSource:
         self.loadFiles = loadFiles
         self.customDownloader = customDownloader
         self.thumbnailFileName = thumbnailFileName
-        self.loadFileType = updatedFileType
+        self.loadFileType = loadFileType
         self.loadFileProperties = loadFileProperties
         self.checksums = checksums
-        if not len(uris) == len(fileNames) == len(nodeNames) == len(loadFiles) == len(updatedFileType) == len(checksums):
+        if not len(uris) == len(fileNames) == len(nodeNames) == len(loadFiles) == len(loadFileType) == len(checksums):
             raise ValueError(
                 f"All fields of sample data source must have the same length\n"
                 f"  uris                 : {uris}\n"
@@ -215,7 +215,7 @@ class SampleDataSource:
                 f"  len(fileNames)       : {len(fileNames)}\n"
                 f"  len(nodeNames)       : {len(nodeNames)}\n"
                 f"  len(loadFiles)       : {len(loadFiles)}\n"
-                f"  len(updatedFileType) : {len(updatedFileType)}\n"
+                f"  len(updatedFileType) : {len(loadFileType)}\n"
                 f"  len(checksums)       : {len(checksums)}\n",
             )
 
@@ -433,7 +433,7 @@ class SampleDataLogic:
     def registerCustomSampleDataSource(category="Custom",
                                        sampleName=None, uris=None, fileNames=None, nodeNames=None,
                                        customDownloader=None, thumbnailFileName=None,
-                                       loadFileType="VolumeFile", loadFiles=None, loadFileProperties={},
+                                       loadFileType=None, loadFiles=None, loadFileProperties={},
                                        checksums=None):
         """Adds custom data sets to SampleData.
         :param category: Section title of data set in SampleData module GUI.
@@ -443,7 +443,7 @@ class SampleDataLogic:
         :param fileNames: File name(s) that will be loaded.
         :param nodeNames: Node name(s) in the scene.
         :param customDownloader: Custom function for downloading.
-        :param loadFileType: file format name(s) ('VolumeFile' by default).
+        :param loadFileType: file format name(s) (if not specified then the default file reader will be used).
         :param loadFiles: Boolean indicating if file(s) should be loaded. By default, the function decides.
         :param loadFileProperties: custom properties passed to the IO plugin.
         :param checksums: Checksum(s) formatted as ``<algo>:<digest>`` to verify the downloaded file(s). For example, ``SHA256:cc211f0dfd9a05ca3841ce1141b292898b2dd2d3f08286affadf823a7e58df93``.
@@ -682,6 +682,12 @@ class SampleDataLogic:
                         current=attemptsCount + 1, total=maximumAttemptsCount), logging.ERROR)
                     continue
                 resultFilePaths.append(filePath)
+                if (loadFileType is None) and (nodeName is None):
+                    ext = os.path.splitext(fileName.lower())[1]
+                    if ext in [".mrml", ".mrb"]:
+                        fileType = "SceneFile"
+                    elif ext in [".zip"]:
+                        fileType = "ZipFile"
 
                 if loadFileType == "ZipFile":
                     if loadFile is False:
@@ -757,7 +763,7 @@ class SampleDataLogic:
         :param checksums: Checksum(s) formatted as ``<algo>:<digest>`` to verify the downloaded file(s). For example, ``SHA256:cc211f0dfd9a05ca3841ce1141b292898b2dd2d3f08286affadf823a7e58df93``.
         :param loadFiles: Boolean indicating if file(s) should be loaded. By default, the function decides.
         :param customDownloader: Custom function for downloading.
-        :param loadFileTypes: file format name(s) ('VolumeFile' by default).
+        :param loadFileTypes: file format name(s) (if not specified then the default file reader will be used).
         :param loadFileProperties: custom properties passed to the IO plugin.
 
         If the given ``fileNames`` are not found in the application cache directory, they
@@ -765,7 +771,7 @@ class SampleDataLogic:
         See ``slicer.mrmlScene.GetCacheManager().GetRemoteCacheDirectory()``
 
         If not explicitly provided or if set to ``None``, the ``loadFileTypes`` are
-        guessed based on the corresponding filename extensions.
+        guessed based on the corresponding filename extensions and file content.
 
         If a given fileName has the ``.mrb`` or ``.mrml`` extension, it will **not** be loaded
         by default. To ensure the file is loaded, ``loadFiles`` must be set.
@@ -915,11 +921,13 @@ class SampleDataLogic:
         self.logMessage("<b>" + _("Load finished") + "</b><p></p>")
         return True
 
-    def loadNode(self, uri, name, fileType="VolumeFile", fileProperties={}):
+    def loadNode(self, uri, name, fileType=None, fileProperties={}):
         self.logMessage("<b>" + _("Requesting load {name} from {uri} ...").format(name=name, uri=uri) + "</b>")
 
         fileProperties["fileName"] = uri
         fileProperties["name"] = name
+        if not fileType:
+            fileType = slicer.app.coreIOManager().fileType(fileProperties["fileName"])
         firstLoadedNode = None
         loadedNodes = vtk.vtkCollection()
         success = slicer.app.coreIOManager().loadNodes(fileType, fileProperties, loadedNodes)
