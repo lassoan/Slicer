@@ -17,3 +17,6 @@ from .util import (
     unannotatedType,
 )
 from .wrapper import *
+
+# Add GUI connectors provided by various modules
+import ParameterNodeWrapperPlugins
