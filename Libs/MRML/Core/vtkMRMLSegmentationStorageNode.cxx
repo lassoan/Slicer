@@ -75,6 +75,7 @@
 
 //----------------------------------------------------------------------------
 static const std::string SERIALIZATION_SEPARATOR = "|";
+static const char SERIALIZATION_SEPARATOR_CHAR = '|';
 static const std::string KEY_SEGMENT_ID = "ID";
 static const std::string KEY_SEGMENT_NAME = "Name";
 static const std::string KEY_SEGMENT_COLOR = "Color";
@@ -862,35 +863,42 @@ int vtkMRMLSegmentationStorageNode::ReadBinaryLabelmapRepresentation(vtkMRMLSegm
         {
           currentBinaryLabelmap = vtkSmartPointer<vtkOrientedImageData>::New();
 
-          // Extent
-          int currentSegmentExtent[6] = { 0, -1, 0, -1, 0, -1 };
-          std::string currentExtentString;
-          if (this->GetSegmentMetaDataFromDicitionary(currentExtentString, dictionary, segmentIndex, KEY_SEGMENT_EXTENT))
+          // Get layer extent: union of all segment extents in this layer
+          int layerExtent[6] = { 0, -1, 0, -1, 0, -1 };
+          for (int segmentIndexForExtent : segmentIndexInLayer[frameIndex])
           {
-            GetImageExtentFromString(currentSegmentExtent, currentExtentString);
-          }
-          else
-          {
-            vtkWarningToMessageCollectionMacro(this->GetUserMessages(), "vtkMRMLSegmentationStorageNode::ReadBinaryLabelmapRepresentation",
-              "Segment extent is missing for segment " << segmentIndex);
-            for (int i = 0; i < 6; i++)
+            int currentSegmentExtent[6] = { 0, -1, 0, -1, 0, -1 };
+            std::string currentExtentString;
+            if (this->GetSegmentMetaDataFromDicitionary(currentExtentString, dictionary, segmentIndexForExtent, KEY_SEGMENT_EXTENT))
             {
-              currentSegmentExtent[i] = imageExtentInFile[i];
+              GetImageExtentFromString(currentSegmentExtent, currentExtentString);
+              vtkMRMLSegmentationStorageNode::AddToExtent(layerExtent, currentSegmentExtent);
+            }
+            else
+            {
+              // Extent is not specified, we don't know the extent of this layer, so use the entire region
+              vtkWarningToMessageCollectionMacro(this->GetUserMessages(), "vtkMRMLSegmentationStorageNode::ReadBinaryLabelmapRepresentation",
+                "Segment extent is missing for segment " << segmentIndexForExtent);
+              for (int i = 0; i < 6; i++)
+              {
+                layerExtent[i] = imageExtentInFile[i];
+              }
+              break;
             }
           }
           for (int i = 0; i < 3; i++)
           {
-            currentSegmentExtent[i * 2] += referenceImageExtentOffset[i];
-            currentSegmentExtent[i * 2 + 1] += referenceImageExtentOffset[i];
+            layerExtent[i * 2] += referenceImageExtentOffset[i];
+            layerExtent[i * 2 + 1] += referenceImageExtentOffset[i];
           }
           // Copy with clipping to specified extent
-          if (currentSegmentExtent[0] <= currentSegmentExtent[1]
-            && currentSegmentExtent[2] <= currentSegmentExtent[3]
-            && currentSegmentExtent[4] <= currentSegmentExtent[5])
+          if (layerExtent[0] <= layerExtent[1]
+            && layerExtent[2] <= layerExtent[3]
+            && layerExtent[4] <= layerExtent[5])
           {
             // non-empty segment
             extractComponents->SetComponents(frameIndex);
-            padder->SetOutputWholeExtent(currentSegmentExtent);
+            padder->SetOutputWholeExtent(layerExtent);
             padder->Update();
             currentBinaryLabelmap->DeepCopy(padder->GetOutput());
           }
@@ -899,10 +907,10 @@ int vtkMRMLSegmentationStorageNode::ReadBinaryLabelmapRepresentation(vtkMRMLSegm
             // empty segment
             for (int i = 0; i < 3; ++i)
             {
-              currentSegmentExtent[2 * i] = 0;
-              currentSegmentExtent[2 * i + 1] = -1;
+              layerExtent[2 * i] = 0;
+              layerExtent[2 * i + 1] = -1;
             }
-            currentBinaryLabelmap->SetExtent(currentSegmentExtent);
+            currentBinaryLabelmap->SetExtent(layerExtent);
             currentBinaryLabelmap->AllocateScalars(VTK_UNSIGNED_CHAR, 1);
           }
           currentBinaryLabelmap->SetImageToWorldMatrix(imageToWorldMatrix.GetPointer());
@@ -1007,6 +1015,43 @@ int vtkMRMLSegmentationStorageNode::ReadBinaryLabelmapRepresentation(vtkMRMLSegm
   this->CreateRepresentationsBySerializedNames(segmentation, containedRepresentationNames);
 
   return 1;
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLSegmentationStorageNode::AddToExtent(int extent[6], int extentToAdd[6])
+{
+  if (extentToAdd[0] > extentToAdd[1]
+    || extentToAdd[2] > extentToAdd[3]
+    || extentToAdd[4] > extentToAdd[5])
+  {
+    // extentToAdd is empty, no need to change the extent
+    return;
+  }
+  if (extent[0] > extent[1]
+    || extent[2] > extent[3]
+    || extent[4] > extent[5])
+  {
+    // initial extent is empty, use the added extent
+    for (int i = 0; i < 6; i++)
+    {
+      extent[i] = extentToAdd[i];
+    }
+  }
+  else
+  {
+    // add extentToAdd to extent
+    for (int i = 0; i < 3; i++)
+    {
+      if (extentToAdd[i * 2] < extent[i * 2])
+      {
+        extent[i * 2] = extentToAdd[i * 2];
+      }
+      if (extentToAdd[i * 2 + 1] > extent[i * 2 + 1])
+      {
+        extent[i * 2 + 1] = extentToAdd[i * 2 + 1];
+      }
+    }
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -1705,19 +1750,15 @@ void vtkMRMLSegmentationStorageNode::CreateRepresentationsBySerializedNames(vtkS
   }
 
   std::string sourceRepresentation(segmentation->GetSourceRepresentationName());
-  size_t separatorPosition = representationNames.find(SERIALIZATION_SEPARATOR);
-  while (separatorPosition != std::string::npos)
+  std::string representationName;
+  std::stringstream representationNamesStr(representationNames);
+  while (getline(representationNamesStr, representationName, SERIALIZATION_SEPARATOR_CHAR))
   {
-    std::string representationName = representationNames.substr(0, separatorPosition);
-
     // Only create non-source representations
     if (representationName.compare(sourceRepresentation))
     {
       segmentation->CreateRepresentation(representationName);
     }
-
-    representationNames = representationNames.substr(separatorPosition+1);
-    separatorPosition = representationNames.find(SERIALIZATION_SEPARATOR);
   }
 }
 
