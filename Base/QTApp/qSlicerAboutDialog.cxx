@@ -64,7 +64,8 @@ qSlicerAboutDialog::qSlicerAboutDialog(QWidget* parentWidget)
       qSlicerApplicationUpdateManager* applicationUpdateManager = slicer->applicationUpdateManager();
       if (applicationUpdateManager && applicationUpdateManager->isUpdateAvailable())
       {
-        QString appUpdateText = tr("New application version is available: %1").arg(applicationUpdateManager->latestReleaseVersion());
+        QString appUpdateText = tr("New application version is available: %1. This application version no longer receives any extension updates.")
+          .arg(applicationUpdateManager->latestReleaseVersion());
         d->CreditsTextBrowser->insertHtml(QString("<b><a href=\"%1\"><font color=\"orange\">%2</font></a></b>")
           .arg(applicationUpdateManager->applicationDownloadPageUrl().toString())
           .arg(appUpdateText));

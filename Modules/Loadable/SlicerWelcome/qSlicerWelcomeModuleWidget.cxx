@@ -420,7 +420,8 @@ void qSlicerWelcomeModuleWidget::setApplicationUpdateAvailable(bool update)
   }
   else
   {
-    QString buttonText = tr("New application version is available: %1").arg(latestVersion);
+    QString buttonText = tr("New application version is available: %1.").arg(latestVersion)
+      + "\n" + tr("This application version no longer receives any extension updates.");
     d->ApplicationUpdateAvailableButton->setText(buttonText);
     d->ApplicationUpdateAvailableButton->show();
     d->ApplicationUpdateStatusButton->setText(buttonText);
