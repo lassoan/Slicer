@@ -50,6 +50,13 @@ The effect uses  <a href="https://insight-journal.org/browse/publication/977">mo
 
         interpolator = vtkITK.vtkITKMorphologicalContourInterpolator()
         interpolator.SetInputData(mergedImage)
+
+        # When interpolating between slices that are very far from each other,
+        # the boundary of the segments become rectangular. When using distance transform
+        # the intersections are more circular.
+        # https://discourse.slicer.org/t/question-on-fill-between-slices-algorithm/34536
+        interpolator.SetUseDistanceTransform(True)
+
         interpolator.Update()
         outputLabelmap.DeepCopy(interpolator.GetOutput())
         imageToWorld = vtk.vtkMatrix4x4()
