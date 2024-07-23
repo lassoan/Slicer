@@ -25,8 +25,6 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect):
         scriptedEffect.name = "Threshold"  # no tr (don't translate it because modules find effects by name)
         scriptedEffect.title = _("Threshold")
 
-        self.segment2DFillOpacity = None
-        self.segment2DOutlineOpacity = None
         self.previewedSegmentationDisplayNode = None
         self.previewedSegmentID = None
 
@@ -140,16 +138,14 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect):
             # Another effect is already using this display node for preview
             return
 
-        # Indicate in the display node that other segment editor effects should not tart preview now
+        # Indicate in the display node that other segment editor effects should not start preview now
         displayNode.SetAttribute("SegmentEditor.PreviewingEffect", currentEffectHash)
 
         # Make current segment fully transparent
-        self.segment2DFillOpacity = displayNode.GetSegmentOpacity2DFill(segmentID)
-        self.segment2DOutlineOpacity = displayNode.GetSegmentOpacity2DOutline(segmentID)
         self.previewedSegmentID = segmentID
         self.previewedSegmentationDisplayNode = displayNode
-        displayNode.SetSegmentOpacity2DFill(segmentID, 0)
-        displayNode.SetSegmentOpacity2DOutline(segmentID, 0)
+        self.setCustomDisplayInDisplayableManager(displayNode.GetID(), segmentID, True)
+
 
     def restorePreviewedSegmentTransparency(self):
         """Restore previewed segment's opacity that was temporarily
@@ -159,8 +155,8 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect):
         if not displayNode:
             return
         if self.previewedSegmentID:
-            displayNode.SetSegmentOpacity2DFill(self.previewedSegmentID, self.segment2DFillOpacity)
-            displayNode.SetSegmentOpacity2DOutline(self.previewedSegmentID, self.segment2DOutlineOpacity)
+            self.setCustomDisplayInDisplayableManager(displayNode.GetID(), self.previewedSegmentID, False)
+
         displayNode.RemoveAttribute("SegmentEditor.PreviewingEffect")
         self.previewedSegmentationDisplayNode = None
         self.previewedSegmentID = None
@@ -655,6 +651,17 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect):
             return
         self.histogramPipeline.removeActors()
         self.histogramPipeline = None
+
+    def setCustomDisplayInDisplayableManager(self, segmentationDisplayNodeID, segmentID, customDisplay):
+        layoutManager = slicer.app.layoutManager()
+        sliceViewNames = layoutManager.sliceViewNames() if self.previewedSegmentationDisplayNode and layoutManager else []
+        for sliceViewName in sliceViewNames:
+            sliceWidget = layoutManager.sliceWidget(sliceViewName)
+            segmentationDisplayableManager = sliceWidget.sliceView().displayableManagerByClassName("vtkMRMLSegmentationsDisplayableManager2D")
+            if customDisplay and self.scriptedEffect.segmentationDisplayableInView(sliceWidget.mrmlSliceNode()):
+                segmentationDisplayableManager.AddCustomDisplaySegment(segmentationDisplayNodeID, segmentID)
+            else:
+                segmentationDisplayableManager.RemoveCustomDisplaySegment(segmentationDisplayNodeID, segmentID)
 
     def updatePreviewDisplayPipelines(self):
         # Clear previous pipelines before setting up the new ones

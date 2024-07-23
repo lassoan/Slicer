@@ -52,6 +52,16 @@ public:
   virtual void GetVisibleSegmentsForPosition(double ras[3], vtkMRMLSegmentationDisplayNode* displayNode,
     vtkStringArray* segmentIDs, vtkDoubleArray* segmentValues = nullptr);
 
+  // @{
+  /// Specify what segments are temporarily displayed with a custom method, so that this displayable manager should not display them.
+  void AddCustomDisplaySegment(const std::string& segmentationDisplayNodeID, const std::string& segmentID);
+  void RemoveCustomDisplaySegment(const std::string& segmentationDisplayNodeID, const std::string& segmentID);
+  bool IsCustomDisplaySegment(const std::string& segmentationDisplayNodeID, const std::string& segmentID);
+  int GetNumberOfCustomDisplaySegments();
+  std::string GetCustomDisplaySegmentDisplayNodeID(int index);
+  std::string GetCustomDisplaySegmentID(int index);
+  // @}
+
 protected:
   void UnobserveMRMLScene() override;
   void OnMRMLSceneNodeAdded(vtkMRMLNode* node) override;
