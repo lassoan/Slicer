@@ -125,6 +125,7 @@ void qSlicerSubjectHierarchyModule::setup()
   if (app)
   {
     // Register settings panel
+    /*
     qSlicerSubjectHierarchySettingsPanel* panel = new qSlicerSubjectHierarchySettingsPanel();
     app->settingsDialog()->addPanel("Subject hierarchy", panel);
 
@@ -135,6 +136,7 @@ void qSlicerSubjectHierarchyModule::setup()
       app->pythonManager()->executeString(QString("import SubjectHierarchyLib"));
     }
 #endif
+    */
   }
 }
 

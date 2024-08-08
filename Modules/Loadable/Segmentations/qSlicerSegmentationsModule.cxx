@@ -176,9 +176,11 @@ void qSlicerSegmentationsModule::setup()
   // Register settings panel
   if (qSlicerApplication::application())
   {
+    /*
     qSlicerSegmentationsSettingsPanel* panel = new qSlicerSegmentationsSettingsPanel();
     qSlicerApplication::application()->settingsDialog()->addPanel(tr("Segmentations"), panel);
     panel->setSegmentationsLogic(segmentationsLogic);
+    */
   }
 
   // Use the displayable manager class to make sure the the containing library is loaded
