@@ -372,7 +372,6 @@ void qSlicerApplicationPrivate::init()
   // Some settings panels are quite large, show maximize button to allow resizing with a single click
   this->SettingsDialog->setWindowFlags(this->SettingsDialog->windowFlags() | Qt::WindowMaximizeButtonHint);
 
-  /*
   qSlicerSettingsGeneralPanel* generalPanel = new qSlicerSettingsGeneralPanel;
   this->SettingsDialog->addPanel(qSlicerApplication::tr("General"), generalPanel);
 
@@ -444,9 +443,6 @@ void qSlicerApplicationPrivate::init()
 
   // Player for the CLI Module || cannot be added for the moment ...
 #endif
-
-*/
-
 }
 /*
 #if !defined (QT_NO_LIBRARY) && !defined(QT_NO_SETTINGS)

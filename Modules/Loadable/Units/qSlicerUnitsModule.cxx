@@ -120,11 +120,10 @@ void qSlicerUnitsModule::setup()
     vtkSlicerUnitsLogic::SafeDownCast(this->logic());
   if (logic && qSlicerApplication::application())
   {
-    /*qSlicerUnitsSettingsPanel* panel = new qSlicerUnitsSettingsPanel;
+    qSlicerUnitsSettingsPanel* panel = new qSlicerUnitsSettingsPanel;
     qSlicerApplication::application()->settingsDialog()->addPanel(
       "Units", panel);
     panel->setUnitsLogic(logic);
-    */
   }
 }
 

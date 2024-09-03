@@ -65,6 +65,7 @@ void qMRMLColorTableViewPrivate::init()
   q->horizontalHeader()->setStretchLastSection(false);
   q->horizontalHeader()->setSectionResizeMode(colorModel->colorColumn(), QHeaderView::ResizeToContents);
   q->horizontalHeader()->setSectionResizeMode(colorModel->labelColumn(), QHeaderView::Stretch);
+  q->horizontalHeader()->setSectionResizeMode(colorModel->labelColumn(), QHeaderView::Stretch);
   q->horizontalHeader()->setSectionResizeMode(colorModel->opacityColumn(), QHeaderView::ResizeToContents);
   q->setItemDelegate(new qMRMLItemDelegate(q));
 }

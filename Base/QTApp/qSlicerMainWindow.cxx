@@ -289,13 +289,11 @@ void qSlicerMainWindowPrivate::setupUi(QMainWindow * mainWindow)
       qSlicerApplication::application()->slicerHome() + "/bin/Python/mrmlDisplayableManager");
   qSlicerApplication::application()->setLayoutManager(this->LayoutManager);
 #ifdef Slicer_USE_QtTesting
-  /*
   // we store this layout manager to the Object state property for QtTesting
   qSlicerApplication::application()->testingUtility()->addObjectStateProperty(
-      qSlicerApplication::application()->layoutManager(), QString(/*no tr*//*"layout"));
+      qSlicerApplication::application()->layoutManager(), QString(/*no tr*/"layout"));
   qSlicerApplication::application()->testingUtility()->addObjectStateProperty(
       this->ModuleSelectorToolBar->modulesMenu(), QString("currentModule"));
-  */
 #endif
   // Layout manager should also listen the MRML scene
   // Note: This creates the OpenGL context for each view, so things like

@@ -17,6 +17,8 @@
 
 #include "vtkMRMLStorageNode.h"
 
+class vtkMRMLColorTableNode;
+
 /// \brief MRML node for representing a volume storage.
 ///
 /// vtkMRMLColorTableStorageNode nodes describe the archetype based volume storage
@@ -50,6 +52,10 @@ protected:
 
   /// Read data and set it in the referenced node
   int ReadDataInternal(vtkMRMLNode *refNode) override;
+
+  int ReadCtblFile(std::string fullName, vtkMRMLColorTableNode* colorNode);
+  int ReadCsvFile(std::string fullName, vtkMRMLColorTableNode* colorNode);
+  std::string GetFieldDelimiterCharacters(std::string filename);
 
   /// Write data from a  referenced node
   int WriteDataInternal(vtkMRMLNode *refNode) override;

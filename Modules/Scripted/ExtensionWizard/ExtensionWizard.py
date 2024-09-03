@@ -53,8 +53,8 @@ class ExtensionWizard:
         parent.acknowledgementText = _("This work is supported by NA-MIC, NAC, BIRN, NCIGT, and the Slicer Community.")
         self.parent = parent
 
-        #self.settingsPanel = SettingsPanel()
-        #slicer.app.settingsDialog().addPanel("Extension Wizard", self.settingsPanel)
+        self.settingsPanel = SettingsPanel()
+        slicer.app.settingsDialog().addPanel("Extension Wizard", self.settingsPanel)
 
 
 # =============================================================================

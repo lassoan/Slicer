@@ -87,8 +87,8 @@ class DICOM(ScriptedLoadableModule):
             # add to the main app file menu
             self.addMenu()
             # add the settings options
-            #self.settingsPanel = DICOMSettingsPanel()
-            #slicer.app.settingsDialog().addPanel("DICOM", self.settingsPanel)
+            self.settingsPanel = DICOMSettingsPanel()
+            slicer.app.settingsDialog().addPanel("DICOM", self.settingsPanel)
 
             layoutManager = slicer.app.layoutManager()
             layoutManager.layoutChanged.connect(self.onLayoutChanged)
