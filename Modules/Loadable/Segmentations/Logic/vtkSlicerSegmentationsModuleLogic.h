@@ -32,6 +32,7 @@
 
 // Segmentations includes
 #include "vtkMRMLSegmentationNode.h"
+#include "vtkMRMLSegmentEditorNode.h"
 
 class vtkCallbackCommand;
 class vtkOrientedImageData;
@@ -100,7 +101,8 @@ public:
   /// Create oriented image data from a volume node
   /// \param outputParentTransformNode Specifies the parent transform node where the created image data can be placed.
   /// NOTE: Need to take ownership of the created object! For example using vtkSmartPointer<vtkOrientedImageData>::Take
-  static vtkOrientedImageData* CreateOrientedImageDataFromVolumeNode(vtkMRMLScalarVolumeNode* volumeNode, vtkMRMLTransformNode* outputParentTransformNode = nullptr);
+  static vtkOrientedImageData* CreateOrientedImageDataFromVolumeNode(vtkMRMLScalarVolumeNode* volumeNode,
+    vtkMRMLTransformNode* outputParentTransformNode = nullptr);
 
   /// Utility function to determine if a labelmap contains a single label
   /// \return 0 if contains no label or multiple labels, the label if it contains a single one
@@ -353,7 +355,8 @@ public:
   /// \param segmentRepresentation Output representation data object into which the given representation in the segment is copied
   /// \param applyParentTransform Flag determining whether to apply parent transform of the segmentation node. On by default
   /// \return Success flag
-  static bool GetSegmentRepresentation(vtkMRMLSegmentationNode* segmentationNode, std::string segmentID, std::string representationName, vtkDataObject* segmentRepresentation, bool applyParentTransform=true);
+  static bool GetSegmentRepresentation(vtkMRMLSegmentationNode* segmentationNode, std::string segmentID,
+    std::string representationName, vtkDataObject* segmentRepresentation, bool applyParentTransform=true);
 
   /// Convenience function to get binary labelmap representation of a segment in a segmentation. Uses \sa GetSegmentRepresentation
   /// A duplicate of the oriented image data is copied into the argument image data, with the segmentation's parent transform
@@ -365,7 +368,8 @@ public:
   /// \param applyParentTransform Flag determining whether to apply parent transform of the segmentation node.
   ///   If on, then the oriented image data is in RAS, otherwise in the segmentation node's coordinate frame. On by default
   /// \return Success flag
-  static bool GetSegmentBinaryLabelmapRepresentation(vtkMRMLSegmentationNode* segmentationNode, std::string segmentID, vtkOrientedImageData* imageData, bool applyParentTransform=true);
+  static bool GetSegmentBinaryLabelmapRepresentation(vtkMRMLSegmentationNode* segmentationNode, std::string segmentID,
+    vtkOrientedImageData* imageData, bool applyParentTransform=true);
 
   /// Convenience function to get closed surface representation of a segment in a segmentation. Uses \sa GetSegmentRepresentation
   /// A duplicate of the closed surface data is copied into the argument image data, with the segmentation's parent transform
@@ -441,6 +445,26 @@ public:
   static void SetSegmentStatus(vtkSegment* segment, int status);
   /// Clear the contents of a single segment
   static bool ClearSegment(vtkMRMLSegmentationNode* segmentationNode, std::string segmentID);
+
+  enum ModificationMode
+  {
+    ModificationModeSet,
+    ModificationModeAdd,
+    ModificationModeRemove,
+    ModificationModeRemoveAll
+  };
+  static bool ModifySegmentByLabelmap(vtkMRMLSegmentationNode* segmentationNode, const char* segmentID,
+    vtkOrientedImageData* modifierLabelmapInput, ModificationMode modificationMode, const int modificationExtent[6],
+    int overwriteMode = vtkMRMLSegmentEditorNode::OverwriteAllSegments,
+    int maskMode=vtkMRMLSegmentationNode::EditAllowedEverywhere,
+    const char* maskSegmentID=nullptr,
+    double sourceVolumeIntensityMaskRange[2]=nullptr,
+    vtkOrientedImageData* sourceVolumeImageData=nullptr);
+
+  static std::string GetReferenceImageGeometryFromSegmentation(vtkSegmentation* segmentation);
+
+  static bool GetReferenceImageGeometryFromSegmentation(vtkSegmentation* segmentation, vtkOrientedImageData* referenceGeometry);
+
 
   /// Get the list of segment IDs in the same shared labelmap that are contained within the mask
   /// \param segmentationNode Node containing the segmentation

@@ -2192,16 +2192,34 @@ def arrayFromSegmentBinaryLabelmap(segmentationNode, segmentId, referenceVolumeN
     return narray
 
 
-def updateSegmentBinaryLabelmapFromArray(narray, segmentationNode, segmentId, referenceVolumeNode=None):
+def updateSegmentBinaryLabelmapFromArray(
+    narray,
+    segmentationNode,
+    segmentId,
+    referenceVolumeNode=None,
+    modificationExtent = None,
+    overwriteMode = None,
+    maskMode = None,
+    maskSegmentID = None,
+):
     """Sets binary labelmap representation of a segment from a numpy array.
 
     :param narray: voxel array, containing 0 outside the segment, 1 inside the segment.
     :param segmentationNode: segmentation node that will be updated.
     :param segmentId: ID of the segment that will be updated.
-      Can be determined from segment name by calling ``segmentationNode.GetSegmentation().GetSegmentIdBySegmentName(segmentName)``.
+        Can be determined from segment name by calling ``segmentationNode.GetSegmentation().GetSegmentIdBySegmentName(segmentName)``.
     :param referenceVolumeNode: a volume node that determines geometry (origin, spacing, axis directions, extents) of the array.
-      If not specified then the volume that was used for setting the segmentation's geometry is used as reference volume.
-
+        If not specified then the volume that was used for setting the segmentation's geometry is used as reference volume.
+    :param modificationExtent: extent of the array that is modified. Optional, specifying it may improve processing speed.
+    :param overwriteMode: how to handle overlapping segments. Default is to not overwrite anyn other segments.
+        Allowed values are: slicer.vtkMRMLSegmentEditorNode.OverwriteAllSegments,
+        slicer.vtkMRMLSegmentEditorNode.OverwriteVisibleSegments, slicer.vtkMRMLSegmentEditorNode.OverwriteNone
+    :param maskMode: how to handle overlapping segments. Default is to allow edit everywhere.
+        Allowed values are: slicer.vtkMRMLSegmentationNode.EditAllowedEverywhere,
+        slicer.vtkMRMLSegmentationNode.EditAllowedInsideAllSegments, slicer.vtkMRMLSegmentationNode.EditAllowedOutsideAllSegments,
+        slicer.vtkMRMLSegmentationNode.EditAllowedOutsideVisibleSegments, slicer.vtkMRMLSegmentationNode.EditAllowedInsideSingleSegment
+    :param maskSegmentID: ID of the segment that will be used as a mask. Optional, only used if mask mode is set to use a segment as mask
+        (slicer.vtkMRMLSegmentationNode.EditAllowedInsideSingleSegment).
     :raises RuntimeError: in case of failure
 
     .. warning::
@@ -2209,34 +2227,69 @@ def updateSegmentBinaryLabelmapFromArray(narray, segmentationNode, segmentId, re
     """
 
     # Export segment as vtkImageData (via temporary labelmap volume node)
+    import numpy as np
     import slicer
     import vtk
 
-    # Get reference volume
-    if not referenceVolumeNode:
-        referenceVolumeNode = segmentationNode.GetNodeReference(slicer.vtkMRMLSegmentationNode.GetReferenceImageGeometryReferenceRole())
-        if not referenceVolumeNode:
-            raise RuntimeError("No reference volume is found in the input segmentationNode, therefore a valid referenceVolumeNode input is required.")
+    if overwriteMode is None:
+        overwriteMode = slicer.vtkMRMLSegmentEditorNode.OverwriteNone
+    if maskMode is None:
+        maskMode = slicer.vtkMRMLSegmentationNode.EditAllowedEverywhere
+    if modificationExtent is None:
+        modificationExtent = [0, -1, 0, -1, 0, -1]
 
-    # Update segment in segmentation
-    labelmapVolumeNode = slicer.modules.volumes.logic().CreateAndAddLabelVolume(referenceVolumeNode, "__temp__")
-    try:
-        if narray.min() >= 0 and narray.max() <= 1:
-            # input array seems to be valid, use it as is (faster)
-            updateVolumeFromArray(labelmapVolumeNode, narray)
-        else:
-            # need to normalize the data because the label value must be 1
-            import numpy as np
+    # Get segmentation geometry
+    segmentationReferenceImageGeometry = slicer.vtkOrientedImageData()
+    if not slicer.vtkSlicerSegmentationsModuleLogic.GetReferenceImageGeometryFromSegmentation(
+        segmentationNode.GetSegmentation(), segmentationReferenceImageGeometry):
+        raise RuntimeError("Failed to get reference image geometry from segmentation node.")
 
-            narrayNormalized = np.zeros(narray.shape, np.uint8)
-            narrayNormalized[narray > 0] = 1
-            updateVolumeFromArray(labelmapVolumeNode, narrayNormalized)
-        segmentIds = vtk.vtkStringArray()
-        segmentIds.InsertNextValue(segmentId)
-        if not slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(labelmapVolumeNode, segmentationNode, segmentIds):
+    # Get reference image geometry
+    referenceVolumeIJKToRASMatrix = vtk.vtkMatrix4x4()
+    if referenceVolumeNode:
+        referenceVolumeNode.GetIJKToRASMatrix(referenceVolumeIJKToRASMatrix)
+    else:
+        # No reference volume is specified, use segmentation geometry
+        segmentationReferenceImageGeometry.GetImageToWorldMatrix(referenceVolumeIJKToRASMatrix)
+
+    # Convert from numpy array to vtkOrientedImageData
+    labelmapVolumeNode = slicer.vtkMRMLLabelMapVolumeNode()  # temporary node, not added to the scene
+    if np.issubdtype(narray.dtype, np.integer) and narray.min() >= 0 and narray.max() <= 1:
+        # input array is integer and just uses 0 and 1, use it as is (faster)
+        updateVolumeFromArray(labelmapVolumeNode, narray)
+    else:
+        # need to normalize the data because the label value must be an integer with 0 (background) and 1 (inside segment)
+        import numpy as np
+        narrayNormalized = np.zeros(narray.shape, np.uint8)
+        narrayNormalized[narray > 0] = 1
+        updateVolumeFromArray(labelmapVolumeNode, narrayNormalized)
+    # Create vtkOrientedImageData from the labelmap volume node
+    labelOrientedImageData = slicer.vtkOrientedImageData()
+    labelOrientedImageData.ShallowCopy(labelmapVolumeNode.GetImageData())
+    labelOrientedImageData.SetGeometryFromImageToWorldMatrix(referenceVolumeIJKToRASMatrix)
+
+    # Get transform between reference volume and segmentation
+    labelmapToSegmentationTransform = None
+    if referenceVolumeNode and (referenceVolumeNode.GetParentTransformNode() != segmentationNode.GetParentTransformNode()):
+        labelmapToSegmentationTransform = slicer.vtkGeneralTransform()
+        slicer.vtkSlicerSegmentationsModuleLogic.GetTransformBetweenRepresentationAndSegmentation(
+            referenceVolumeNode, segmentationNode, labelmapToSegmentationTransform)
+
+    # Resample label image into segmentation geometry
+    labelOrientedImageData_Segmentation = slicer.vtkOrientedImageData()
+    # the two False flags are linearInterpolation (we need nearest neighbor) and padImage (exact geometry match is faster)
+    if not slicer.vtkOrientedImageDataResample.ResampleOrientedImageToReferenceOrientedImage(
+        labelOrientedImageData, segmentationReferenceImageGeometry, labelOrientedImageData_Segmentation,
+        False, False, labelmapToSegmentationTransform):
+        raise RuntimeError("Failed to resample labelmap volume node into segmentation geometry.")
+
+    # Prevent disappearing and reappearing of the segmentation in 3D
+    with RenderBlocker():
+        # Source volume based masking is not added, as it can be easily implemented using numpy arrays
+        if not slicer.vtkSlicerSegmentationsModuleLogic.ModifySegmentByLabelmap(segmentationNode, segmentId,
+            labelOrientedImageData_Segmentation, slicer.vtkSlicerSegmentationsModuleLogic.ModificationModeSet,
+            modificationExtent, overwriteMode, maskMode, maskSegmentID):
             raise RuntimeError("Importing of segment failed.")
-    finally:
-        slicer.mrmlScene.RemoveNode(labelmapVolumeNode)
 
 
 def arrayFromMarkupsControlPoints(markupsNode, world=False):

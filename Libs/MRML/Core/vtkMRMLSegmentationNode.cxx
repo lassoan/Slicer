@@ -404,7 +404,8 @@ void vtkMRMLSegmentationNode::OnSubjectHierarchyUIDAdded(
     else if (referencedVolumeFound && !warningLogged)
     {
       vtkWarningMacro("vtkMRMLSegmentationNode::OnSubjectHierarchyUIDAdded: Referenced volume for segmentation '"
-        << this->Name << "' found (" << referencedVolumeNode->GetName() << "), but some referenced UIDs are not present in it! (maybe only partial volume was loaded?)");
+        << this->Name << "' found (" << referencedVolumeNode->GetName()
+        << "), but some referenced UIDs are not present in it! (maybe only partial volume was loaded?)");
       // Only log warning once for this node
       warningLogged = true;
     }
@@ -783,7 +784,8 @@ void vtkMRMLSegmentationNode::SetReferenceImageGeometryParameterFromVolumeNode(v
     if (vtkMRMLTransformNode::IsGeneralTransformLinear(volumeToSegmentationTransform))
     {
       vtkNew<vtkMatrix4x4> volumeToSegmentationMatrix;
-      vtkMRMLTransformNode::GetMatrixTransformBetweenNodes(volumeNode->GetParentTransformNode(), this->GetParentTransformNode(), volumeToSegmentationMatrix.GetPointer());
+      vtkMRMLTransformNode::GetMatrixTransformBetweenNodes(volumeNode->GetParentTransformNode(),
+        this->GetParentTransformNode(), volumeToSegmentationMatrix.GetPointer());
       vtkMatrix4x4::Multiply4x4(volumeToSegmentationMatrix.GetPointer(), volumeIjkToRasMatrix, volumeIjkToRasMatrix);
     }
   }
@@ -959,6 +961,17 @@ void vtkMRMLSegmentationNode::RemoveClosedSurfaceRepresentation()
     return;
   }
   this->Segmentation->RemoveRepresentation(vtkSegmentationConverter::GetSegmentationClosedSurfaceRepresentationName());
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLSegmentationNode::ContainsClosedSurfaceRepresentation()
+{
+  if (!this->Segmentation)
+  {
+    vtkErrorMacro("ContainsClosedSurfaceRepresentation: Invalid segmentation");
+    return false;
+  }
+  return this->Segmentation->ContainsRepresentation(vtkSegmentationConverter::GetSegmentationClosedSurfaceRepresentationName());
 }
 
 //---------------------------------------------------------------------------

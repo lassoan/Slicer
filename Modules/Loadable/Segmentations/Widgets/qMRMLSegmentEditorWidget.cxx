@@ -189,15 +189,8 @@ public:
   /// Updates a resampled source volume in a geometry aligned with default modifierLabelmap.
   bool updateAlignedSourceVolume();
 
-  /// Updates mask labelmap.
-  /// Geometry of mask will be the same as current modifierLabelmap.
-  /// This mask only considers segment-based regions (and ignores masking based on
-  /// source volume intensity).
-  bool updateMaskLabelmap();
-
   bool updateReferenceGeometryImage();
 
-  static std::string getReferenceImageGeometryFromSegmentation(vtkSegmentation* segmentation);
   std::string referenceImageGeometry();
 
   bool segmentationDisplayableInView(vtkMRMLAbstractViewNode* viewNode);
@@ -271,7 +264,6 @@ public:
   /// When update of this labelmap is requested its geometry is reset and its content is cleared.
   vtkOrientedImageData* ModifierLabelmap;
   vtkOrientedImageData* SelectedSegmentLabelmap;
-  vtkOrientedImageData* MaskLabelmap;
   /// Image that contains reference geometry. Scalars are not allocated.
   vtkOrientedImageData* ReferenceGeometryImage;
 
@@ -319,7 +311,6 @@ qMRMLSegmentEditorWidgetPrivate::qMRMLSegmentEditorWidgetPrivate(qMRMLSegmentEdi
   , AlignedSourceVolume(nullptr)
   , ModifierLabelmap(nullptr)
   , SelectedSegmentLabelmap(nullptr)
-  , MaskLabelmap(nullptr)
   , ReferenceGeometryImage(nullptr)
   , AlignedSourceVolumeUpdateSourceVolumeNode(nullptr)
   , AlignedSourceVolumeUpdateSourceVolumeNodeTransform(nullptr)
@@ -330,7 +321,6 @@ qMRMLSegmentEditorWidgetPrivate::qMRMLSegmentEditorWidgetPrivate(qMRMLSegmentEdi
 {
   this->AlignedSourceVolume = vtkOrientedImageData::New();
   this->ModifierLabelmap = vtkOrientedImageData::New();
-  this->MaskLabelmap = vtkOrientedImageData::New();
   this->SelectedSegmentLabelmap = vtkOrientedImageData::New();
   this->ReferenceGeometryImage = vtkOrientedImageData::New();
   this->SegmentationHistory = vtkSmartPointer<vtkSegmentationHistory>::New();
@@ -375,11 +365,6 @@ qMRMLSegmentEditorWidgetPrivate::~qMRMLSegmentEditorWidgetPrivate()
   {
     this->ModifierLabelmap->Delete();
     this->ModifierLabelmap = nullptr;
-  }
-  if (this->MaskLabelmap)
-  {
-    this->MaskLabelmap->Delete();
-    this->MaskLabelmap = nullptr;
   }
   if (this->SelectedSegmentLabelmap)
   {
@@ -731,48 +716,6 @@ bool qMRMLSegmentEditorWidgetPrivate::updateAlignedSourceVolume()
 }
 
 //-----------------------------------------------------------------------------
-bool qMRMLSegmentEditorWidgetPrivate::updateMaskLabelmap()
-{
-  if (!this->ParameterSetNode)
-  {
-    qCritical() << Q_FUNC_INFO << ": Invalid segment editor parameter set node";
-    return false;
-  }
-  vtkMRMLSegmentationNode* segmentationNode = this->ParameterSetNode->GetSegmentationNode();
-  if (!segmentationNode)
-  {
-    qCritical() << Q_FUNC_INFO << ": Invalid segmentation node";
-    return false;
-  }
-
-  std::string referenceGeometryStr = this->referenceImageGeometry();
-  if (referenceGeometryStr.empty())
-  {
-    qCritical() << Q_FUNC_INFO << ": Cannot determine mask labelmap geometry";
-    return false;
-  }
-  vtkNew<vtkOrientedImageData> referenceGeometry;
-  if (!vtkSegmentationConverter::DeserializeImageGeometry(referenceGeometryStr, referenceGeometry, false))
-  {
-    qCritical() << Q_FUNC_INFO << ": Cannot determine mask labelmap geometry";
-    return false;
-  }
-
-  // GenerateEditMask can add intensity range based mask, too. We do not use it here, as currently
-  // editable intensity range is taken into account in qSlicerSegmentEditorAbstractEffect::modifySelectedSegmentByLabelmap.
-  // It would simplify implementation if we passed source volume and intensity range to GenerateEditMask here
-  // and removed intensity range based masking from modifySelectedSegmentByLabelmap.
-  if (!segmentationNode->GenerateEditMask(this->MaskLabelmap, this->ParameterSetNode->GetMaskMode(), referenceGeometry,
-    this->ParameterSetNode->GetSelectedSegmentID() ? this->ParameterSetNode->GetSelectedSegmentID() : "",
-    this->ParameterSetNode->GetMaskSegmentID() ? this->ParameterSetNode->GetMaskSegmentID() : ""))
-  {
-    qCritical() << Q_FUNC_INFO << ": Mask generation failed";
-    return false;
-  }
-  return true;
-}
-
-//-----------------------------------------------------------------------------
 bool qMRMLSegmentEditorWidgetPrivate::updateReferenceGeometryImage()
 {
   std::string geometry = this->referenceImageGeometry();
@@ -873,53 +816,6 @@ void qMRMLSegmentEditorWidgetPrivate::setEffectCursor(qSlicerSegmentEditorAbstra
 }
 
 //-----------------------------------------------------------------------------
-std::string qMRMLSegmentEditorWidgetPrivate::getReferenceImageGeometryFromSegmentation(vtkSegmentation* segmentation)
-{
-  if (!segmentation)
-  {
-    return "";
-  }
-
-  // If "reference image geometry" conversion parameter is set then use that
-  std::string referenceImageGeometry = segmentation->GetConversionParameter(vtkSegmentationConverter::GetReferenceImageGeometryParameterName());
-  if (!referenceImageGeometry.empty())
-  {
-    // Extend reference image geometry to contain all segments (needed for example for properly handling imported segments
-    // that do not fit into the reference image geometry)
-    vtkSmartPointer<vtkOrientedImageData> commonGeometryImage = vtkSmartPointer<vtkOrientedImageData>::New();
-    vtkSegmentationConverter::DeserializeImageGeometry(referenceImageGeometry, commonGeometryImage, false);
-    // Determine extent that contains all segments
-    int commonSegmentExtent[6] = { 0, -1, 0, -1, 0, -1 };
-    segmentation->DetermineCommonLabelmapExtent(commonSegmentExtent, commonGeometryImage);
-    if (commonSegmentExtent[0] <= commonSegmentExtent[1]
-      && commonSegmentExtent[2] <= commonSegmentExtent[3]
-      && commonSegmentExtent[4] <= commonSegmentExtent[5])
-    {
-      // Expand commonGeometryExtent as needed to contain commonSegmentExtent
-      int commonGeometryExtent[6] = { 0, -1, 0, -1, 0, -1 };
-      commonGeometryImage->GetExtent(commonGeometryExtent);
-      for (int i = 0; i < 3; i++)
-      {
-        commonGeometryExtent[i * 2] = std::min(commonSegmentExtent[i * 2], commonGeometryExtent[i * 2]);
-        commonGeometryExtent[i * 2 + 1] = std::max(commonSegmentExtent[i * 2 + 1], commonGeometryExtent[i * 2 + 1]);
-      }
-      commonGeometryImage->SetExtent(commonGeometryExtent);
-      referenceImageGeometry = vtkSegmentationConverter::SerializeImageGeometry(commonGeometryImage);
-    }
-
-    // TODO: Use oversampling (if it's 'A' then ignore and changed to 1)
-    return referenceImageGeometry;
-  }
-  if (segmentation->ContainsRepresentation(vtkSegmentationConverter::GetSegmentationBinaryLabelmapRepresentationName()))
-  {
-    // If no reference image geometry is specified but there are labels already then determine geometry from that
-    referenceImageGeometry = segmentation->DetermineCommonLabelmapGeometry();
-    return referenceImageGeometry;
-  }
-  return "";
-}
-
-//-----------------------------------------------------------------------------
 std::string qMRMLSegmentEditorWidgetPrivate::referenceImageGeometry()
 {
   if (!this->ParameterSetNode)
@@ -939,7 +835,7 @@ std::string qMRMLSegmentEditorWidgetPrivate::referenceImageGeometry()
   }
 
   std::string referenceImageGeometry;
-  referenceImageGeometry = this->getReferenceImageGeometryFromSegmentation(segmentation);
+  referenceImageGeometry = vtkSlicerSegmentationsModuleLogic::GetReferenceImageGeometryFromSegmentation(segmentation);
   if (referenceImageGeometry.empty())
   {
     // If no reference image geometry could be determined then use the source volume's geometry
@@ -952,7 +848,7 @@ std::string qMRMLSegmentEditorWidgetPrivate::referenceImageGeometry()
     // Update the referenceImageGeometry parameter for next time
     segmentationNode->SetReferenceImageGeometryParameterFromVolumeNode(sourceVolumeNode);
     // Update extents to include all existing segments
-    referenceImageGeometry = this->getReferenceImageGeometryFromSegmentation(segmentation);
+    referenceImageGeometry = vtkSlicerSegmentationsModuleLogic::GetReferenceImageGeometryFromSegmentation(segmentation);
   }
   notifyEffectsOfReferenceGeometryChange(referenceImageGeometry);
   return referenceImageGeometry;
@@ -1088,7 +984,7 @@ void qMRMLSegmentEditorWidget::updateEffectList()
       qvtkReconnect(d->ParameterSetNode, vtkMRMLSegmentEditorNode::EffectParameterModified, effect, SLOT(updateGUIFromMRML()));
     }
 
-    effect->setVolumes(d->AlignedSourceVolume, d->ModifierLabelmap, d->MaskLabelmap, d->SelectedSegmentLabelmap, d->ReferenceGeometryImage);
+    effect->setVolumes(d->AlignedSourceVolume, d->ModifierLabelmap, d->SelectedSegmentLabelmap, d->ReferenceGeometryImage);
 
     QToolButton* effectButton = new QToolButton(d->EffectsGroupBox);
     effectButton->setObjectName(effect->name());
@@ -2831,10 +2727,6 @@ void qMRMLSegmentEditorWidget::updateVolume(void* volumeToUpdate, bool& success)
   {
     success = d->resetModifierLabelmapToDefault();
   }
-  else if (volumeToUpdate == d->MaskLabelmap)
-  {
-    success = d->updateMaskLabelmap();
-  }
   else if (volumeToUpdate == d->SelectedSegmentLabelmap)
   {
     success = d->updateSelectedSegmentLabelmap();
@@ -3763,7 +3655,7 @@ void qMRMLSegmentEditorWidget::showSegmentationGeometryDialog()
   // If no source volume is selected but a valid geometry is specified then create a blank source volume
   if (!d->ParameterSetNode->GetSourceVolumeNode())
   {
-    std::string referenceImageGeometry = d->getReferenceImageGeometryFromSegmentation(d->SegmentationNode->GetSegmentation());
+    std::string referenceImageGeometry = vtkSlicerSegmentationsModuleLogic::GetReferenceImageGeometryFromSegmentation(d->SegmentationNode->GetSegmentation());
     vtkNew<vtkMatrix4x4> referenceGeometryMatrix;
     int referenceExtent[6] = { 0,-1,0,-1,0,-1 };
     vtkSegmentationConverter::DeserializeImageGeometry(referenceImageGeometry, referenceGeometryMatrix.GetPointer(), referenceExtent);

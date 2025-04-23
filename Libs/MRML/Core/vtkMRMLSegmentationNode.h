@@ -218,13 +218,15 @@ public:
   /// \deprecated Use SetSourceRepresentationToBinaryLabelmap instead.
   virtual bool SetMasterRepresentationToBinaryLabelmap()
   {
-    vtkWarningMacro("vtkSegmentation::SetMasterRepresentationToBinaryLabelmap() method is deprecated, please use SetSourceRepresentationToBinaryLabelmap method instead");
+    vtkWarningMacro("vtkSegmentation::SetMasterRepresentationToBinaryLabelmap() method is deprecated,"
+      " please use SetSourceRepresentationToBinaryLabelmap method instead");
     return this->SetSourceRepresentationToClosedSurface();
   };
   /// \deprecated Use SetSourceRepresentationToClosedSurface instead.
   virtual bool SetMasterRepresentationToClosedSurface()
   {
-    vtkWarningMacro("vtkSegmentation::SetMasterRepresentationToClosedSurface() method is deprecated, please use SetSourceRepresentationToClosedSurface method instead");
+    vtkWarningMacro("vtkSegmentation::SetMasterRepresentationToClosedSurface() method is deprecated,"
+      " please use SetSourceRepresentationToClosedSurface method instead");
     return this->SetSourceRepresentationToClosedSurface();
   };
 
@@ -254,6 +256,9 @@ public:
 
   /// Remove closed surface representation for all segments.
   virtual void RemoveClosedSurfaceRepresentation();
+
+  /// Returns true if the segmentation contains closed surface representation.
+  virtual bool ContainsClosedSurfaceRepresentation();
 
   /// Get a segment as a surface mesh.
   /// If representation does not exist yet then CreateClosedSurfaceRepresentation() must be called before this method.

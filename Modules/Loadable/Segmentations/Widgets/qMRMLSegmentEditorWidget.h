@@ -329,7 +329,7 @@ public slots:
   /// to allow reverting to the current state by using undo
   void saveStateForUndo();
 
-  /// Update modifierLabelmap, maskLabelmap, or alignedSourceVolumeNode
+  /// Update modifierLabelmap or alignedSourceVolumeNode
   void updateVolume(void* volumePtr, bool& success);
 
   /// Show/hide the segmentation node selector widget.

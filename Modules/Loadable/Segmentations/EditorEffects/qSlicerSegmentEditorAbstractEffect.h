@@ -102,6 +102,7 @@ public:
 // API: Methods that are to be reimplemented in the effect subclasses
 public:
 
+  // Values must be kept in sync with vtkSlicerSegmentationsModuleLogic::ModificationMode
   enum ModificationMode
   {
     ModificationModeSet,
@@ -287,13 +288,13 @@ public:
 
   /// Connect callback signals. Callbacks are called by the editor effect to request operations from the editor widget.
   /// \param selectEffectSlot called from the active effect to initiate switching to another effect (or de-select).
-  /// \param updateVolumeSlot called to request update of a volume (modifierLabelmap, alignedSourceVolume, maskLabelmap).
+  /// \param updateVolumeSlot called to request update of a volume (modifierLabelmap, alignedSourceVolume).
   /// \param saveStateForUndoSlot called to request saving of segmentation state for undo operation
   void setCallbackSlots(QObject* receiver, const char* selectEffectSlot, const char* updateVolumeSlot, const char* saveStateForUndoSlot);
 
   /// Called by the editor widget.
   void setVolumes(vtkOrientedImageData* alignedSourceVolume, vtkOrientedImageData* modifierLabelmap,
-    vtkOrientedImageData* maskLabelmap, vtkOrientedImageData* selectedSegmentLabelmap, vtkOrientedImageData* referenceGeometryImage);
+    vtkOrientedImageData* selectedSegmentLabelmap, vtkOrientedImageData* referenceGeometryImage);
 
 // Effect parameter functions
 public:
@@ -380,8 +381,6 @@ public:
   /// Reset modifier labelmap to default (resets geometry, clears content)
   /// and return it.
   Q_INVOKABLE vtkOrientedImageData* defaultModifierLabelmap();
-
-  Q_INVOKABLE vtkOrientedImageData* maskLabelmap();
 
   Q_INVOKABLE vtkOrientedImageData* selectedSegmentLabelmap();
 

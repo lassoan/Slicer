@@ -96,10 +96,6 @@ public:
   /// of that on all other segments).
   vtkWeakPointer<vtkOrientedImageData> ModifierLabelmap;
 
-  /// Mask labelmap containing a merged silhouette of all the segments other than the selected one.
-  /// Used if the paint over feature is turned off.
-  vtkWeakPointer<vtkOrientedImageData> MaskLabelmap;
-
   /// SelectedSegmentLabelmap is a copy of the labelmap of the current segment
   /// resampled into the reference image geometry of the segmentation.
   vtkWeakPointer<vtkOrientedImageData> SelectedSegmentLabelmap;
