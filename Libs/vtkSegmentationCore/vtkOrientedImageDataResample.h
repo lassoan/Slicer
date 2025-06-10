@@ -174,6 +174,11 @@ public:
   static void GetLabelValuesInMask(std::vector<int>& labelValues, vtkOrientedImageData* binaryLabelmap, vtkOrientedImageData* mask,
     const int extent[6]=nullptr, int maskThreshold = 0);
 
+  /// Get the values contained in the labelmap
+  /// \param labelValues The values found in the binary labelmap
+  /// \param binaryLabelmap Input image to get values from
+  static void GetLabelValues(std::vector<int>& labelValues, vtkImageData* binaryLabelmap);
+
   /// Determine if there is a non-zero value in the labelmap under the mask
   /// \param binaryLabelmap Input image to get values from
   /// \param mask Mask image to get values under

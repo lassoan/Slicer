@@ -481,6 +481,14 @@ void vtkSlicerSegmentationsModuleLogic::GetAllLabelValues(vtkIntArray* labels, v
     return;
   }
 
+  std::vector<int> labelValues;
+  vtkOrientedImageDataResample::GetLabelValues(labelValues, labelmap);
+  for (auto labelValue : labelValues)
+  {
+    labels->InsertNextValue(labelValue);
+  }
+
+/*
   double* scalarRange = labelmap->GetScalarRange();
   int lowLabel = (int)(floor(scalarRange[0]));
   int highLabel = (int)(ceil(scalarRange[1]));
@@ -505,6 +513,7 @@ void vtkSlicerSegmentationsModuleLogic::GetAllLabelValues(vtkIntArray* labels, v
     }
     labels->InsertNextValue(label);
   }
+  */
 }
 
 //-----------------------------------------------------------------------------

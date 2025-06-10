@@ -1694,6 +1694,154 @@ void vtkOrientedImageDataResample::GetLabelValuesInMask(std::vector<int>& labelV
   return;
 }
 
+//-----------------------------------------------------------------------------
+template <class ImageScalarType>
+void GetLabelValuesGeneric(
+  std::vector<int>& foundValues,
+  vtkImageData* binaryLabelmap)
+{
+  foundValues.clear();
+
+  // Compute update extent as intersection of base and mask image extents (extent can be further reduced by specifying a smaller extent)
+  int updateExt[6] = { 0, -1, 0, -1, 0, -1 };
+  binaryLabelmap->GetExtent(updateExt);
+  if (updateExt[0] > updateExt[1] || updateExt[2] > updateExt[3] || updateExt[4] > updateExt[5])
+  {
+    // base and mask images don't intersect, nothing need to be done
+    return;
+  }
+
+  // Get increments to march through data
+  vtkIdType baseIncX = 0;
+  vtkIdType baseIncY = 0;
+  vtkIdType baseIncZ = 0;
+  vtkIdType maskIncX = 0;
+  vtkIdType maskIncY = 0;
+  vtkIdType maskIncZ = 0;
+  binaryLabelmap->GetContinuousIncrements(updateExt, baseIncX, baseIncY, baseIncZ);
+  int maxX = (updateExt[1] - updateExt[0]) * binaryLabelmap->GetNumberOfScalarComponents();
+  int maxY = updateExt[3] - updateExt[2];
+  int maxZ = updateExt[5] - updateExt[4];
+  ImageScalarType* binaryLabelmapPointer = static_cast<ImageScalarType*>(binaryLabelmap->GetScalarPointerForExtent(updateExt));
+
+  int imageScalarType = binaryLabelmap->GetScalarType();
+  bool isIntegerImage = (imageScalarType == VTK_UNSIGNED_CHAR
+    || imageScalarType == VTK_CHAR
+    || imageScalarType == VTK_UNSIGNED_SHORT
+    || imageScalarType == VTK_SHORT
+    || imageScalarType == VTK_UNSIGNED_INT
+    || imageScalarType == VTK_INT);
+
+  if (isIntegerImage)
+  {
+    int minimumValue = (int)binaryLabelmap->GetScalarRange()[0];
+    int maximumValue = (int)binaryLabelmap->GetScalarRange()[1];
+    int rangeSize = maximumValue - minimumValue + 1;
+
+    // Special case: fast-track for empty volumes or single-label volumes
+    if (rangeSize <= 2)
+    {
+      if (minimumValue != 0)
+      {
+        foundValues.push_back(minimumValue);
+      }
+      if (rangeSize > 1)
+      {
+        // minimum and maximum values are different
+        if (maximumValue != 0)
+        {
+          foundValues.push_back(maximumValue);
+        }
+      }
+      return;
+    }
+
+    bool zeroIncludedInRange = (minimumValue <= 0 && maximumValue >= 0);
+
+    // Faster to preallocate a vector of the potential values between the minimum and maximum than to generate unique values using std::set
+    // Not scalable to any scalar range, so the preallocated array method is only used up to the maximum below.
+    const size_t maximumSize = 1024 * 1024;
+    if (rangeSize * sizeof(bool) <= maximumSize)
+    {
+      std::vector<bool> foundValuesArray(rangeSize, false);
+      for (vtkIdType idxZ = 0; idxZ <= maxZ; idxZ++)
+      {
+        for (vtkIdType idxY = 0; idxY <= maxY; idxY++)
+        {
+          for (vtkIdType idxX = 0; idxX <= maxX; idxX++)
+          {
+            int value = static_cast<int>(*binaryLabelmapPointer);
+            int index = value - minimumValue;
+            if (!foundValuesArray[index])
+            {
+              foundValuesArray[index] = true;
+              if (value != 0)
+              {
+                foundValues.push_back(value);
+              }
+              if (!zeroIncludedInRange && rangeSize == static_cast<int>(foundValues.size())
+                || (zeroIncludedInRange && rangeSize == static_cast<int>(foundValues.size()) + 1))
+              {
+                // We have found all values, no need to continue
+                std::sort(foundValues.begin(), foundValues.end());
+                return;
+              }
+            }
+            binaryLabelmapPointer++;
+          }
+          binaryLabelmapPointer += baseIncY;
+        }
+        binaryLabelmapPointer += baseIncZ;
+      }
+      std::sort(foundValues.begin(), foundValues.end());
+      return;
+    }
+  }
+
+  // Slow path, for non-integer images or when the range is too large to preallocate an array
+  std::set<int> setValues;
+  for (vtkIdType idxZ = 0; idxZ <= maxZ; idxZ++)
+  {
+    for (vtkIdType idxY = 0; idxY <= maxY; idxY++)
+    {
+      for (vtkIdType idxX = 0; idxX <= maxX; idxX++)
+      {
+        int value = static_cast<int>(*binaryLabelmapPointer);
+        setValues.insert(value);
+
+        binaryLabelmapPointer++;
+      }
+      binaryLabelmapPointer += baseIncY;
+    }
+    binaryLabelmapPointer += baseIncZ;
+  }
+  for (int value : setValues)
+  {
+    if (value != 0)
+    {
+      foundValues.push_back(value);
+    }
+  }
+
+  std::sort(foundValues.begin(), foundValues.end());
+}
+
+//-----------------------------------------------------------------------------
+void vtkOrientedImageDataResample::GetLabelValues(std::vector<int>& labelValues,
+  vtkImageData* binaryLabelmap)
+{
+  labelValues.clear();
+
+  switch (binaryLabelmap->GetScalarType())
+  {
+    vtkTemplateMacro((GetLabelValuesGeneric<VTK_TT>(
+      labelValues,
+      binaryLabelmap)));
+  default:
+    vtkGenericWarningMacro("vtkOrientedImageDataResample::GetLabelValuesInMask: Unknown ScalarType");
+  }
+}
+
 //----------------------------------------------------------------------------
 template <class ImageScalarType, class MaskScalarType>
 void IsLabelInMaskGeneric2(vtkOrientedImageData* binaryLabelmap, vtkOrientedImageData* mask,

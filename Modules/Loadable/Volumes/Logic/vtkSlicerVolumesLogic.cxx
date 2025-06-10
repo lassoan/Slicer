@@ -411,9 +411,9 @@ ArchetypeVolumeNodeSet ScalarVolumeNodeSetFactory(std::string& volumeName, vtkMR
 vtkSlicerVolumesLogic::vtkSlicerVolumesLogic()
 {
   // register the default factories for nodesets. this is done in a specific order
-  this->RegisterArchetypeVolumeNodeSetFactory( DiffusionWeightedVolumeNodeSetFactory );
-  this->RegisterArchetypeVolumeNodeSetFactory( DiffusionTensorVolumeNodeSetFactory );
-  this->RegisterArchetypeVolumeNodeSetFactory( NRRDVectorVolumeNodeSetFactory );
+  //this->RegisterArchetypeVolumeNodeSetFactory( DiffusionWeightedVolumeNodeSetFactory );
+  //this->RegisterArchetypeVolumeNodeSetFactory( DiffusionTensorVolumeNodeSetFactory );
+  //this->RegisterArchetypeVolumeNodeSetFactory( NRRDVectorVolumeNodeSetFactory );
   this->RegisterArchetypeVolumeNodeSetFactory( ArchetypeVectorVolumeNodeSetFactory );
   this->RegisterArchetypeVolumeNodeSetFactory( LabelMapVolumeNodeSetFactory );
   this->RegisterArchetypeVolumeNodeSetFactory( ScalarVolumeNodeSetFactory );
