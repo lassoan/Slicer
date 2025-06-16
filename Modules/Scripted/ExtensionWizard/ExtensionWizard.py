@@ -1,4 +1,5 @@
 import os
+import pathlib
 import traceback
 
 import ctk
@@ -341,68 +342,90 @@ class ExtensionWizardWidget:
         factory = slicer.app.moduleManager().factoryManager()
         loadedModules = factory.instantiatedModuleNames()
 
-        candidates = [m for m in modules if m.key not in loadedModules]
+        # Check which modules are already loaded and skip those
+        candidates = []
+        moduleSkippedMessages = []
+        for module in modules:
+            if module.key in loadedModules:
+                moduleInfo = slicer.app.moduleManager().module(module.key)
+                loadedFrom = str(pathlib.Path(moduleInfo.path).resolve())
+                moduleSkippedMessages.append(_("- {module_name} (already loaded from {path})").format(module_name=moduleInfo.title, path=loadedFrom))
+            else:
+                candidates.append(module)
+        modulesSkippedMessage = _("Modules could not be registered because they are already loaded:") + "\n" + '\n'.join(moduleSkippedMessages)
+
+        if not candidates:
+            if moduleSkippedMessages:
+                # All candidate modules are already loaded, display specific details
+                slicer.util.errorDisplay(modulesSkippedMessage, parent=parent, windowTitle=_("Modules not registered"),
+                                            standardButtons=qt.QMessageBox.Close)
+            else:
+                slicer.util.errorDisplay("No modules were found", parent=parent, windowTitle=_("Modules not registered"), standardButtons=qt.QMessageBox.Close)
+            return
 
         # Prompt to load additional module(s)
-        if candidates:
-            dlg = LoadModulesDialog(parent)
-            dlg.setModules(candidates)
+        dlg = LoadModulesDialog(parent)
+        dlg.setModules(candidates)
+        if moduleSkippedMessages:
+            dlg.setNote(modulesSkippedMessage)
 
-            if dlg.exec_() == qt.QDialog.Accepted:
-                modulesToLoad = dlg.selectedModules
+        if dlg.exec_() != qt.QDialog.Accepted:
+            return
 
-                # Add module(s) to permanent search paths, if requested
-                if dlg.addToSearchPaths:
-                    settings = slicer.app.revisionUserSettings()
-                    rawSearchPaths = list(_settingsList(settings, "Modules/AdditionalPaths", convertToAbsolutePaths=True))
-                    searchPaths = [qt.QDir(path) for path in rawSearchPaths]
-                    modified = False
+        modulesToLoad = dlg.selectedModules
 
-                    for module in modulesToLoad:
-                        rawPath = os.path.dirname(module.path)
-                        path = qt.QDir(rawPath)
-                        if path not in searchPaths:
-                            searchPaths.append(path)
-                            rawSearchPaths.append(rawPath)
-                            modified = True
+        # Add module(s) to permanent search paths, if requested
+        if dlg.addToSearchPaths:
+            settings = slicer.app.revisionUserSettings()
+            rawSearchPaths = list(_settingsList(settings, "Modules/AdditionalPaths", convertToAbsolutePaths=True))
+            searchPaths = [qt.QDir(path) for path in rawSearchPaths]
+            modified = False
 
-                    if modified:
-                        settings.setValue("Modules/AdditionalPaths", slicer.app.toSlicerHomeRelativePaths(rawSearchPaths))
+            for module in modulesToLoad:
+                rawPath = os.path.dirname(module.path)
+                path = qt.QDir(rawPath)
+                if path not in searchPaths:
+                    searchPaths.append(path)
+                    rawSearchPaths.append(rawPath)
+                    modified = True
 
-                # Enable developer mode (shows Reload&Test section, etc.), if requested
-                if dlg.enableDeveloperMode:
-                    qt.QSettings().setValue("Developer/DeveloperMode", "true")
+            if modified:
+                settings.setValue("Modules/AdditionalPaths", slicer.app.toSlicerHomeRelativePaths(rawSearchPaths))
 
-                # Register requested module(s)
-                failed = []
+        # Enable developer mode (shows Reload&Test section, etc.), if requested
+        if dlg.enableDeveloperMode:
+            qt.QSettings().setValue("Developer/DeveloperMode", "true")
 
-                for module in modulesToLoad:
-                    factory.registerModule(qt.QFileInfo(module.path))
-                    if not factory.isRegistered(module.key):
-                        failed.append(module)
+        # Register requested module(s)
+        failed = []
 
-                if failed:
-                    if len(failed) > 1:
-                        text = _("{count} modules could not be registered").format(count=count)
-                    else:
-                        text = _("The {name} module could not be registered").format(name=failed[0].key)
+        for module in modulesToLoad:
+            factory.registerModule(qt.QFileInfo(module.path))
+            if not factory.isRegistered(module.key):
+                failed.append(module)
 
-                    failedFormat = "<ul><li>%(key)s<br/>(%(path)s)</li></ul>"
-                    detailedInformation = "".join(
-                        [failedFormat % m.__dict__ for m in failed])
+        if failed:
+            if len(failed) > 1:
+                text = _("{count} modules could not be registered").format(count=count)
+            else:
+                text = _("The {name} module could not be registered").format(name=failed[0].key)
 
-                    slicer.util.errorDisplay(text, parent=parent, windowTitle=_("Module loading failed"),
-                                             standardButtons=qt.QMessageBox.Close, informativeText=detailedInformation)
+            failedFormat = "<ul><li>%(key)s<br/>(%(path)s)</li></ul>"
+            detailedInformation = "".join(
+                [failedFormat % m.__dict__ for m in failed])
 
-                    return
+            slicer.util.errorDisplay(text, parent=parent, windowTitle=_("Module loading failed"),
+                                        standardButtons=qt.QMessageBox.Close, informativeText=detailedInformation)
 
-                # Instantiate and load requested module(s)
-                if not factory.loadModules([module.key for module in modulesToLoad]):
-                    text = _("The module factory manager reported an error. "
-                            "One or more of the requested module(s) and/or "
-                            "dependencies thereof may not have been loaded.")
-                    slicer.util.errorDisplay(text, parent=parent, windowTitle=_("Error loading module(s)"),
-                                             standardButtons=qt.QMessageBox.Close)
+            return
+
+        # Instantiate and load requested module(s)
+        if not factory.loadModules([module.key for module in modulesToLoad]):
+            text = _("The module factory manager reported an error. "
+                    "One or more of the requested module(s) and/or "
+                    "dependencies thereof may not have been loaded.")
+            slicer.util.errorDisplay(text, parent=parent, windowTitle=_("Error loading module(s)"),
+                                        standardButtons=qt.QMessageBox.Close)
 
     # ---------------------------------------------------------------------------
     def createExtensionModule(self):

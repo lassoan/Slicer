@@ -50,6 +50,11 @@ class _ui_LoadModulesDialog:
         self.enableDeveloperMode.checked = True
         vLayout.addWidget(self.enableDeveloperMode)
 
+        self.noteLabel = qt.QLabel()
+        self.noteLabel.wordWrap = True
+        vLayout.addWidget(self.noteLabel)
+        self.noteLabel.hide()
+
         self.buttonBox = qt.QDialogButtonBox()
         self.buttonBox.setStandardButtons(qt.QDialogButtonBox.Yes |
                                           qt.QDialogButtonBox.No)
@@ -99,6 +104,13 @@ class LoadModulesDialog:
     # ---------------------------------------------------------------------------
     def exec_(self):
         return self.dialog.exec_()
+
+    def setNote(self, text):
+        if text:
+            self.ui.noteLabel.text = text
+            self.ui.noteLabel.show()
+        else:
+            self.ui.noteLabel.hide()
 
     # ---------------------------------------------------------------------------
     def setModules(self, modules):
