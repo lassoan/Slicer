@@ -41,10 +41,11 @@ public:
   enum
   {
     VoxelVectorTypeUndefined,
-    VoxelVectorTypeSpatial,
+    VoxelVectorTypeSpatial, // 3D displacement field (or other contravariant vector, such as position or speed)
     VoxelVectorTypeColorRGB,
     VoxelVectorTypeColorRGBA,
-    VoxelVectorType_Last // must be last
+    VoxelVectorTypeSpatialCovariant, // 3D covariant spatial vector (gradient, etc.)
+    VoxelVectorType_Last             // must be last
   };
 
   ///

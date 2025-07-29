@@ -168,6 +168,7 @@ int vtkMRMLVolumeArchetypeStorageNode::ConvertVoxelVectorTypeMRMLToVTKITK(int mr
     case vtkMRMLVolumeNode::VoxelVectorTypeSpatial: return vtkITKImageWriter::VoxelVectorTypeSpatial;
     case vtkMRMLVolumeNode::VoxelVectorTypeColorRGB: return vtkITKImageWriter::VoxelVectorTypeColorRGB;
     case vtkMRMLVolumeNode::VoxelVectorTypeColorRGBA: return vtkITKImageWriter::VoxelVectorTypeColorRGBA;
+    case vtkMRMLVolumeNode::VoxelVectorTypeSpatialCovariant: return vtkITKImageWriter::VoxelVectorTypeSpatialCovariant;
     default: return vtkITKImageWriter::VoxelVectorTypeUndefined;
   }
 }
@@ -181,6 +182,7 @@ int vtkMRMLVolumeArchetypeStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(int vt
     case vtkITKImageWriter::VoxelVectorTypeSpatial: return vtkMRMLVolumeNode::VoxelVectorTypeSpatial;
     case vtkITKImageWriter::VoxelVectorTypeColorRGB: return vtkMRMLVolumeNode::VoxelVectorTypeColorRGB;
     case vtkITKImageWriter::VoxelVectorTypeColorRGBA: return vtkMRMLVolumeNode::VoxelVectorTypeColorRGBA;
+    case vtkITKImageWriter::VoxelVectorTypeSpatialCovariant: return vtkMRMLVolumeNode::VoxelVectorTypeSpatialCovariant;
     default: return vtkMRMLVolumeNode::VoxelVectorTypeUndefined;
   }
 }

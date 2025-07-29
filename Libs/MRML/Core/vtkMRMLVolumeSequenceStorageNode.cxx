@@ -68,6 +68,7 @@ int vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeMRMLToVTKITK(int mrm
     case vtkMRMLVolumeNode::VoxelVectorTypeSpatial: return vtkITKImageSequenceWriter::VoxelVectorTypeSpatial;
     case vtkMRMLVolumeNode::VoxelVectorTypeColorRGB: return vtkITKImageSequenceWriter::VoxelVectorTypeColorRGB;
     case vtkMRMLVolumeNode::VoxelVectorTypeColorRGBA: return vtkITKImageSequenceWriter::VoxelVectorTypeColorRGBA;
+    case vtkMRMLVolumeNode::VoxelVectorTypeSpatialCovariant: return vtkITKImageSequenceWriter::VoxelVectorTypeSpatialCovariant;
     default: return vtkITKImageSequenceWriter::VoxelVectorTypeUndefined;
   }
 }
@@ -81,6 +82,7 @@ int vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(int vtk
     case vtkITKImageSequenceWriter::VoxelVectorTypeSpatial: return vtkMRMLVolumeNode::VoxelVectorTypeSpatial;
     case vtkITKImageSequenceWriter::VoxelVectorTypeColorRGB: return vtkMRMLVolumeNode::VoxelVectorTypeColorRGB;
     case vtkITKImageSequenceWriter::VoxelVectorTypeColorRGBA: return vtkMRMLVolumeNode::VoxelVectorTypeColorRGBA;
+    case vtkITKImageSequenceWriter::VoxelVectorTypeSpatialCovariant: return vtkMRMLVolumeNode::VoxelVectorTypeSpatialCovariant;
     default: return vtkMRMLVolumeNode::VoxelVectorTypeUndefined;
   }
 }
@@ -124,14 +126,10 @@ int vtkMRMLVolumeSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
   }
 
   // Read all frames
-  for (int frameIndex = 0; frameIndex < reader->GetNumberOfFrames(); ++frameIndex)
+  reader->Update();
+  for (int frameIndex = 0; frameIndex < reader->GetNumberOfCachedImages(); ++frameIndex)
   {
-    if (frameIndex > 0)
-    {
-      reader->SetCurrentFrameIndex(frameIndex);
-      reader->Update();
-    }
-    vtkImageData* frameImage = reader->GetOutput();
+    vtkImageData* frameImage = reader->GetCachedImage(frameIndex);
     if (frameImage == nullptr || frameImage->GetPointData() == nullptr || frameImage->GetPointData()->GetScalars() == nullptr)
     {
       vtkErrorMacro("vtkMRMLVolumeSequenceStorageNode::ReadDataInternal: invalid image data");
@@ -163,6 +161,8 @@ int vtkMRMLVolumeSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     // Set up the volume node
     frameVolume->SetAndObserveImageData(frameImage);
     frameVolume->SetIJKToRASMatrix(reader->GetRasToIjkMatrix());
+
+    frameVolume->SetVoxelVectorType(vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(reader->GetVoxelVectorType()));
 
     std::ostringstream indexStr;
     indexStr << frameIndex << std::ends;
