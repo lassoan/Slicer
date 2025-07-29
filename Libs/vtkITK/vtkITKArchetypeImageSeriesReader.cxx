@@ -985,9 +985,13 @@ int vtkITKArchetypeImageSeriesReader::RequestInformation(vtkInformation* vtkNotU
   {
     this->VoxelVectorType = vtkITKImageWriter::VoxelVectorTypeColorRGBA;
   }
-  else if (imageIO->GetPixelType() == itk::IOPixelEnum::COVARIANTVECTOR)
+  else if (imageIO->GetPixelType() == itk::IOPixelEnum::VECTOR)
   {
     this->VoxelVectorType = vtkITKImageWriter::VoxelVectorTypeSpatial;
+  }
+  else if (imageIO->GetPixelType() == itk::IOPixelEnum::COVARIANTVECTOR)
+  {
+    this->VoxelVectorType = vtkITKImageWriter::VoxelVectorTypeSpatialCovariant;
   }
   else
   {

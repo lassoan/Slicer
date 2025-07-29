@@ -137,28 +137,20 @@ const char* vtkITKImageSequenceReader::GetAxisUnit(unsigned int axis)
 
 //----------------------------------------------------------------------------
 template <class TPixelType, int Dimension>
-void vtkITKExecuteDataFromFile_FramesInDimension(vtkITKImageSequenceReader* self, vtkImageData* data, int listDimIdx)
+void vtkITKExecuteDataFromFile(vtkITKImageSequenceReader* self, std::vector<vtkSmartPointer<vtkImageData>>& images, int listDimIdx)
 {
   using PixelType = TPixelType;
   constexpr unsigned int ImageDimension = Dimension;
   using ImageType = itk::Image<PixelType, ImageDimension>;
 
-  // Debug information about the pixel type
-  using ValueType = typename PixelType::ValueType;
-  constexpr bool isVector = std::is_same<PixelType, itk::Vector<ValueType>>::value || std::is_same<PixelType, itk::Vector<ValueType, 4>>::value;
-  constexpr bool isCovariantVector = std::is_same<PixelType, itk::CovariantVector<ValueType>>::value;
-  constexpr bool isRGB = std::is_same<PixelType, itk::RGBPixel<ValueType>>::value;
-  constexpr bool isRGBA = std::is_same<PixelType, itk::RGBAPixel<ValueType>>::value;
-
-  std::cout << "PixelType: " << typeid(PixelType).name() << ", ValueType: " << typeid(ValueType).name() << std::endl;
-  std::cout << "Vector: " << isVector << ", CovVector: " << isCovariantVector << ", RGB(A): " << (isRGB || isRGBA) << std::endl;
-  if (isVector || isCovariantVector)
-  {
-    std::cout << "Vector Length: " << PixelType::Dimension << std::endl;
-  }
-
   using ReaderType = itk::ImageFileReader<ImageType>;
   ReaderType::Pointer reader = ReaderType::New();
+
+  using ImageIOType = itk::NrrdImageIO;
+  ImageIOType::Pointer imageIO = ImageIOType::New();
+  imageIO->SetAxesReorderToUseNonListRangeAxisAsPixel();
+  reader->SetImageIO(imageIO);
+
   reader->SetFileName(self->GetFileName());
   reader->Update();
   ImageType::ConstPointer image = reader->GetOutput();
@@ -211,141 +203,34 @@ void vtkITKExecuteDataFromFile_FramesInDimension(vtkITKImageSequenceReader* self
 
   ImageType::RegionType extractionRegion;
   ImageType::IndexType extractionIndex = extractionRegion.GetIndex();
-  extractionIndex[listDimIdx] = self->GetCurrentFrameIndex();
-  extractionRegion.SetIndex(extractionIndex);
   extractionRegion.SetSize(extractionSize);
   extractImageFilter->SetDirectionCollapseToSubmatrix();
-  extractImageFilter->SetExtractionRegion(extractionRegion);
-  extractImageFilter->Update();
 
-  FrameImageType::Pointer frameImage = extractImageFilter->GetOutput();
-  FrameImageType::RegionType frameRegion = frameImage->GetLargestPossibleRegion();
-
-  // Convert extracted frame to VTK image
   using VTKExporterFilterType = itk::ImageToVTKImageFilter<FrameImageType>;
   VTKExporterFilterType::Pointer vtkExportFilter = VTKExporterFilterType::New();
-  vtkExportFilter->SetInput(frameImage);
-  vtkExportFilter->Update();
 
-  // Copy to output. Note: crashes if ShallowCopy is used
-  data->DeepCopy(vtkExportFilter->GetOutput());
-}
-
-//----------------------------------------------------------------------------
-// NOTE: This function needs to be separate as ImageToVTKImageFilter cannot be
-//       used with dimensions higher than 3
-template <class TPixelType>
-void vtkITKExecuteDataFromFile_FramesInComponent(vtkITKImageSequenceReader* self, vtkImageData* data)
-{
-  using PixelType = TPixelType;
-  constexpr unsigned int ImageDimension = 3;
-  using ImageType = itk::VectorImage<PixelType, ImageDimension>;
-
-  using ReaderType = itk::ImageFileReader<ImageType>;
-  ReaderType::Pointer reader = ReaderType::New();
-  reader->SetFileName(self->GetFileName());
-  reader->Update();
-  ImageType::ConstPointer image = reader->GetOutput();
-
-  // Get origin and spacing from ITK image
-  ImageType::PointType itkOrigin = image->GetOrigin();
-  ImageType::SpacingType itkSpacing = image->GetSpacing();
-  double origin[3] = { itkOrigin[0], itkOrigin[1], itkOrigin[2] };
-  double spacing[3] = { itkSpacing[0], itkSpacing[1], itkSpacing[2] };
-  // Get directions from ITK image
-  ImageType::DirectionType itkDirections = image->GetDirection();
-  double directions[3][3] = { { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0 } };
-  for (unsigned int col = 0; col < 3; col++)
+  images.clear();
+  for (int frameIndex = 0; frameIndex < self->GetNumberOfFrames(); frameIndex++)
   {
-    for (unsigned int row = 0; row < 3; row++)
-    {
-      double lpsRas = (row == 0 && col == 0) || (row == 1 && col == 1) ? -1.0 : 1.0;
-      directions[row][col] = itkDirections[row][col] * lpsRas;
-    }
-  }
-  // Make the pose matrix available in VTK
-  if (self->GetRasToIjkMatrix())
-  {
-    self->GetRasToIjkMatrix()->Delete();
-  }
-  vtkMatrix4x4* rasToIjkMatrix = vtkMatrix4x4::New();
-  rasToIjkMatrix->Identity();
-  for (int row = 0; row < 3; row++)
-  {
-    for (int col = 0; col < 3; col++)
-    {
-      rasToIjkMatrix->SetElement(row, col, spacing[col] * directions[row][col]);
-    }
-    rasToIjkMatrix->SetElement(row, 3, origin[row]);
-  }
-  self->SetRasToIjkMatrix(rasToIjkMatrix);
+    extractionIndex[listDimIdx] = frameIndex;
+    extractionRegion.SetIndex(extractionIndex);
+    extractImageFilter->SetExtractionRegion(extractionRegion);
+    extractImageFilter->Update();
 
-  // Set number of frames from loaded vector image
-  self->SetNumberOfFrames(image->GetNumberOfComponentsPerPixel());
+    FrameImageType::Pointer frameImage = extractImageFilter->GetOutput();
+    FrameImageType::RegionType frameRegion = frameImage->GetLargestPossibleRegion();
 
-  // Set up component extractor to get the frame
-  using FrameImageType = itk::Image<PixelType, ImageDimension>;
-  using ComponentExtractorType = itk::VectorIndexSelectionCastImageFilter<ImageType, FrameImageType>;
-  typename ComponentExtractorType::Pointer componentExtractor = ComponentExtractorType::New();
-  componentExtractor->SetInput(image);
-  componentExtractor->SetIndex(self->GetCurrentFrameIndex());
-  componentExtractor->Update();
-  // Get the extracted component image
-  FrameImageType::Pointer frameImage = componentExtractor->GetOutput();
-  FrameImageType::RegionType region = frameImage->GetLargestPossibleRegion();
-  const PixelType* inputBuffer = frameImage->GetBufferPointer();
+    // Convert extracted frame to VTK image
+    vtkExportFilter->SetInput(frameImage);
+    vtkExportFilter->Update();
 
-  // Create VTK image with same properties
-  vtkNew<vtkImageData> outputImage;
-  outputImage->SetDimensions(region.GetSize(0), region.GetSize(1), region.GetSize(2));
+    vtkSmartPointer<vtkImageData> cachedImage = vtkSmartPointer<vtkImageData>::New();
+    // Copy to output. Note: crashes if ShallowCopy is used
+    cachedImage->DeepCopy(vtkExportFilter->GetOutput());
 
-  // Set up the VTK image type
-  int vtkType;
-  if (std::is_same<PixelType, unsigned short>::value)
-  {
-    vtkType = VTK_UNSIGNED_SHORT;
-  }
-  else if (std::is_same<PixelType, int>::value)
-  {
-    vtkType = VTK_INT;
-  }
-  else if (std::is_same<PixelType, float>::value)
-  {
-    vtkType = VTK_FLOAT;
-  }
-  else
-  {
-    vtkType = VTK_FLOAT; // Default to float for unknown types
+    images.push_back(cachedImage);
   }
 
-  outputImage->AllocateScalars(vtkType, 1);
-
-  // Copy the buffer directly, handling the vector pixel type
-  const size_t numPixels = region.GetNumberOfPixels();
-  void* outputBuffer = outputImage->GetScalarPointer();
-
-  // Copy each pixel value, extracting the scalar component.
-  // This is needed because ImageToVTKImageFilter cannot handle variable length vectors.
-  for (size_t i = 0; i < numPixels; ++i)
-  {
-    switch (vtkType)
-    {
-      case VTK_UNSIGNED_SHORT: static_cast<unsigned short*>(outputBuffer)[i] = inputBuffer[i][0]; break;
-      case VTK_INT: static_cast<int*>(outputBuffer)[i] = inputBuffer[i][0]; break;
-      case VTK_FLOAT: static_cast<float*>(outputBuffer)[i] = inputBuffer[i][0]; break;
-    }
-  }
-
-  // Set spacing and origin
-  FrameImageType::SpacingType itkFrameSpacing = frameImage->GetSpacing();
-  FrameImageType::PointType itkFrameOrigin = frameImage->GetOrigin();
-  double frameSpacing[3] = { itkFrameSpacing[0], itkFrameSpacing[1], itkFrameSpacing[2] };
-  double frameOrigin[3] = { itkFrameOrigin[0], itkFrameOrigin[1], itkFrameOrigin[2] };
-  outputImage->SetSpacing(frameSpacing);
-  outputImage->SetOrigin(frameOrigin);
-
-  // Copy to output. Note: crashes if ShallowCopy is used
-  data->DeepCopy(outputImage);
 }
 
 //----------------------------------------------------------------------------
@@ -378,6 +263,7 @@ void vtkITKImageSequenceReader::ExecuteDataWithInformation(vtkDataObject* output
     // Create an NRRD image IO object
     using ImageIOType = itk::NrrdImageIO;
     ImageIOType::Pointer imageIO = ImageIOType::New();
+    imageIO->SetAxesReorderToUseNonListRangeAxisAsPixel();
     // Read metadata
     if (!imageIO->CanReadFile(this->GetFileName()))
     {
@@ -398,11 +284,6 @@ void vtkITKImageSequenceReader::ExecuteDataWithInformation(vtkDataObject* output
     int listDim{ -1 }; // List dimension is the (first) dimension of the list of frames, if any
     for (keyIt = keys.begin(); keyIt != keys.end(); ++keyIt)
     {
-      //// Print all key/value pairs from metadata dictionary for debugging
-      // std::string a;
-      // itk::ExposeMetaData<std::string>(thisDic, *keyIt, a);
-      // std::cout << "Key: " << *keyIt << ", Value: " << a << std::endl;
-
       // Check for NRRD specific keys
       std::string value;
       if (!strncmp(KEY_PREFIX, keyIt->c_str(), strlen(KEY_PREFIX)))
@@ -484,56 +365,49 @@ void vtkITKImageSequenceReader::ExecuteDataWithInformation(vtkDataObject* output
         switch (imageIO->GetPixelType())
         {
           case itk::CommonEnums::IOPixel::RGB:
+            this->SetVoxelVectorType(VoxelVectorTypeColorRGB);
             if (imageIO->GetComponentType() != itk::ImageIOBase::IOComponentEnum::UCHAR)
             {
               vtkErrorMacro("Unexpected component type for RGB voxel: " << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
               this->SetErrorCode(vtkErrorCode::UnrecognizedFileTypeError);
               return;
             }
-            vtkITKExecuteDataFromFile_FramesInDimension<itk::RGBPixel<unsigned char>, 3>(this, data, listDim);
+            vtkITKExecuteDataFromFile<itk::RGBPixel<unsigned char>, 3>(this, this->CachedImages, listDim);
             break;
           case itk::CommonEnums::IOPixel::RGBA:
+            this->SetVoxelVectorType(VoxelVectorTypeColorRGBA);
             if (imageIO->GetComponentType() != itk::ImageIOBase::IOComponentEnum::UCHAR)
             {
               vtkErrorMacro("Unexpected component type for RGBA voxel: " << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
               this->SetErrorCode(vtkErrorCode::UnrecognizedFileTypeError);
               return;
             }
-            vtkITKExecuteDataFromFile_FramesInDimension<itk::RGBAPixel<unsigned char>, 3>(this, data, listDim);
+            vtkITKExecuteDataFromFile<itk::RGBAPixel<unsigned char>, 3>(this, this->CachedImages, listDim);
             break;
           case itk::CommonEnums::IOPixel::VECTOR:
-            if (listDim < 0) // If list dimension was not found, then we suppose that the sequence information is stored as scalar components
+            this->SetVoxelVectorType(VoxelVectorTypeSpatial);
+            switch (imageIO->GetComponentType())
             {
-              switch (imageIO->GetComponentType())
-              {
-                case itk::ImageIOBase::IOComponentEnum::USHORT: vtkITKExecuteDataFromFile_FramesInComponent<itk::Vector<unsigned short>>(this, data); break;
-                case itk::ImageIOBase::IOComponentEnum::INT: vtkITKExecuteDataFromFile_FramesInComponent<itk::Vector<int>>(this, data); break;
-                case itk::ImageIOBase::IOComponentEnum::FLOAT: vtkITKExecuteDataFromFile_FramesInComponent<itk::Vector<float>>(this, data); break;
-                default:
-                  vtkErrorMacro("Unexpected component type for 5+ component vector voxel: " << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
-                  this->SetErrorCode(vtkErrorCode::UnrecognizedFileTypeError);
-                  return;
-              }
-            }
-            else
-            {
-              switch (imageIO->GetComponentType())
-              {
-                case itk::ImageIOBase::IOComponentEnum::USHORT: //
-                  vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<unsigned short>, 3>(this, data, listDim);
-                  break;
-                case itk::ImageIOBase::IOComponentEnum::INT: //
-                  vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<int>, 3>(this, data, listDim);
-                  break;
-                case itk::ImageIOBase::IOComponentEnum::FLOAT: //
-                  vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<float>, 3>(this, data, listDim);
-                  break;
-                default:
-                  vtkErrorMacro("Unexpected component type for 4 or less component vector voxel: " //
-                                << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
-                  this->SetErrorCode(vtkErrorCode::UnrecognizedFileTypeError);
-                  return;
-              }
+              case itk::ImageIOBase::IOComponentEnum::UCHAR: //
+                vtkITKExecuteDataFromFile<itk::Vector<unsigned char>, 3>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::USHORT: //
+                vtkITKExecuteDataFromFile<itk::Vector<unsigned short>, 3>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::INT: //
+                vtkITKExecuteDataFromFile<itk::Vector<int>, 3>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::FLOAT: //
+                vtkITKExecuteDataFromFile<itk::Vector<float>, 3>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::DOUBLE: //
+                vtkITKExecuteDataFromFile<itk::Vector<double>, 3>(this, this->CachedImages, listDim);
+                break;
+              default:
+                vtkErrorMacro("Unexpected component type for 4 or less component vector voxel: " //
+                              << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
+                this->SetErrorCode(vtkErrorCode::UnrecognizedFileTypeError);
+                return;
             }
             break;
         }
@@ -541,41 +415,81 @@ void vtkITKImageSequenceReader::ExecuteDataWithInformation(vtkDataObject* output
       case 4:
         switch (imageIO->GetPixelType())
         {
+          case itk::CommonEnums::IOPixel::SCALAR:
+            switch (imageIO->GetComponentType())
+            {
+              case itk::ImageIOBase::IOComponentEnum::UCHAR: //
+                vtkITKExecuteDataFromFile<unsigned char, 4>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::CHAR: //
+                vtkITKExecuteDataFromFile<char, 4>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::USHORT: //
+                vtkITKExecuteDataFromFile<unsigned short, 4>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::SHORT: //
+                vtkITKExecuteDataFromFile<short, 4>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::INT: //
+                vtkITKExecuteDataFromFile<int, 4>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::UINT: //
+                vtkITKExecuteDataFromFile<unsigned int, 4>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::FLOAT: //
+                vtkITKExecuteDataFromFile<float, 4>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::DOUBLE: //
+                vtkITKExecuteDataFromFile<double, 4>(this, this->CachedImages, listDim);
+                break;
+              default:
+                vtkErrorMacro("Unexpected component type for scalar voxel: " //
+                              << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
+                this->SetErrorCode(vtkErrorCode::UnrecognizedFileTypeError);
+                return;
+            }
+            break;
           case itk::CommonEnums::IOPixel::RGB:
+            this->SetVoxelVectorType(VoxelVectorTypeColorRGB);
             if (imageIO->GetComponentType() != itk::ImageIOBase::IOComponentEnum::UCHAR)
             {
               vtkErrorMacro("Unexpected component type for RGB voxel: " << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
               this->SetErrorCode(vtkErrorCode::UnrecognizedFileTypeError);
               return;
             }
-            vtkITKExecuteDataFromFile_FramesInDimension<itk::RGBPixel<unsigned char>, 4>(this, data, listDim);
+            vtkITKExecuteDataFromFile<itk::RGBPixel<unsigned char>, 4>(this, this->CachedImages, listDim);
             break;
           case itk::CommonEnums::IOPixel::RGBA:
+            this->SetVoxelVectorType(VoxelVectorTypeColorRGBA);
             if (imageIO->GetComponentType() != itk::ImageIOBase::IOComponentEnum::UCHAR)
             {
               vtkErrorMacro("Unexpected component type for RGBA voxel: " << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
               this->SetErrorCode(vtkErrorCode::UnrecognizedFileTypeError);
               return;
             }
-            vtkITKExecuteDataFromFile_FramesInDimension<itk::RGBAPixel<unsigned char>, 4>(this, data, listDim);
+            vtkITKExecuteDataFromFile<itk::RGBAPixel<unsigned char>, 4>(this, this->CachedImages, listDim);
             break;
           case itk::CommonEnums::IOPixel::VECTOR:
+            this->SetVoxelVectorType(VoxelVectorTypeSpatial);
             switch (imageIO->GetNumberOfComponents())
             {
               case 3:
                 switch (imageIO->GetComponentType())
                 {
                   case itk::ImageIOBase::IOComponentEnum::UCHAR: //
-                    vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<unsigned char>, 4>(this, data, listDim);
+                    vtkITKExecuteDataFromFile<itk::Vector<unsigned char>, 4>(this, this->CachedImages, listDim);
                     break;
                   case itk::ImageIOBase::IOComponentEnum::USHORT: //
-                    vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<unsigned short>, 4>(this, data, listDim);
+                    vtkITKExecuteDataFromFile<itk::Vector<unsigned short>, 4>(this, this->CachedImages, listDim);
+                    break;
+                  case itk::ImageIOBase::IOComponentEnum::INT: //
+                    vtkITKExecuteDataFromFile<itk::Vector<int>, 4>(this, this->CachedImages, listDim);
                     break;
                   case itk::ImageIOBase::IOComponentEnum::FLOAT: //
-                    vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<float>, 4>(this, data, listDim);
+                    vtkITKExecuteDataFromFile<itk::Vector<float>, 4>(this, this->CachedImages, listDim);
                     break;
                   case itk::ImageIOBase::IOComponentEnum::DOUBLE: //
-                    vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<double>, 4>(this, data, listDim);
+                    vtkITKExecuteDataFromFile<itk::Vector<double>, 4>(this, this->CachedImages, listDim);
                     break;
                   default:
                     vtkErrorMacro("Unexpected component type for vector voxel: " << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
@@ -584,19 +498,23 @@ void vtkITKImageSequenceReader::ExecuteDataWithInformation(vtkDataObject* output
                 }
                 break;
               case 4:
+                this->SetVoxelVectorType(VoxelVectorTypeUndefined);
                 switch (imageIO->GetComponentType())
                 {
                   case itk::ImageIOBase::IOComponentEnum::UCHAR: //
-                    vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<unsigned char, 4>, 4>(this, data, listDim);
+                    vtkITKExecuteDataFromFile<itk::Vector<unsigned char, 4>, 4>(this, this->CachedImages, listDim);
                     break;
                   case itk::ImageIOBase::IOComponentEnum::USHORT: //
-                    vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<unsigned short, 4>, 4>(this, data, listDim);
+                    vtkITKExecuteDataFromFile<itk::Vector<unsigned short, 4>, 4>(this, this->CachedImages, listDim);
+                    break;
+                  case itk::ImageIOBase::IOComponentEnum::INT: //
+                    vtkITKExecuteDataFromFile<itk::Vector<int, 4>, 4>(this, this->CachedImages, listDim);
                     break;
                   case itk::ImageIOBase::IOComponentEnum::FLOAT: //
-                    vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<float, 4>, 4>(this, data, listDim);
+                    vtkITKExecuteDataFromFile<itk::Vector<float, 4>, 4>(this, this->CachedImages, listDim);
                     break;
                   case itk::ImageIOBase::IOComponentEnum::DOUBLE: //
-                    vtkITKExecuteDataFromFile_FramesInDimension<itk::Vector<double, 4>, 4>(this, data, listDim);
+                    vtkITKExecuteDataFromFile<itk::Vector<double, 4>, 4>(this, this->CachedImages, listDim);
                     break;
                   default:
                     vtkErrorMacro("Unexpected component type for vector voxel: " << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
@@ -607,19 +525,23 @@ void vtkITKImageSequenceReader::ExecuteDataWithInformation(vtkDataObject* output
             }
             break;
           case itk::CommonEnums::IOPixel::COVARIANTVECTOR:
+            this->SetVoxelVectorType(VoxelVectorTypeSpatialCovariant);
             switch (imageIO->GetComponentType())
             {
               case itk::ImageIOBase::IOComponentEnum::UCHAR: //
-                vtkITKExecuteDataFromFile_FramesInDimension<itk::CovariantVector<unsigned char>, 4>(this, data, listDim);
+                vtkITKExecuteDataFromFile<itk::CovariantVector<unsigned char>, 4>(this, this->CachedImages, listDim);
                 break;
               case itk::ImageIOBase::IOComponentEnum::USHORT: //
-                vtkITKExecuteDataFromFile_FramesInDimension<itk::CovariantVector<unsigned short>, 4>(this, data, listDim);
+                vtkITKExecuteDataFromFile<itk::CovariantVector<unsigned short>, 4>(this, this->CachedImages, listDim);
+                break;
+              case itk::ImageIOBase::IOComponentEnum::INT: //
+                vtkITKExecuteDataFromFile<itk::CovariantVector<int>, 4>(this, this->CachedImages, listDim);
                 break;
               case itk::ImageIOBase::IOComponentEnum::FLOAT: //
-                vtkITKExecuteDataFromFile_FramesInDimension<itk::CovariantVector<float>, 4>(this, data, listDim);
+                vtkITKExecuteDataFromFile<itk::CovariantVector<float>, 4>(this, this->CachedImages, listDim);
                 break;
               case itk::ImageIOBase::IOComponentEnum::DOUBLE: //
-                vtkITKExecuteDataFromFile_FramesInDimension<itk::CovariantVector<double>, 4>(this, data, listDim);
+                vtkITKExecuteDataFromFile<itk::CovariantVector<double>, 4>(this, this->CachedImages, listDim);
                 break;
               default:
                 vtkErrorMacro("Unexpected component type for covariant vector voxel: " << imageIO->GetComponentTypeAsString(imageIO->GetComponentType()));
@@ -647,5 +569,32 @@ void vtkITKImageSequenceReader::ExecuteDataWithInformation(vtkDataObject* output
     this->SetErrorCode(vtkErrorCode::FileFormatError);
     return;
   }
-  return;
+
+  vtkImageData* loadedImage = this->GetCachedImage(this->GetCurrentFrameIndex());
+  if (loadedImage && data)
+  {
+    data->DeepCopy(loadedImage);
+  }
+}
+
+//----------------------------------------------------------------------------
+unsigned int vtkITKImageSequenceReader::GetNumberOfCachedImages()
+{
+  return this->CachedImages.size();
+}
+
+//----------------------------------------------------------------------------
+vtkImageData* vtkITKImageSequenceReader::GetCachedImage(unsigned int index)
+{
+  if (index >= this->CachedImages.size())
+  {
+    return nullptr;
+  }
+  return this->CachedImages[index];
+}
+
+//----------------------------------------------------------------------------
+void vtkITKImageSequenceReader::ClearCachedImages()
+{
+  this->CachedImages.clear();
 }

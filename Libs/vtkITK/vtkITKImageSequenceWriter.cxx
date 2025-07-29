@@ -126,6 +126,7 @@ void ITKWriteVTKImage(vtkITKImageSequenceWriter* self, vtkCollection* inputImage
       {
         inDirection[j][i] = ijkToLpsMatrix->GetElement(i, j);
       }
+      // TODO: check this - it does not make sense to add the 4th row and 4th column of the IJK to LPS to the direction matrix
       outDirection[j][i] = ijkToLpsMatrix->GetElement(i, j);
     }
   }
@@ -430,7 +431,7 @@ void vtkITKImageSequenceWriter::Write()
 
   if (inputNumberOfScalarComponents == 1)
   {
-    // take into consideration the scalar type
+    // Scalar image
     switch (inputDataType)
     {
       case VTK_DOUBLE: ITKWriteVTKImage<double>(this, inputImageCollection, this->GetFileName(), this->RasToIJKMatrix); break;
@@ -445,11 +446,12 @@ void vtkITKImageSequenceWriter::Write()
       case VTK_UNSIGNED_CHAR: ITKWriteVTKImage<unsigned char>(this, inputImageCollection, this->GetFileName(), this->RasToIJKMatrix); break;
       default: vtkErrorMacro(<< "Execute: Unknown output ScalarType"); return;
     }
-  } // scalar
+  }
   else if (inputNumberOfScalarComponents == 3)
   {
     if (this->VoxelVectorType == vtkITKImageSequenceWriter::VoxelVectorTypeColorRGB)
     {
+      // RGB image
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -479,8 +481,9 @@ void vtkITKImageSequenceWriter::Write()
         default: vtkErrorMacro(<< "Execute: Unknown output ScalarType"); return;
       }
     }
-    else if (this->VoxelVectorType == vtkITKImageSequenceWriter::VoxelVectorTypeSpatial)
+    else if (this->VoxelVectorType == vtkITKImageSequenceWriter::VoxelVectorTypeSpatialCovariant)
     {
+      // Convariant spatial vector (such as gradient field)
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -512,6 +515,7 @@ void vtkITKImageSequenceWriter::Write()
     }
     else
     {
+      // Displacement field, velocity field, or ther 3-component covariant vector image
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -541,11 +545,12 @@ void vtkITKImageSequenceWriter::Write()
         default: vtkErrorMacro(<< "Execute: Unknown output ScalarType"); return;
       }
     }
-  } // vector
+  }
   else if (inputNumberOfScalarComponents == 4)
   {
     if (this->VoxelVectorType == vtkITKImageSequenceWriter::VoxelVectorTypeColorRGBA)
     {
+      // RGBA image
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -577,6 +582,7 @@ void vtkITKImageSequenceWriter::Write()
     }
     else
     {
+      // Other 4-component vector image
       switch (inputDataType)
       {
         case VTK_DOUBLE:
@@ -606,7 +612,7 @@ void vtkITKImageSequenceWriter::Write()
         default: vtkErrorMacro(<< "Execute: Unknown output ScalarType"); return;
       }
     }
-  } // 4-vector
+  }
   else
   {
     vtkErrorMacro(<< "Can only export 1 or 3 component images, current image has " << inputNumberOfScalarComponents << " components");

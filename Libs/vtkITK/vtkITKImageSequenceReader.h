@@ -32,6 +32,16 @@ public:
   vtkTypeMacro(vtkITKImageSequenceReader, vtkMedicalImageReader2);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
+  enum
+  {
+    VoxelVectorTypeUndefined,
+    VoxelVectorTypeSpatial, // 3D displacement field (or other contravariant vector, such as position or speed)
+    VoxelVectorTypeColorRGB,
+    VoxelVectorTypeColorRGBA,
+    VoxelVectorTypeSpatialCovariant, // 3D covariant spatial vector (gradient, etc.)
+    VoxelVectorType_Last             // must be last
+  };
+
   /// Specify file name for the image file.
   vtkSetStringMacro(FileName);
   /// Get file name for the image file.
@@ -51,6 +61,10 @@ public:
   vtkSetObjectMacro(RasToIjkMatrix, vtkMatrix4x4);
   vtkGetObjectMacro(RasToIjkMatrix, vtkMatrix4x4);
 
+    /// Defines how to interpret voxel components
+  vtkSetMacro(VoxelVectorType, int);
+  vtkGetMacro(VoxelVectorType, int);
+
   /// Get the list of keys in the header.
   const std::vector<std::string> GetHeaderKeysVector();
   /// Get the map of keys in the header.
@@ -66,6 +80,10 @@ public:
 
   vtkGetMacro(SequenceAxisLabel, std::string);
   vtkGetMacro(SequenceAxisUnit, std::string);
+
+  unsigned int GetNumberOfCachedImages();
+  vtkImageData* GetCachedImage(unsigned int index);
+  void ClearCachedImages();
 
 protected:
   vtkITKImageSequenceReader();
@@ -87,6 +105,8 @@ protected:
   /// RAS to IJK matrix
   vtkMatrix4x4* RasToIjkMatrix{ nullptr };
 
+  int VoxelVectorType{ VoxelVectorTypeUndefined };
+
   /// Key/value pairs read from the header.
   std::map<std::string, std::string> HeaderKeyValueMap;
 
@@ -98,6 +118,8 @@ protected:
   std::string SequenceAxisLabel;
   // Sequence axis unit read from the header.
   std::string SequenceAxisUnit;
+
+  std::vector<vtkSmartPointer<vtkImageData>> CachedImages;
 
 private:
   vtkITKImageSequenceReader(const vtkITKImageSequenceReader&) = delete;

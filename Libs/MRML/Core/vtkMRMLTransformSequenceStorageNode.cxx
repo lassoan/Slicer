@@ -100,14 +100,11 @@ int vtkMRMLTransformSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
   const char* sequenceAxisLabel = "frame";
   const char* sequenceAxisUnit = "";
 
-  for (int frameIndex = 0; frameIndex < reader->GetNumberOfFrames(); ++frameIndex)
+  reader->Update();
+
+  for (int frameIndex = 0; frameIndex < reader->GetNumberOfCachedImages(); ++frameIndex)
   {
-    if (frameIndex > 0)
-    {
-      reader->SetCurrentFrameIndex(frameIndex);
-      reader->Update();
-    }
-    vtkImageData* frameImage = reader->GetOutput();
+    vtkImageData* frameImage = reader->GetCachedImage(frameIndex);
     if (frameImage == nullptr || frameImage->GetPointData() == nullptr || frameImage->GetPointData()->GetScalars() == nullptr)
     {
       vtkErrorMacro("vtkMRMLTransformSequenceStorageNode::ReadDataInternal: invalid image data");
@@ -122,7 +119,7 @@ int vtkMRMLTransformSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     gridTransform->SetDisplacementGridData(frameImage);
 
     // Set the transform in the transform node
-    frameTransform->SetAndObserveTransformToParent(gridTransform.GetPointer());
+    frameTransform->SetAndObserveTransformFromParent(gridTransform.GetPointer());
 
     std::ostringstream indexStr;
     indexStr << frameIndex << std::ends;
@@ -140,6 +137,128 @@ int vtkMRMLTransformSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
 }
 
 //----------------------------------------------------------------------------
+vtkOrientedGridTransform* vtkMRMLTransformSequenceStorageNode::GetReferenceGridTransform(vtkMRMLSequenceNode* seqNode)
+{
+  vtkSmartPointer<vtkOrientedGridTransform> firstGridTransform;
+
+  // Check all frames
+  int numberOfFrames = seqNode->GetNumberOfDataNodes();
+  for (int frameIndex = 0; frameIndex < numberOfFrames; frameIndex++)
+  {
+    vtkMRMLTransformNode* frameTransform = vtkMRMLTransformNode::SafeDownCast(seqNode->GetNthDataNode(frameIndex));
+    if (frameTransform == nullptr)
+    {
+      vtkDebugMacro("GetReferenceGridTransform: Only transform nodes can be written in this format.");
+      return nullptr;
+    }
+
+    // Convert transform to grid transform
+    vtkOrientedGridTransform* frameGridTransform = vtkOrientedGridTransform::SafeDownCast( //
+      frameTransform->GetTransformFromParentAs("vtkOrientedGridTransform",
+                                               false, // don't report conversion error
+                                               true   // we would like to modify the transform
+                                               ));
+    if (frameGridTransform == nullptr)
+    {
+      // If the transform is linear, it does not prevent the sequence from saving, but will require
+      // creating an identity grid transform volume for saving it into a single volumetric file.
+      // Note: we do not support the case when the first transform in the sequence is linear, because
+      // we need a reference grid transform to copy the geometry from when writing.
+      if (frameTransform->IsLinear())
+      {
+        vtkNew<vtkMatrix4x4> linearTransformMatrix;
+        frameTransform->GetMatrixTransformFromParent(linearTransformMatrix);
+        vtkNew<vtkMatrix4x4> identityMatrix;
+        if (vtkAddonMathUtilities::MatrixAreEqual(linearTransformMatrix, identityMatrix))
+        {
+          // Identity linear transform can be written as an empty grid transform
+          continue;
+        }
+      }
+      vtkDebugMacro("GetReferenceGridTransform: Only grid or identity transform can be written in this format.");
+      return nullptr;
+    }
+
+    // Get the displacement field
+    vtkImageData* frameDisplacementGrid = frameGridTransform->GetDisplacementGrid();
+    if (!frameDisplacementGrid)
+    {
+      vtkDebugMacro("GetReferenceGridTransform: Invalid grid transform: missing displacement field.");
+      return nullptr;
+    }
+
+    if (!firstGridTransform.GetPointer())
+    {
+      // This is the first grid transform. It will be used as reference.
+      firstGridTransform = frameGridTransform;
+      continue;
+    }
+
+    vtkSmartPointer<vtkMatrix4x4> firstGridDirection = firstGridTransform->GetGridDirectionMatrix();
+    vtkSmartPointer<vtkMatrix4x4> frameGridDirection = frameGridTransform->GetGridDirectionMatrix();
+    if (!firstGridDirection)
+    {
+      firstGridDirection = vtkSmartPointer<vtkMatrix4x4>::New();
+    }
+    if (!frameGridDirection)
+    {
+      frameGridDirection = vtkSmartPointer<vtkMatrix4x4>::New();
+    }
+    if (!vtkAddonMathUtilities::MatrixAreEqual(frameGridDirection, firstGridDirection))
+    {
+      vtkDebugMacro("GetReferenceGridTransform: Grid direction matrix is not the same in all frames"
+                    << " (first frame: " << vtkAddonMathUtilities::ToString(firstGridDirection) << ", frame " << frameIndex << ": "
+                    << vtkAddonMathUtilities::ToString(frameGridDirection) << ")");
+      return nullptr;
+    }
+
+    vtkImageData* firstDisplacementGrid = firstGridTransform->GetDisplacementGrid();
+
+    int firstDimensions[3]{};
+    firstDisplacementGrid->GetDimensions(firstDimensions);
+    int frameDimensions[3]{};
+    frameDisplacementGrid->GetDimensions(frameDimensions);
+    if (frameDimensions[0] != firstDimensions[0] //
+      || frameDimensions[1] != firstDimensions[1] //
+      || frameDimensions[2] != firstDimensions[2] //
+      || frameDisplacementGrid->GetScalarType() != firstDisplacementGrid->GetScalarType())
+    {
+      vtkDebugMacro("GetReferenceGridTransform: Size or scalar type mismatch (frame " << frameIndex << ")");
+      return nullptr;
+    }
+
+    double tolerance = 1e-6; // Tolerance for comparing floating-point numbers
+
+    double firstOrigin[3]{};
+    firstDisplacementGrid->GetOrigin(firstOrigin);
+    double frameOrigin[3]{};
+    frameDisplacementGrid->GetOrigin(frameOrigin);
+    if (std::abs(frameOrigin[0] - firstOrigin[0]) > tolerance //
+      || std::abs(frameOrigin[1] - firstOrigin[1]) > tolerance //
+      || std::abs(frameOrigin[2] - firstOrigin[2]) > tolerance)
+    {
+      vtkDebugMacro("GetReferenceGridTransform: Origin mismatch (frame " << frameIndex << ")");
+      return nullptr;
+    }
+
+    double firstSpacing[3]{};
+    firstDisplacementGrid->GetSpacing(firstSpacing);
+    double frameSpacing[3]{};
+    frameDisplacementGrid->GetSpacing(frameSpacing);
+    if (std::abs(frameSpacing[0] - firstSpacing[0]) > tolerance //
+      || std::abs(frameSpacing[1] - firstSpacing[1]) > tolerance //
+      || std::abs(frameSpacing[2] - firstSpacing[2]) > tolerance)
+    {
+      vtkDebugMacro("GetReferenceGridTransform: Spacing mismatch (frame " << frameIndex << ")");
+      return nullptr;
+    }
+
+  } // for all frames
+
+  return firstGridTransform;
+}
+
+//----------------------------------------------------------------------------
 bool vtkMRMLTransformSequenceStorageNode::CanWriteFromReferenceNode(vtkMRMLNode* refNode)
 {
   vtkMRMLSequenceNode* seqNode = vtkMRMLSequenceNode::SafeDownCast(refNode);
@@ -149,110 +268,9 @@ bool vtkMRMLTransformSequenceStorageNode::CanWriteFromReferenceNode(vtkMRMLNode*
     return false;
   }
 
-  // Get the first frame to determine geometry
-  vtkMRMLTransformNode* firstFrameTransform = vtkMRMLTransformNode::SafeDownCast(seqNode->GetNthDataNode(0));
-  if (firstFrameTransform == nullptr)
+  if (!this->GetReferenceGridTransform(seqNode))
   {
-    this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Only transform nodes can be written in this format."));
-    return false;
-  }
-
-  // Convert first transform to grid transform to get geometry
-  vtkOrientedGridTransform* firstGridTransform = vtkOrientedGridTransform::SafeDownCast( //
-    firstFrameTransform->GetTransformToParentAs("vtkOrientedGridTransform",
-                                                false, // don't report conversion error
-                                                true   // we would like to modify the transform
-                                                ));
-  if (firstGridTransform == nullptr)
-  {
-    this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Only grid transforms can be written in this format."));
-    return false;
-  }
-
-  // Get the displacement field from the grid transform
-  vtkImageData* firstDisplacementField = firstGridTransform->GetDisplacementGrid();
-  if (firstDisplacementField == nullptr)
-  {
-    this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Invalid grid transform: missing displacement field."));
-    return false;
-  }
-
-  // Get geometry from first frame
-  vtkMatrix4x4* firstGridDirection = firstGridTransform->GetGridDirectionMatrix();
-  int firstDimensions[3] = { 0 };
-  firstDisplacementField->GetDimensions(firstDimensions);
-  int firstScalarType = firstDisplacementField->GetScalarType();
-  unsigned int numberOfNonIdentityGridTransforms = 0;
-
-  // Check all frames
-  int numberOfFrames = seqNode->GetNumberOfDataNodes();
-  for (int frameIndex = 1; frameIndex < numberOfFrames; frameIndex++)
-  {
-    vtkMRMLTransformNode* frameTransform = vtkMRMLTransformNode::SafeDownCast(seqNode->GetNthDataNode(frameIndex));
-    if (frameTransform == nullptr)
-    {
-      this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Only transform nodes can be written in this format."));
-      return false;
-    }
-
-    // Convert transform to grid transform
-    vtkOrientedGridTransform* frameGridTransform = vtkOrientedGridTransform::SafeDownCast( //
-      frameTransform->GetTransformToParentAs("vtkOrientedGridTransform",
-                                             false, // don't report conversion error
-                                             true   // we would like to modify the transform
-                                             ));
-    if (frameGridTransform == nullptr)
-    {
-      // If the transform is linear, it does not prevent the sequence from saving, but will require
-      // creating an identity grid transform volume for saving it into a single volumetric file.
-      // Note: we do not support the case when the first transform in the sequence is linear, because
-      // we need a reference grid transform to copy the geometry from when writing.
-      if (frameTransform->IsA("vtkMRMLLinearTransformNode"))
-      {
-        continue;
-      }
-      this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Only grid transforms can be written in this format."));
-      return false;
-    }
-
-    // Get the displacement field
-    vtkImageData* frameDisplacementField = frameGridTransform->GetDisplacementGrid();
-    if (frameDisplacementField == nullptr)
-    {
-      this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Invalid grid transform: missing displacement field."));
-      return false;
-    }
-    else
-    {
-      numberOfNonIdentityGridTransforms++;
-    }
-
-    // Check geometry matches first frame
-    vtkMatrix4x4* frameGridDirection = frameGridTransform->GetGridDirectionMatrix();
-    if (frameGridDirection != nullptr && firstGridDirection != nullptr && !vtkAddonMathUtilities::MatrixAreEqual(frameGridDirection, firstGridDirection))
-    {
-      vtkDebugMacro("vtkMRMLTransformSequenceStorageNode::CanWriteFromReferenceNode: Grid direction matrix is not the same in all frames"
-                    << " (first frame: " << vtkAddonMathUtilities::ToString(firstGridDirection) << ", frame " << frameIndex << ": "
-                    << vtkAddonMathUtilities::ToString(frameGridDirection) << ")");
-      this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Geometry of all transforms in the sequence must be the same."));
-      return false;
-    }
-
-    int frameDimensions[3] = { 0 };
-    frameDisplacementField->GetDimensions(frameDimensions);
-    if (frameDimensions[0] != firstDimensions[0] || frameDimensions[1] != firstDimensions[1] || frameDimensions[2] != firstDimensions[2]
-        || frameDisplacementField->GetScalarType() != firstScalarType)
-    {
-      vtkDebugMacro("vtkMRMLTransformSequenceStorageNode::CanWriteFromReferenceNode: Size or scalar type mismatch (frame " << frameIndex << ")");
-      this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Size and scalar type of all transforms in the sequence must be the same."));
-      return false;
-    }
-  } // for all frames
-
-  // Sanity check to confirm that some of the transforms in the sequence contain non-identity grid transforms
-  if (numberOfNonIdentityGridTransforms == 0)
-  {
-    this->GetUserMessages()->AddMessage(vtkCommand::WarningEvent, std::string("Sequence only contains linear transforms."));
+    this->GetUserMessages()->AddMessage(vtkCommand::WarningEvent, std::string("Sequence cannot be saved with this storage node, it does not contain grid transforms."));
     return false;
   }
 
@@ -282,22 +300,9 @@ int vtkMRMLTransformSequenceStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
   writer->SetFileName(fullName.c_str());
   writer->SetUseCompression(this->GetUseCompression());
 
-  // Get the first frame to determine geometry
-  vtkMRMLTransformNode* firstFrameTransform = vtkMRMLTransformNode::SafeDownCast(seqNode->GetNthDataNode(0));
-  if (firstFrameTransform == nullptr)
-  {
-    this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Only transform nodes can be written in this format."));
-    return 0;
-  }
-
-  // Convert first transform to grid transform to get geometry
-  vtkNew<vtkOrientedGridTransform> firstGridTransform;
-  vtkOrientedGridTransform* gridTransform = vtkOrientedGridTransform::SafeDownCast( //
-    firstFrameTransform->GetTransformToParentAs("vtkOrientedGridTransform",         //
-                                                false,                              // don't report conversion error
-                                                true                                // we would like to modify the transform
-                                                ));
-  if (gridTransform == nullptr)
+  // Convert transform to grid transform
+  vtkOrientedGridTransform* gridTransform = this->GetReferenceGridTransform(seqNode);
+  if (!gridTransform)
   {
     this->GetUserMessages()->AddMessage(vtkCommand::ErrorEvent, std::string("Only grid transforms can be written in this format."));
     return 0;
@@ -350,7 +355,7 @@ int vtkMRMLTransformSequenceStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
 
     // Convert transform to grid transform
     vtkOrientedGridTransform* frameGridTransform = vtkOrientedGridTransform::SafeDownCast( //
-      frameTransform->GetTransformToParentAs("vtkOrientedGridTransform", false, true));
+      frameTransform->GetTransformFromParentAs("vtkOrientedGridTransform", false, true));
     if (frameGridTransform == nullptr)
     {
       if (frameIndex == 0)
@@ -360,9 +365,7 @@ int vtkMRMLTransformSequenceStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
       }
 
       // Generate an identity displacement field to use as a placeholder for the linear transform
-      std::ostringstream warningMessage;
-      warningMessage << "Frame " << frameIndex << " contains linear transform. Generating identity displacement field placeholder.";
-      this->GetUserMessages()->AddMessage(vtkCommand::WarningEvent, warningMessage.str());
+      vtkWarningMacro("Frame " << frameIndex << " contains linear transform. Generating identity displacement field placeholder.");
       vtkNew<vtkImageData> identityDisplacementField;
       identityDisplacementField->CopyStructure(firstDisplacementField);
       identityDisplacementField->AllocateScalars(firstDisplacementField->GetScalarType(), firstDisplacementField->GetNumberOfScalarComponents());

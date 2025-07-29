@@ -31,6 +31,9 @@
 
 #include <string>
 
+class vtkMRMLSequenceNode;
+class vtkOrientedGridTransform;
+
 class VTK_MRML_EXPORT vtkMRMLTransformSequenceStorageNode : public vtkMRMLStorageNode
 {
 public:
@@ -88,6 +91,10 @@ protected:
 
   /// Initialize all the supported write file types
   void InitializeSupportedWriteFileTypes() override;
+
+  /// Get an oriented grid transform that is used as a common reference geometry.
+  /// Returns nullptr if not all transforms are grid transforms or identity.
+  vtkOrientedGridTransform* GetReferenceGridTransform(vtkMRMLSequenceNode* seqNode);
 };
 
 #endif
