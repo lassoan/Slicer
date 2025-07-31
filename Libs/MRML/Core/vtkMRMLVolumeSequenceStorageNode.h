@@ -41,16 +41,20 @@ public:
   /// Get node XML tag name (like Storage, Model)
   const char* GetNodeTagName() override { return "VolumeSequenceStorage"; };
 
-  /// Convert voxel vector type enum from VTKITK type to MRML type
-  int ConvertVoxelVectorTypeVTKITKToMRML(int vtkitkType);
-  /// Convert voxel vector type enum from MRML type to VTKITK type
-  int ConvertVoxelVectorTypeMRMLToVTKITK(int mrmlType);
+  /// Get node type to be displayed to the user.
+  /// It is translated to the application language.
+  std::string GetTypeDisplayName() override { return vtkMRMLTr("vtkMRMLVolumeSequenceStorageNode", "Volume Sequence Storage"); };
 
   /// Return true if the node can be read in.
   bool CanReadInReferenceNode(vtkMRMLNode* refNode) override;
 
   /// Return true if the node can be written by using the writer.
   bool CanWriteFromReferenceNode(vtkMRMLNode* refNode) override;
+
+  /// Convert voxel vector type enum from VTKITK type to MRML type
+  int ConvertVoxelVectorTypeVTKITKToMRML(int vtkitkType);
+  /// Convert voxel vector type enum from MRML type to VTKITK type
+  int ConvertVoxelVectorTypeMRMLToVTKITK(int mrmlType);
 
   /// Write the data. Returns 1 on success, 0 otherwise.
   ///
