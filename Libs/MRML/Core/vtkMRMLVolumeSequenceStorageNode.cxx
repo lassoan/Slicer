@@ -62,6 +62,8 @@ vtkMRMLVolumeSequenceStorageNode::~vtkMRMLVolumeSequenceStorageNode() = default;
 //----------------------------------------------------------------------------
 int vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeMRMLToVTKITK(int mrmlType)
 {
+  this->TypeDisplayName = vtkMRMLTr("vtkMRMLVolumeSequenceStorageNode", "Volume Sequence Storage");
+
   switch (mrmlType)
   {
     case vtkMRMLVolumeNode::VoxelVectorTypeUndefined: return vtkITKImageSequenceWriter::VoxelVectorTypeUndefined;
