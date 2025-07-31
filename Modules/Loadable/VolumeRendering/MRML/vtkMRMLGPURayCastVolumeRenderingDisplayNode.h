@@ -51,11 +51,7 @@ public:
   // Get node XML tag name (like Volume, Model)
   const char* GetNodeTagName() override { return "GPURayCastVolumeRendering"; }
 
-  /// Get node type to be displayed to the user.
-  /// It is translated to the application language.
-  std::string GetTypeDisplayName() override { return vtkMRMLTr("vtkMRMLGPURayCastVolumeRenderingDisplayNode", "GPU Ray Cast Volume Rendering"); };
-
-protected:
+  protected:
   vtkMRMLGPURayCastVolumeRenderingDisplayNode();
   ~vtkMRMLGPURayCastVolumeRenderingDisplayNode() override;
   vtkMRMLGPURayCastVolumeRenderingDisplayNode(const vtkMRMLGPURayCastVolumeRenderingDisplayNode&);
