@@ -62,7 +62,6 @@ vtkITKArchetypeImageSeriesReader::vtkITKArchetypeImageSeriesReader()
   this->UseOrientationFromFile = 1;
   this->RasToIjkMatrix = nullptr;
   this->MeasurementFrameMatrix = vtkMatrix4x4::New();
-  this->MeasurementFrameMatrix->Identity();
   this->SetDesiredCoordinateOrientationToAxial();
   this->UseNativeCoordinateOrientation = 0;
   this->FileNameSliceOffset = 0;
@@ -119,15 +118,15 @@ vtkITKArchetypeImageSeriesReader::~vtkITKArchetypeImageSeriesReader()
     delete[] this->Archetype;
     this->Archetype = nullptr;
   }
-  if (RasToIjkMatrix)
+  if (this->RasToIjkMatrix)
   {
     this->RasToIjkMatrix->Delete();
     this->RasToIjkMatrix = nullptr;
   }
-  if (MeasurementFrameMatrix)
+  if (this->MeasurementFrameMatrix)
   {
-    MeasurementFrameMatrix->Delete();
-    MeasurementFrameMatrix = nullptr;
+    this->MeasurementFrameMatrix->Delete();
+    this->MeasurementFrameMatrix = nullptr;
   }
 }
 
@@ -142,7 +141,7 @@ vtkMatrix4x4* vtkITKArchetypeImageSeriesReader::GetRasToIjkMatrix()
 vtkMatrix4x4* vtkITKArchetypeImageSeriesReader::GetMeasurementFrameMatrix()
 {
   this->UpdateInformation();
-  return MeasurementFrameMatrix;
+  return this->MeasurementFrameMatrix;
 }
 
 //----------------------------------------------------------------------------
@@ -553,11 +552,10 @@ int vtkITKArchetypeImageSeriesReader::RequestInformation(vtkInformation* vtkNotU
 
   vtkNew<vtkMatrix4x4> IjkToLpsMatrix;
 
-  this->RasToIjkMatrix->Identity();
-  IjkToLpsMatrix->Identity();
-
   double spacing[3];
   double origin[3];
+
+  bool measurementFrameMatrixExplicitlySpecified = false;
 
   itk::ImageIOBase::Pointer imageIO = this->GetImageIO(this->Archetype);
   try
@@ -607,31 +605,11 @@ int vtkITKArchetypeImageSeriesReader::RequestInformation(vtkInformation* vtkNotU
       extent[4] = region.GetIndex()[2];
       extent[5] = region.GetIndex()[2] + region.GetSize()[2] - 1;
 
-      typedef std::vector<std::vector<double>> DoubleVectorType;
-      typedef itk::MetaDataObject<DoubleVectorType> MetaDataDoubleVectorType;
+      // Measurement frame
       const itk::MetaDataDictionary& dictionary = imageReader->GetMetaDataDictionary();
-      itk::MetaDataDictionary::ConstIterator itr = dictionary.Begin();
-      itk::MetaDataDictionary::ConstIterator end = dictionary.End();
-      while (itr != end)
+      if (vtkITKArchetypeImageSeriesReader::ReadMeasurementFrameMatrixFromMetaDataDictionary(dictionary, this->MeasurementFrameMatrix))
       {
-        itk::MetaDataObjectBase::Pointer entry = itr->second;
-        MetaDataDoubleVectorType::Pointer entryvalue1 = dynamic_cast<MetaDataDoubleVectorType*>(entry.GetPointer());
-        if (entryvalue1)
-        {
-          int pos = itr->first.find("NRRD_measurement frame");
-          if (pos != -1)
-          {
-            DoubleVectorType tagvalue = entryvalue1->GetMetaDataObjectValue();
-            for (int i = 0; i < 3; i++)
-            {
-              for (int j = 0; j < 3; j++)
-              {
-                this->MeasurementFrameMatrix->SetElement(i, j, tagvalue.at(j).at(i));
-              }
-            }
-          }
-        }
-        ++itr;
+        measurementFrameMatrixExplicitlySpecified = true;
       }
 
       imageIO = imageReader->GetImageIO();
@@ -693,18 +671,15 @@ int vtkITKArchetypeImageSeriesReader::RequestInformation(vtkInformation* vtkNotU
     return 0;
   }
   // Transform from LPS to RAS
-  vtkMatrix4x4* LpsToRasMatrix = vtkMatrix4x4::New();
+  vtkNew<vtkMatrix4x4> LpsToRasMatrix;
   LpsToRasMatrix->Identity();
   LpsToRasMatrix->SetElement(0, 0, -1);
   LpsToRasMatrix->SetElement(1, 1, -1);
 
-  vtkMatrix4x4* LPSMeasurementFrameMatrix = vtkMatrix4x4::New();
+  vtkNew<vtkMatrix4x4> LPSMeasurementFrameMatrix;
   LPSMeasurementFrameMatrix->DeepCopy(this->MeasurementFrameMatrix);
-
   vtkMatrix4x4::Multiply4x4(LpsToRasMatrix, IjkToLpsMatrix, this->RasToIjkMatrix);
   vtkMatrix4x4::Multiply4x4(LpsToRasMatrix, LPSMeasurementFrameMatrix, this->MeasurementFrameMatrix);
-  LpsToRasMatrix->Delete();
-  LPSMeasurementFrameMatrix->Delete();
 
   // If it looks like the pipeline did not provide the spacing and
   // origin, modify the spacing and origin with the defaults
@@ -987,7 +962,15 @@ int vtkITKArchetypeImageSeriesReader::RequestInformation(vtkInformation* vtkNotU
   }
   else if (imageIO->GetPixelType() == itk::IOPixelEnum::VECTOR)
   {
-    this->VoxelVectorType = vtkITKImageWriter::VoxelVectorTypeSpatial;
+    if (measurementFrameMatrixExplicitlySpecified)
+    {
+      this->VoxelVectorType = vtkITKImageWriter::VoxelVectorTypeSpatial;
+    }
+    else
+    {
+      // If measurement frame was not explicitly specified, then we cannot be sure the vector is spatial
+      this->VoxelVectorType = vtkITKImageWriter::VoxelVectorTypeUndefined;
+    }
   }
   else if (imageIO->GetPixelType() == itk::IOPixelEnum::COVARIANTVECTOR)
   {
@@ -1669,4 +1652,29 @@ int vtkITKArchetypeImageSeriesReader::AssembleVolumeContainingArchetype()
   }
 
   return this->FileNames.size();
+}
+
+//----------------------------------------------------------------------------
+bool vtkITKArchetypeImageSeriesReader::ReadMeasurementFrameMatrixFromMetaDataDictionary(const itk::MetaDataDictionary& dictionary, vtkMatrix4x4* measurementFrameMatrix)
+{
+  measurementFrameMatrix->Identity();
+  std::string measurementFrameKey = "NRRD_measurement frame";
+  std::vector<std::vector<double>> measurementFrameValue(3);
+  for (unsigned int i = 0; i < 3; i++)
+  {
+    measurementFrameValue[i].resize(3);
+  }
+  if (!itk::ExposeMetaData<std::vector<std::vector<double>>>(dictionary, measurementFrameKey, measurementFrameValue))
+  {
+    // not found
+    return false;
+  }
+  for (int i = 0; i < 3; i++)
+  {
+    for (int j = 0; j < 3; j++)
+    {
+      measurementFrameMatrix->SetElement(i, j, measurementFrameValue.at(j).at(i));
+    }
+  }
+  return true;
 }

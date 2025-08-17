@@ -24,6 +24,7 @@
 #include "vtkMatrix4x4.h"
 
 #include "vtkITK.h"
+#include "vtkITKImageWriter.h"
 
 class VTK_ITK_EXPORT vtkITKImageSequenceReader : public vtkMedicalImageReader2
 {
@@ -31,16 +32,6 @@ public:
   static vtkITKImageSequenceReader* New();
   vtkTypeMacro(vtkITKImageSequenceReader, vtkMedicalImageReader2);
   void PrintSelf(ostream& os, vtkIndent indent) override;
-
-  enum
-  {
-    VoxelVectorTypeUndefined,
-    VoxelVectorTypeSpatial, // 3D displacement field (or other contravariant vector, such as position or speed)
-    VoxelVectorTypeColorRGB,
-    VoxelVectorTypeColorRGBA,
-    VoxelVectorTypeSpatialCovariant, // 3D covariant spatial vector (gradient, etc.)
-    VoxelVectorType_Last             // must be last
-  };
 
   /// Specify file name for the image file.
   vtkSetStringMacro(FileName);
@@ -105,7 +96,7 @@ protected:
   /// RAS to IJK matrix
   vtkMatrix4x4* RasToIjkMatrix{ nullptr };
 
-  int VoxelVectorType{ VoxelVectorTypeUndefined };
+  int VoxelVectorType{ vtkITKImageWriter::VoxelVectorTypeUndefined };
 
   /// Key/value pairs read from the header.
   std::map<std::string, std::string> HeaderKeyValueMap;

@@ -97,9 +97,6 @@ int vtkMRMLTransformSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     return 0;
   }
 
-  const char* sequenceAxisLabel = "frame";
-  const char* sequenceAxisUnit = "";
-
   reader->Update();
 
   for (int frameIndex = 0; frameIndex < reader->GetNumberOfCachedImages(); ++frameIndex)
@@ -129,6 +126,10 @@ int vtkMRMLTransformSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     frameTransform->SetName(nameStr.str().c_str());
     seqNode->SetDataNodeAtValue(frameTransform.GetPointer(), indexStr.str().c_str());
   }
+
+  // Read axis label and unit
+  seqNode->SetIndexName(reader->GetSequenceAxisLabel().empty() ? "frame" : reader->GetSequenceAxisLabel());
+  seqNode->SetIndexUnit(reader->GetSequenceAxisUnit().empty() ? "" : reader->GetSequenceAxisUnit());
 
   vtkDebugMacro(<< " vtkMRMLTransformSequenceStorageNode::ReadDataInternal: sequence successfully read. ");
 
@@ -339,8 +340,13 @@ int vtkMRMLTransformSequenceStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
   }
   writer->SetRasToIJKMatrix(rasToIjkMatrixWithOriginAndSpacing);
 
-  writer->SetVoxelVectorType(vtkITKImageSequenceWriter::VoxelVectorTypeSpatial);
+  writer->SetVoxelVectorType(vtkITKImageWriter::VoxelVectorTypeSpatial);
   writer->SetIntentCode("1006"); // Set intent code indicating this is a transform (comes from Nifti heritage as a de facto standard)
+
+  // Set sequence axis label and unit
+  const unsigned int sequenceAxisIndex = 3; // The fourth NRRD axis regardless the components, because the component axis does not count as real axis
+  writer->SetAxisLabel(sequenceAxisIndex, seqNode->GetIndexName().c_str());
+  writer->SetAxisUnit(sequenceAxisIndex, seqNode->GetIndexUnit().c_str());
 
   // Process each frame
   int numberOfFrames = seqNode->GetNumberOfDataNodes();

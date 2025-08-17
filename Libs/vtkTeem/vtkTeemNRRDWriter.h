@@ -18,8 +18,14 @@ class AxisInfoMapType;
 /// \brief Writes PNG files.
 ///
 /// vtkTeemNRRDWriter writes NRRD files.
+/// It is recommended for writing DWI images.
+/// It uses the teem library directly instead of
+/// Limitation: it can only write 3D images with voxel component axis kind scalar, RGB, RGBA, list, or a manually specified kind.
+/// vtkITKImageWriter can be used instead for writing 3D image data with voxels containing scalars, RGB, RGBA, spatial vectors
+/// (displacement, speed, etc.), or generic list components.
+/// vtkITKImageSequenceWriter can be used instead for writing time sequence data (e.g., time sequence of displacement fields, RGB volumes, etc.).
 ///
-/// \sa vtkTeemNRRDReader
+/// \sa vtkTeemNRRDReader vtkITKImageWriter vtkITKImageSequenceWriter
 class VTK_Teem_EXPORT vtkTeemNRRDWriter : public vtkWriter
 {
 public:

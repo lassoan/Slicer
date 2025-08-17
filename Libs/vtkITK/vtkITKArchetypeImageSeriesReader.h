@@ -247,7 +247,7 @@ public:
   vtkMatrix4x4* GetRasToIjkMatrix();
 
   ///
-  /// Returns the Measurement frame matrix
+  /// Returns the Measurement frame matrix.
   vtkMatrix4x4* GetMeasurementFrameMatrix();
 
   /// Defines how to interpret voxel components
@@ -735,6 +735,8 @@ public:
                              int idxSliceLocation,
                              int idxImageOrientationPatient,
                              int n);
+
+  static bool ReadMeasurementFrameMatrixFromMetaDataDictionary(const itk::MetaDataDictionary& dictionary, vtkMatrix4x4* measurementFrameMatrix);
 
 protected:
   vtkITKArchetypeImageSeriesReader();

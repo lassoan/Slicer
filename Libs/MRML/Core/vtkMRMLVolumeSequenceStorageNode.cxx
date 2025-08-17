@@ -21,12 +21,12 @@
 // MRML includes
 #include "vtkMRMLI18N.h"
 #include "vtkMRMLMessageCollection.h"
-#include "vtkMRMLVolumeSequenceStorageNode.h"
-
 #include "vtkMRMLScalarVolumeNode.h"
 #include "vtkMRMLScene.h"
 #include "vtkMRMLSequenceNode.h"
 #include "vtkMRMLVectorVolumeNode.h"
+#include "vtkMRMLVolumeArchetypeStorageNode.h"
+#include "vtkMRMLVolumeSequenceStorageNode.h"
 
 // vtkAddon includes
 #include <vtkAddonMathUtilities.h>
@@ -61,34 +61,6 @@ vtkMRMLVolumeSequenceStorageNode::vtkMRMLVolumeSequenceStorageNode()
 
 //----------------------------------------------------------------------------
 vtkMRMLVolumeSequenceStorageNode::~vtkMRMLVolumeSequenceStorageNode() = default;
-
-//----------------------------------------------------------------------------
-int vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeMRMLToVTKITK(int mrmlType)
-{
-  switch (mrmlType)
-  {
-    case vtkMRMLVolumeNode::VoxelVectorTypeUndefined: return vtkITKImageSequenceWriter::VoxelVectorTypeUndefined;
-    case vtkMRMLVolumeNode::VoxelVectorTypeSpatial: return vtkITKImageSequenceWriter::VoxelVectorTypeSpatial;
-    case vtkMRMLVolumeNode::VoxelVectorTypeColorRGB: return vtkITKImageSequenceWriter::VoxelVectorTypeColorRGB;
-    case vtkMRMLVolumeNode::VoxelVectorTypeColorRGBA: return vtkITKImageSequenceWriter::VoxelVectorTypeColorRGBA;
-    case vtkMRMLVolumeNode::VoxelVectorTypeSpatialCovariant: return vtkITKImageSequenceWriter::VoxelVectorTypeSpatialCovariant;
-    default: return vtkITKImageSequenceWriter::VoxelVectorTypeUndefined;
-  }
-}
-
-//----------------------------------------------------------------------------
-int vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(int vtkitkType)
-{
-  switch (vtkitkType)
-  {
-    case vtkITKImageSequenceWriter::VoxelVectorTypeUndefined: return vtkMRMLVolumeNode::VoxelVectorTypeUndefined;
-    case vtkITKImageSequenceWriter::VoxelVectorTypeSpatial: return vtkMRMLVolumeNode::VoxelVectorTypeSpatial;
-    case vtkITKImageSequenceWriter::VoxelVectorTypeColorRGB: return vtkMRMLVolumeNode::VoxelVectorTypeColorRGB;
-    case vtkITKImageSequenceWriter::VoxelVectorTypeColorRGBA: return vtkMRMLVolumeNode::VoxelVectorTypeColorRGBA;
-    case vtkITKImageSequenceWriter::VoxelVectorTypeSpatialCovariant: return vtkMRMLVolumeNode::VoxelVectorTypeSpatialCovariant;
-    default: return vtkMRMLVolumeNode::VoxelVectorTypeUndefined;
-  }
-}
 
 //----------------------------------------------------------------------------
 bool vtkMRMLVolumeSequenceStorageNode::CanReadInReferenceNode(vtkMRMLNode* refNode)
@@ -165,7 +137,7 @@ int vtkMRMLVolumeSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     frameVolume->SetAndObserveImageData(frameImage);
     frameVolume->SetIJKToRASMatrix(reader->GetRasToIjkMatrix());
 
-    frameVolume->SetVoxelVectorType(vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(reader->GetVoxelVectorType()));
+    frameVolume->SetVoxelVectorType(vtkMRMLVolumeArchetypeStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(reader->GetVoxelVectorType()));
 
     std::ostringstream indexStr;
     indexStr << frameIndex << std::ends;
@@ -338,7 +310,7 @@ int vtkMRMLVolumeSequenceStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
   writer->SetRasToIJKMatrix(firstVolumeRasToIjk.GetPointer());
 
   // Pass on voxel type to the writer (NRRD kind of first axis)
-  writer->SetVoxelVectorType(this->ConvertVoxelVectorTypeMRMLToVTKITK(frameVolumeVoxelVectorType));
+  writer->SetVoxelVectorType(vtkMRMLVolumeArchetypeStorageNode::ConvertVoxelVectorTypeMRMLToVTKITK(frameVolumeVoxelVectorType));
 
   // Set attributes from sequence node
   std::vector<std::string> attributeNames = volSequenceNode->GetAttributeNames();
