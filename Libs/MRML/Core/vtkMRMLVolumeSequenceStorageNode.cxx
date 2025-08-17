@@ -21,12 +21,12 @@
 // MRML includes
 #include "vtkMRMLI18N.h"
 #include "vtkMRMLMessageCollection.h"
-#include "vtkMRMLVolumeSequenceStorageNode.h"
-
 #include "vtkMRMLScalarVolumeNode.h"
 #include "vtkMRMLScene.h"
 #include "vtkMRMLSequenceNode.h"
 #include "vtkMRMLVectorVolumeNode.h"
+#include "vtkMRMLVolumeArchetypeStorageNode.h"
+#include "vtkMRMLVolumeSequenceStorageNode.h"
 
 // vtkAddon includes
 #include <vtkAddonMathUtilities.h>
@@ -61,34 +61,6 @@ vtkMRMLVolumeSequenceStorageNode::vtkMRMLVolumeSequenceStorageNode()
 
 //----------------------------------------------------------------------------
 vtkMRMLVolumeSequenceStorageNode::~vtkMRMLVolumeSequenceStorageNode() = default;
-
-//----------------------------------------------------------------------------
-int vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeMRMLToVTKITK(int mrmlType)
-{
-  switch (mrmlType)
-  {
-    case vtkMRMLVolumeNode::VoxelVectorTypeUndefined: return vtkITKImageSequenceWriter::VoxelVectorTypeUndefined;
-    case vtkMRMLVolumeNode::VoxelVectorTypeSpatial: return vtkITKImageSequenceWriter::VoxelVectorTypeSpatial;
-    case vtkMRMLVolumeNode::VoxelVectorTypeColorRGB: return vtkITKImageSequenceWriter::VoxelVectorTypeColorRGB;
-    case vtkMRMLVolumeNode::VoxelVectorTypeColorRGBA: return vtkITKImageSequenceWriter::VoxelVectorTypeColorRGBA;
-    case vtkMRMLVolumeNode::VoxelVectorTypeSpatialCovariant: return vtkITKImageSequenceWriter::VoxelVectorTypeSpatialCovariant;
-    default: return vtkITKImageSequenceWriter::VoxelVectorTypeUndefined;
-  }
-}
-
-//----------------------------------------------------------------------------
-int vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(int vtkitkType)
-{
-  switch (vtkitkType)
-  {
-    case vtkITKImageSequenceWriter::VoxelVectorTypeUndefined: return vtkMRMLVolumeNode::VoxelVectorTypeUndefined;
-    case vtkITKImageSequenceWriter::VoxelVectorTypeSpatial: return vtkMRMLVolumeNode::VoxelVectorTypeSpatial;
-    case vtkITKImageSequenceWriter::VoxelVectorTypeColorRGB: return vtkMRMLVolumeNode::VoxelVectorTypeColorRGB;
-    case vtkITKImageSequenceWriter::VoxelVectorTypeColorRGBA: return vtkMRMLVolumeNode::VoxelVectorTypeColorRGBA;
-    case vtkITKImageSequenceWriter::VoxelVectorTypeSpatialCovariant: return vtkMRMLVolumeNode::VoxelVectorTypeSpatialCovariant;
-    default: return vtkMRMLVolumeNode::VoxelVectorTypeUndefined;
-  }
-}
 
 //----------------------------------------------------------------------------
 bool vtkMRMLVolumeSequenceStorageNode::CanReadInReferenceNode(vtkMRMLNode* refNode)
@@ -130,6 +102,37 @@ int vtkMRMLVolumeSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
 
   // Read all frames
   reader->Update();
+
+  // Read custom attributes
+  std::vector<std::string> indexValues;
+  typedef std::vector<std::string> KeyVector;
+  KeyVector keys = reader->GetHeaderKeysVector();
+  std::string dataNodeClassName;
+  for (KeyVector::iterator kit = keys.begin(); kit != keys.end(); ++kit)
+  {
+    if (*kit == "axis 0 index type" || *kit == "axis 3 index type")
+    {
+      volSequenceNode->SetIndexTypeFromString(reader->GetHeaderValue(kit->c_str()));
+    }
+    else if (*kit == "axis 0 index values" || *kit == "axis 3 index values")
+    {
+      std::string indexValue;
+      for (std::istringstream indexValueList(reader->GetHeaderValue(kit->c_str())); indexValueList >> indexValue;)
+      {
+        // Encode string to make sure there are no spaces in the serialized index value (space is used as separator)
+        indexValues.push_back(vtkMRMLNode::URLDecodeString(indexValue.c_str()));
+      }
+    }
+    else if (*kit == "DataNodeClassName")
+    {
+      dataNodeClassName = reader->GetHeaderValue(kit->c_str());
+    }
+    else
+    {
+      volSequenceNode->SetAttribute(kit->c_str(), reader->GetHeaderValue(kit->c_str()));
+    }
+  }
+
   for (int frameIndex = 0; frameIndex < reader->GetNumberOfCachedImages(); ++frameIndex)
   {
     vtkImageData* frameImage = reader->GetCachedImage(frameIndex);
@@ -139,15 +142,37 @@ int vtkMRMLVolumeSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
       return 0;
     }
 
-    // Create appropriate volume node based on number of components
-    vtkMRMLVolumeNode* frameVolume = nullptr;
-    if (frameImage->GetNumberOfScalarComponents() > 1)
+    // Create appropriate volume node based on hint in the file or number of components
+    vtkSmartPointer<vtkMRMLVolumeNode> frameVolume;
+    const std::string defaultDataNodeClassName;
+    if (dataNodeClassName.empty())
     {
-      frameVolume = vtkMRMLVectorVolumeNode::New();
+      if (frameImage->GetNumberOfScalarComponents() > 1)
+      {
+        dataNodeClassName = "vtkMRMLVectorVolumeNode";
+      }
+      else
+      {
+        dataNodeClassName = "vtkMRMLScalarVolumeNode";
+      }
+
+    }
+    if (this->GetScene())
+    {
+      vtkMRMLNode* newNode = this->GetScene()->CreateNodeByClass(dataNodeClassName.c_str());
+      frameVolume = vtkSmartPointer<vtkMRMLVolumeNode>::Take(vtkMRMLVolumeNode::SafeDownCast(newNode));
     }
     else
     {
-      frameVolume = vtkMRMLScalarVolumeNode::New();
+      vtkWarningMacro("vtkMRMLVolumeSequenceStorageNode::ReadDataInternal: Scene is not set.");
+    }
+    if (!frameVolume)
+    {
+      if (dataNodeClassName != "vtkMRMLScalarVolumeNode")
+      {
+        vtkErrorMacro("Requested DataNodeClass is " << dataNodeClassName << " but volume sequence will be read into vtkMRMLScalarVolumeNode.");
+      }
+      frameVolume = vtkSmartPointer<vtkMRMLScalarVolumeNode>::New();
     }
 
     // Copy origin and spacing from image data to volume node
@@ -165,31 +190,27 @@ int vtkMRMLVolumeSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     frameVolume->SetAndObserveImageData(frameImage);
     frameVolume->SetIJKToRASMatrix(reader->GetRasToIjkMatrix());
 
-    frameVolume->SetVoxelVectorType(vtkMRMLVolumeSequenceStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(reader->GetVoxelVectorType()));
+    frameVolume->SetVoxelVectorType(vtkMRMLVolumeArchetypeStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(reader->GetVoxelVectorType()));
 
     std::ostringstream indexStr;
-    indexStr << frameIndex << std::ends;
+    if (static_cast<int>(indexValues.size()) > frameIndex)
+    {
+      indexStr << indexValues[frameIndex];
+    }
+    else
+    {
+      indexStr << frameIndex;
+    }
 
     std::ostringstream nameStr;
-    nameStr << refNode->GetName() << "_" << std::setw(4) << std::setfill('0') << frameIndex << std::ends;
+    nameStr << refNode->GetName() << "_" << std::setw(4) << std::setfill('0') << frameIndex;
     frameVolume->SetName(nameStr.str().c_str());
     volSequenceNode->SetDataNodeAtValue(frameVolume, indexStr.str().c_str());
-    frameVolume->Delete();
   }
 
   // Read axis label and unit
   volSequenceNode->SetIndexName(reader->GetSequenceAxisLabel().empty() ? "frame" : reader->GetSequenceAxisLabel());
   volSequenceNode->SetIndexUnit(reader->GetSequenceAxisUnit().empty() ? "" : reader->GetSequenceAxisUnit());
-
-  // Read custom attributes
-  std::vector<std::string> indexValues;
-  typedef std::vector<std::string> KeyVector;
-  KeyVector keys = reader->GetHeaderKeysVector();
-  int frameAxis = 0;
-  for (KeyVector::iterator kit = keys.begin(); kit != keys.end(); ++kit)
-  {
-    volSequenceNode->SetAttribute(kit->c_str(), reader->GetHeaderValue(kit->c_str()));
-  }
 
   vtkDebugMacro(<< " vtkMRMLVolumeSequenceStorageNode::ReadDataInternal: sequence successfully read. ");
 
@@ -338,9 +359,10 @@ int vtkMRMLVolumeSequenceStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
   writer->SetRasToIJKMatrix(firstVolumeRasToIjk.GetPointer());
 
   // Pass on voxel type to the writer (NRRD kind of first axis)
-  writer->SetVoxelVectorType(this->ConvertVoxelVectorTypeMRMLToVTKITK(frameVolumeVoxelVectorType));
+  writer->SetVoxelVectorType(vtkMRMLVolumeArchetypeStorageNode::ConvertVoxelVectorTypeMRMLToVTKITK(frameVolumeVoxelVectorType));
 
-  // Set attributes from sequence node
+  // Pass down all MRML attributes to the file writer, including "DataNodeClassName", which is used to determine the type of the data node
+  // when reading the sequence from file
   std::vector<std::string> attributeNames = volSequenceNode->GetAttributeNames();
   for (const std::string& attributeName : attributeNames)
   {
@@ -352,8 +374,37 @@ int vtkMRMLVolumeSequenceStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
   }
   // Set sequence axis label and unit
   const unsigned int sequenceAxisIndex = 3; // The fourth NRRD axis regardless the components, because the component axis does not count as real axis
-  writer->SetAxisLabel(sequenceAxisIndex, volSequenceNode->GetIndexName().c_str());
-  writer->SetAxisUnit(sequenceAxisIndex, volSequenceNode->GetIndexUnit().c_str());
+  if (!volSequenceNode->GetIndexName().empty())
+  {
+    writer->SetAxisLabel(sequenceAxisIndex, volSequenceNode->GetIndexName().c_str());
+  }
+  if (!volSequenceNode->GetIndexUnit().empty())
+  {
+    writer->SetAxisUnit(sequenceAxisIndex, volSequenceNode->GetIndexUnit().c_str());
+  }
+  // Set index information
+  if (!volSequenceNode->GetIndexTypeAsString().empty())
+  {
+    std::stringstream ssAttributeName;
+    ssAttributeName << "axis " << sequenceAxisIndex << " index type";
+    writer->SetAttribute(ssAttributeName.str(), volSequenceNode->GetIndexTypeAsString());
+  }
+  if (numberOfFrameVolumes > 0)
+  {
+    std::stringstream ssIndexValues;
+    for (int frameIndex = 0; frameIndex < numberOfFrameVolumes; frameIndex++)
+    {
+      if (frameIndex > 0)
+      {
+        ssIndexValues << " ";
+      }
+      // Encode string to make sure there are no spaces in the serialized index value (space is used as separator)
+      ssIndexValues << vtkMRMLNode::URLEncodeString(volSequenceNode->GetNthIndexValue(frameIndex).c_str());
+    }
+    std::stringstream ssAttributeName;
+    ssAttributeName << "axis " << sequenceAxisIndex << " index values";
+    writer->SetAttribute(ssAttributeName.str(), ssIndexValues.str());
+  }
 
   // Setup writer
   for (int frameIndex = 0; frameIndex < numberOfFrameVolumes; frameIndex++)

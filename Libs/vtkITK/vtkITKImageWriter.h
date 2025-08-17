@@ -75,6 +75,11 @@ public:
   vtkSetMacro(VoxelVectorType, int);
   vtkGetMacro(VoxelVectorType, int);
 
+  /// Convert voxel vector type between RAS and LPS measurement frame
+  static void ConvertSpatialVectorVoxelsBetweenRasLps(vtkImageData* imageData);
+
+  static void WriteMeasurementFrameMatrixToMetaDataDictionary(itk::MetaDataDictionary& dictionary, vtkMatrix4x4* measurementFrameMatrix);
+
 protected:
   vtkITKImageWriter();
   ~vtkITKImageWriter() override;

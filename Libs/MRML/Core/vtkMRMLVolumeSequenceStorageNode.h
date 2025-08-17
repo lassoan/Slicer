@@ -26,14 +26,14 @@
 
 #include "vtkMRML.h"
 
-#include "vtkMRMLNRRDStorageNode.h"
+#include "vtkMRMLStorageNode.h"
 #include <string>
 
-class VTK_MRML_EXPORT vtkMRMLVolumeSequenceStorageNode : public vtkMRMLNRRDStorageNode
+class VTK_MRML_EXPORT vtkMRMLVolumeSequenceStorageNode : public vtkMRMLStorageNode
 {
 public:
   static vtkMRMLVolumeSequenceStorageNode* New();
-  vtkTypeMacro(vtkMRMLVolumeSequenceStorageNode, vtkMRMLNRRDStorageNode);
+  vtkTypeMacro(vtkMRMLVolumeSequenceStorageNode, vtkMRMLStorageNode);
 
   vtkMRMLNode* CreateNodeInstance() override;
 
@@ -41,14 +41,13 @@ public:
   /// Get node XML tag name (like Storage, Model)
   const char* GetNodeTagName() override { return "VolumeSequenceStorage"; };
 
-  int ConvertVoxelVectorTypeMRMLToVTKITK(int mrmlType);
-
   /// Get node type to be displayed to the user.
   std::string GetTypeDisplayName() override { return vtkMRMLTr("vtkMRMLVolumeSequenceStorageNode", "Volume Sequence Storage"); };
 
-  /// Return true if the node can be read in.  bool CanReadInReferenceNode(vtkMRMLNode* refNode) override;
+  /// Return true if this class can read the node.
+  bool CanReadInReferenceNode(vtkMRMLNode* refNode) override;
 
-  /// Return true if the node can be written by using the writer.
+  /// Return true if this class can write the node.
   bool CanWriteFromReferenceNode(vtkMRMLNode* refNode) override;
 
 

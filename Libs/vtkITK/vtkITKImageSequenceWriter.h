@@ -25,6 +25,7 @@
 #include "vtkMatrix4x4.h"
 
 #include "vtkITK.h"
+#include "vtkITKImageWriter.h"
 #include "itkImageIOBase.h"
 
 class vtkStringArray;
@@ -37,16 +38,6 @@ public:
   static vtkITKImageSequenceWriter* New();
   vtkTypeMacro(vtkITKImageSequenceWriter, vtkImageAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent) override;
-
-  enum
-  {
-    VoxelVectorTypeUndefined,
-    VoxelVectorTypeSpatial, // 3D displacement field (or other contravariant vector, such as position or speed)
-    VoxelVectorTypeColorRGB,
-    VoxelVectorTypeColorRGBA,
-    VoxelVectorTypeSpatialCovariant, // 3D covariant spatial vector (gradient, etc.)
-    VoxelVectorType_Last             // must be last
-  };
 
   ///
   /// Use compression if possible
@@ -71,6 +62,7 @@ public:
   void SetRasToIJKMatrix(vtkMatrix4x4* mat) { RasToIJKMatrix = mat; }
 
   /// Defines how to interpret voxel components
+  /// Enumerated values are specified in vtkITKImageWriter.
   vtkSetMacro(VoxelVectorType, int);
   vtkGetMacro(VoxelVectorType, int);
 
@@ -107,7 +99,7 @@ protected:
   vtkMatrix4x4* RasToIJKMatrix{ nullptr };
   int UseCompression{ 0 };
   char* ImageIOClassName{ nullptr };
-  int VoxelVectorType{ VoxelVectorTypeUndefined };
+  int VoxelVectorType{ vtkITKImageWriter::VoxelVectorTypeUndefined };
   char* IntentCode{ nullptr };
 
   AttributeMapType* Attributes;
