@@ -93,15 +93,12 @@ int vtkMRMLVolumeSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
   // Read first frame and check success
   vtkNew<vtkITKImageSequenceReader> reader;
   reader->SetFileName(fullName.c_str());
-  reader->Update(); // This will set NumberOfFrames
+  reader->Update(); // This will read all the frames into the cache
   if (reader->GetErrorCode() != vtkErrorCode::NoError)
   {
     vtkErrorToMessageCollectionMacro(this->GetUserMessages(), "vtkMRMLVolumeSequenceStorageNode::ReadDataInternal", "Error reading file.");
     return 0;
   }
-
-  // Read all frames
-  reader->Update();
 
   // Read custom attributes
   std::vector<std::string> indexValues;
@@ -176,7 +173,8 @@ int vtkMRMLVolumeSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     }
 
     // Copy origin and spacing from image data to volume node
-    double origin[3], spacing[3];
+    double origin[3] = { 0.0, 0.0, 0.0 };
+    double spacing[3] = { 1.0, 1.0, 1.0 };
     frameImage->GetOrigin(origin);
     frameImage->GetSpacing(spacing);
 
@@ -188,7 +186,7 @@ int vtkMRMLVolumeSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
 
     // Set up the volume node
     frameVolume->SetAndObserveImageData(frameImage);
-    frameVolume->SetIJKToRASMatrix(reader->GetRasToIjkMatrix());
+    frameVolume->SetRASToIJKMatrix(reader->GetRasToIjkMatrix());
 
     frameVolume->SetVoxelVectorType(vtkMRMLVolumeArchetypeStorageNode::ConvertVoxelVectorTypeVTKITKToMRML(reader->GetVoxelVectorType()));
 

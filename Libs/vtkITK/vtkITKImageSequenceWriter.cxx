@@ -78,34 +78,25 @@ void ITKWriteVTKImage(vtkITKImageSequenceWriter* self,
   }
   ijkToRasMatrix->Transpose();
 
-  typename InImageType::DirectionType inDirection;
-  typename InImageType::PointType inOrigin;
-  typename OutImageType::DirectionType outDirection;
-  typename OutImageType::PointType outOrigin;
-  inDirection.SetIdentity();
+  //typename InImageType::DirectionType inDirection;
+  //typename InImageType::PointType inOrigin;
+  //inDirection.SetIdentity();
 
-  double mag[4] = { 0.0, 0.0, 0.0, 1.0 };
-  int i = 0;
-  for (i = 0; i < 3; i++)
+  typename OutImageType::SpacingType outSpacing;
+  outSpacing.Fill(1.0);
+  for (int i = 0; i < Dimension - 1; i++)
   {
-    // normalize vectors
-    mag[i] = 0;
-    for (int j = 0; j < 3; j++)
+    // compute spacing
+    outSpacing[i] = 0;
+    for (int j = 0; j < Dimension - 1; j++)
     {
-      mag[i] += ijkToRasMatrix->GetElement(i, j) * ijkToRasMatrix->GetElement(i, j);
+      outSpacing[i] += ijkToRasMatrix->GetElement(i, j) * ijkToRasMatrix->GetElement(i, j);
     }
-    if (mag[i] == 0.0)
+    if (outSpacing[i] == 0.0)
     {
-      mag[i] = 1;
+      outSpacing[i] = 1;
     }
-    mag[i] = sqrt(mag[i]);
-  }
-  for (i = 0; i < 3; i++)
-  {
-    for (int j = 0; j < 3; j++)
-    {
-      ijkToRasMatrix->SetElement(i, j, ijkToRasMatrix->GetElement(i, j) / mag[i]);
-    }
+    outSpacing[i] = sqrt(outSpacing[i]);
   }
 
   // ITK image direction are in LPS space
@@ -118,26 +109,31 @@ void ITKWriteVTKImage(vtkITKImageSequenceWriter* self,
   vtkNew<vtkMatrix4x4> ijkToLpsMatrix;
   vtkMatrix4x4::Multiply4x4(ijkToRasMatrix, rasToLpsMatrix, ijkToLpsMatrix);
 
-  for (i = 0; i < Dimension; i++)
+  typename OutImageType::DirectionType outDirection;
+  typename OutImageType::PointType outOrigin;
+  outOrigin.Fill(0.0);
+  outDirection.SetIdentity();
+  for (int i = 0; i < Dimension - 1; i++)
   {
+    /*
     if (i < Dimension - 1)
     {
-      inOrigin[i] = ijkToRasMatrix->GetElement(3, i);
+      inOrigin[i] = ijkToLpsMatrix->GetElement(3, i);
     }
-    outOrigin[i] = ijkToRasMatrix->GetElement(3, i);
-    for (int j = 0; j < Dimension; j++)
+    */
+    outOrigin[i] = ijkToLpsMatrix->GetElement(3, i);
+    for (int j = 0; j < Dimension - 1; j++)
     {
+      /*
       if (i < Dimension - 1 && j < Dimension - 1)
       {
-        inDirection[j][i] = ijkToLpsMatrix->GetElement(i, j);
+        inDirection[j][i] = ijkToLpsMatrix->GetElement(i, j) / outSpacing[i];
       }
+      */
       // TODO: check this - it does not make sense to add the 4th row and 4th column of the IJK to LPS to the direction matrix
-      outDirection[j][i] = ijkToLpsMatrix->GetElement(i, j);
+      outDirection[j][i] = ijkToLpsMatrix->GetElement(i, j) / outSpacing[i];
     }
   }
-
-  inOrigin[0] *= -1;
-  inOrigin[1] *= -1;
 
   typedef typename itk::VTKImageImport<InImageType> ImageImportType;
 
@@ -167,17 +163,17 @@ void ITKWriteVTKImage(vtkITKImageSequenceWriter* self,
 
     ConnectPipelines(vtkExporter.GetPointer(), itkImporter);
 
-    itkImporter->GetOutput()->SetDirection(inDirection);
+    //itkImporter->GetOutput()->SetDirection(inDirection);
     itkImporter->GetOutput()->Update();
-    itkImporter->GetOutput()->SetOrigin(inOrigin);
-    itkImporter->GetOutput()->SetSpacing(mag);
+    //itkImporter->GetOutput()->SetOrigin(inOrigin);
+    //itkImporter->GetOutput()->SetSpacing(mag);
 
     joinImageFilter->PushBackInput(itkImporter->GetOutput());
   }
 
   // Set origin and spacing of the new dimension
-  joinImageFilter->SetOrigin(0.0);
-  joinImageFilter->SetSpacing(1.0);
+  //joinImageFilter->SetOrigin(0.0);
+  //joinImageFilter->SetSpacing(1.0);
   joinImageFilter->Update();
 
   // writer
@@ -271,7 +267,7 @@ void ITKWriteVTKImage(vtkITKImageSequenceWriter* self,
     joinImageFilter->GetOutput()->SetDirection(outDirection);
     joinImageFilter->GetOutput()->Update();
     joinImageFilter->GetOutput()->SetOrigin(outOrigin);
-    joinImageFilter->GetOutput()->SetSpacing(mag);
+    joinImageFilter->GetOutput()->SetSpacing(outSpacing);
     itkImageWriter->SetFileName(fileName);
     itkImageWriter->Update();
 

@@ -156,36 +156,29 @@ void vtkITKExecuteDataFromFile(vtkITKImageSequenceReader* self, std::vector<vtkS
   reader->Update();
   ImageType::ConstPointer image = reader->GetOutput();
 
-  // Get origin and spacing from ITK image
-  ImageType::PointType itkOrigin = image->GetOrigin();
-  ImageType::SpacingType itkSpacing = image->GetSpacing();
-  double origin[3] = { itkOrigin[0], itkOrigin[1], itkOrigin[2] };
-  double spacing[3] = { itkSpacing[0], itkSpacing[1], itkSpacing[2] };
-  // Get directions from ITK image
-  ImageType::DirectionType itkDirections = image->GetDirection();
-  double directions[3][3] = { { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0 } };
-  for (unsigned int col = 0; col < 3; col++)
+  // Get IJK to LPS matrix
+  vtkNew<vtkMatrix4x4> ijkToLpsMatrix;
+  for (int i = 0; i < 3; i++)
   {
-    for (unsigned int row = 0; row < 3; row++)
+    double spacing = image->GetSpacing()[i];
+    double origin = image->GetOrigin()[i];
+    for (unsigned int j = 0; j < 3; j++)
     {
-      double lpsRas = (row == 0 && col == 0) || (row == 1 && col == 1) ? -1.0 : 1.0;
-      directions[row][col] = itkDirections[row][col] * lpsRas;
+      ijkToLpsMatrix->SetElement(j, i, spacing * image->GetDirection()[j][i]);
     }
+    ijkToLpsMatrix->SetElement(i, 3, origin);
   }
-  // Make the pose matrix available in VTK
-  if (self->GetRasToIjkMatrix())
-  {
-    self->GetRasToIjkMatrix()->Delete();
-  }
+
+  // Transform from LPS to RAS
+  vtkNew<vtkMatrix4x4> lpsToRasMatrix;
+  lpsToRasMatrix->SetElement(0, 0, -1);
+  lpsToRasMatrix->SetElement(1, 1, -1);
+
+  vtkNew<vtkMatrix4x4> ijkToRasMatrix;
+  vtkMatrix4x4::Multiply4x4(lpsToRasMatrix, ijkToLpsMatrix, ijkToRasMatrix);
+
   vtkNew<vtkMatrix4x4> rasToIjkMatrix;
-  for (int row = 0; row < 3; row++)
-  {
-    for (int col = 0; col < 3; col++)
-    {
-      rasToIjkMatrix->SetElement(row, col, spacing[col] * directions[row][col]);
-    }
-    rasToIjkMatrix->SetElement(row, 3, origin[row]);
-  }
+  vtkMatrix4x4::Invert(ijkToRasMatrix, rasToIjkMatrix);
   self->SetRasToIjkMatrix(rasToIjkMatrix);
 
   // Extract requested frame from image

@@ -40,6 +40,7 @@
 // VTK includes
 #include <vtkErrorCode.h>
 #include <vtkImageData.h>
+#include <vtkMatrix3x3.h>
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
 #include <vtkPointData.h>
@@ -97,7 +98,37 @@ int vtkMRMLTransformSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     return 0;
   }
 
-  reader->Update();
+  // Read custom attributes
+  std::vector<std::string> indexValues;
+  typedef std::vector<std::string> KeyVector;
+  KeyVector keys = reader->GetHeaderKeysVector();
+  for (KeyVector::iterator kit = keys.begin(); kit != keys.end(); ++kit)
+  {
+    if (*kit == "axis 3 index type")
+    {
+      seqNode->SetIndexTypeFromString(reader->GetHeaderValue(kit->c_str()));
+    }
+    else if (*kit == "axis 3 index values")
+    {
+      std::string indexValue;
+      for (std::istringstream indexValueList(reader->GetHeaderValue(kit->c_str())); indexValueList >> indexValue;)
+      {
+        // Encode string to make sure there are no spaces in the serialized index value (space is used as separator)
+        indexValues.push_back(vtkMRMLNode::URLDecodeString(indexValue.c_str()));
+      }
+    }
+  }
+
+  vtkNew<vtkMatrix4x4> ijkToRas;
+  vtkMatrix4x4::Invert(reader->GetRasToIjkMatrix(), ijkToRas);
+
+  double origin[3] = { ijkToRas->GetElement(0, 3), ijkToRas->GetElement(1, 3), ijkToRas->GetElement(2, 3) };
+  double spacing[3] = { 1.0, 1.0, 1.0};
+  vtkNew<vtkMatrix3x3> directionMatrix3x3;
+  vtkAddonMathUtilities::GetOrientationMatrix(ijkToRas, directionMatrix3x3);
+  vtkAddonMathUtilities::NormalizeColumns(directionMatrix3x3, spacing);
+  vtkNew<vtkMatrix4x4> directionMatrix4x4;
+  vtkAddonMathUtilities::SetOrientationMatrix(directionMatrix3x3, directionMatrix4x4);
 
   for (int frameIndex = 0; frameIndex < reader->GetNumberOfCachedImages(); ++frameIndex)
   {
@@ -109,20 +140,31 @@ int vtkMRMLTransformSequenceStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     }
 
     // Create a grid transform node
-    vtkNew<vtkMRMLGridTransformNode> frameTransform;
+    vtkNew<vtkMRMLTransformNode> frameTransform;
     vtkNew<vtkOrientedGridTransform> gridTransform;
 
     // Set up the grid transform with the image data
+    frameImage->SetOrigin(origin);
+    frameImage->SetSpacing(spacing);
     gridTransform->SetDisplacementGridData(frameImage);
+    gridTransform->SetGridDirectionMatrix(directionMatrix4x4);
 
     // Set the transform in the transform node
     frameTransform->SetAndObserveTransformFromParent(gridTransform.GetPointer());
 
     std::ostringstream indexStr;
-    indexStr << frameIndex << std::ends;
+    if (static_cast<int>(indexValues.size()) > frameIndex)
+    {
+      indexStr << indexValues[frameIndex];
+    }
+    else
+    {
+      indexStr << frameIndex;
+    }
 
     std::ostringstream nameStr;
-    nameStr << refNode->GetName() << "_" << std::setw(4) << std::setfill('0') << frameIndex << std::ends;
+    nameStr << refNode->GetName() << "_" << std::setw(4) << std::setfill('0') << frameIndex;
+
     frameTransform->SetName(nameStr.str().c_str());
     seqNode->SetDataNodeAtValue(frameTransform.GetPointer(), indexStr.str().c_str());
   }
@@ -318,27 +360,27 @@ int vtkMRMLTransformSequenceStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
   }
 
   // Set up the writer with the geometry from the first frame
-  vtkNew<vtkMatrix4x4> rasToIjkMatrixWithOriginAndSpacing;
+  vtkNew<vtkMatrix4x4> ijkToRas;
   if (gridTransform->GetGridDirectionMatrix() != nullptr)
   {
-    rasToIjkMatrixWithOriginAndSpacing->DeepCopy(gridTransform->GetGridDirectionMatrix());
+    ijkToRas->DeepCopy(gridTransform->GetGridDirectionMatrix());
   }
-  double spacing[3];
+  double spacing[3] = { 1.0, 1.0, 1.0 };
   firstDisplacementField->GetSpacing(spacing);
+  double origin[3] = { 0.0, 0.0, 0.0 };
+  firstDisplacementField->GetOrigin(origin);
   for (int i = 0; i < 3; ++i)
   {
     for (int j = 0; j < 3; ++j)
     {
-      rasToIjkMatrixWithOriginAndSpacing->SetElement(i, j, rasToIjkMatrixWithOriginAndSpacing->GetElement(i, j) / spacing[j]);
+      ijkToRas->SetElement(i, j, ijkToRas->GetElement(i, j) * spacing[j]);
     }
+    ijkToRas->SetElement(i, 3, origin[i]);
   }
-  double origin[3];
-  firstDisplacementField->GetOrigin(origin);
-  for (int i = 0; i < 3; ++i)
-  {
-    rasToIjkMatrixWithOriginAndSpacing->SetElement(i, 3, rasToIjkMatrixWithOriginAndSpacing->GetElement(i, 3) - origin[i] / spacing[i]);
-  }
-  writer->SetRasToIJKMatrix(rasToIjkMatrixWithOriginAndSpacing);
+  vtkNew<vtkMatrix4x4> rasToIjk;
+  vtkMatrix4x4::Invert(ijkToRas, rasToIjk);
+
+  writer->SetRasToIJKMatrix(rasToIjk);
 
   writer->SetVoxelVectorType(vtkITKImageWriter::VoxelVectorTypeSpatial);
   writer->SetIntentCode("1006"); // Set intent code indicating this is a transform (comes from Nifti heritage as a de facto standard)
@@ -347,9 +389,32 @@ int vtkMRMLTransformSequenceStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
   const unsigned int sequenceAxisIndex = 3; // The fourth NRRD axis regardless the components, because the component axis does not count as real axis
   writer->SetAxisLabel(sequenceAxisIndex, seqNode->GetIndexName().c_str());
   writer->SetAxisUnit(sequenceAxisIndex, seqNode->GetIndexUnit().c_str());
+  // Set index information
+  if (!seqNode->GetIndexTypeAsString().empty())
+  {
+    std::stringstream ssAttributeName;
+    ssAttributeName << "axis " << sequenceAxisIndex << " index type";
+    writer->SetAttribute(ssAttributeName.str(), seqNode->GetIndexTypeAsString());
+  }
+  int numberOfFrames = seqNode->GetNumberOfDataNodes();
+  if (numberOfFrames > 0)
+  {
+    std::stringstream ssIndexValues;
+    for (int frameIndex = 0; frameIndex < numberOfFrames; frameIndex++)
+    {
+      if (frameIndex > 0)
+      {
+        ssIndexValues << " ";
+      }
+      // Encode string to make sure there are no spaces in the serialized index value (space is used as separator)
+      ssIndexValues << vtkMRMLNode::URLEncodeString(seqNode->GetNthIndexValue(frameIndex).c_str());
+    }
+    std::stringstream ssAttributeName;
+    ssAttributeName << "axis " << sequenceAxisIndex << " index values";
+    writer->SetAttribute(ssAttributeName.str(), ssIndexValues.str());
+  }
 
   // Process each frame
-  int numberOfFrames = seqNode->GetNumberOfDataNodes();
   for (int frameIndex = 0; frameIndex < numberOfFrames; frameIndex++)
   {
     vtkMRMLTransformNode* frameTransform = vtkMRMLTransformNode::SafeDownCast(seqNode->GetNthDataNode(frameIndex));
