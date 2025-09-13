@@ -41,7 +41,10 @@
 vtkStandardNewMacro(vtkITKImageSequenceReader);
 
 //----------------------------------------------------------------------------
-vtkITKImageSequenceReader::vtkITKImageSequenceReader() {}
+vtkITKImageSequenceReader::vtkITKImageSequenceReader()
+{
+  this->SetNumberOfInputPorts(0);
+}
 
 //----------------------------------------------------------------------------
 vtkITKImageSequenceReader::~vtkITKImageSequenceReader()
@@ -51,6 +54,8 @@ vtkITKImageSequenceReader::~vtkITKImageSequenceReader()
     this->RasToIjkMatrix->Delete();
     this->RasToIjkMatrix = nullptr;
   }
+  delete[] this->FileName;
+  this->FileName = nullptr;
 }
 
 //----------------------------------------------------------------------------
