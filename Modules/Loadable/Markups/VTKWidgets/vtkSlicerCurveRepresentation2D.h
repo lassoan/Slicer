@@ -34,6 +34,7 @@
 #include "vtkSlicerMarkupsWidgetRepresentation2D.h"
 
 class vtkCellLocator;
+class vtkCleanPolyData;
 class vtkDiscretizableColorTransferFunction;
 class vtkSampleImplicitFunctionFilter;
 class vtkTubeFilter;
@@ -85,6 +86,7 @@ protected:
   vtkSmartPointer<vtkTubeFilter> TubeFilter;
 
   vtkSmartPointer<vtkTransformPolyDataFilter> WorldToSliceTransformer;
+  vtkSmartPointer<vtkCleanPolyData> SliceCurvePointsCleaner;
   vtkSmartPointer<vtkCellLocator> SliceCurvePointLocator;
 
   vtkSmartPointer<vtkSampleImplicitFunctionFilter> SliceDistance;
@@ -92,6 +94,15 @@ protected:
 private:
   vtkSlicerCurveRepresentation2D(const vtkSlicerCurveRepresentation2D&) = delete;
   void operator=(const vtkSlicerCurveRepresentation2D&) = delete;
+  // Arrow glyphs along curve (2D)
+  vtkSmartPointer<vtkPolyData> ArrowGlyphPointsPoly;
+  vtkSmartPointer<vtkPolyData> ArrowGlyphSource2D;
+  vtkSmartPointer<vtkGlyph2D> Glypher;
+  vtkSmartPointer<vtkPolyDataMapper2D> ArrowGlyphMapper2D;
+  vtkSmartPointer<vtkActor2D> ArrowGlyphActor2D;
+  vtkSmartPointer<vtkPoints> ArrowPoints;
+  vtkSmartPointer<vtkDoubleArray> ArrowGlyphNormals;
+  vtkSmartPointer<vtkDoubleArray> ArrowGlyphDistanceFromSlice;
 };
 
 #endif

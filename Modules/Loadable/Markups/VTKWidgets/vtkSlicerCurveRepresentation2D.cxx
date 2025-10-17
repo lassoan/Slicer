@@ -19,7 +19,9 @@
 // VTK includes
 #include "vtkCellLocator.h"
 #include "vtkCleanPolyData.h"
+#include "vtkConeSource.h"
 #include "vtkDiscretizableColorTransferFunction.h"
+#include "vtkGlyph2D.h"
 #include "vtkLine.h"
 #include "vtkMath.h"
 #include "vtkObjectFactory.h"
@@ -40,6 +42,7 @@
 
 // MRML includes
 #include "vtkMRMLInteractionEventData.h"
+#include "vtkMRMLMarkupsCurveNode.h"
 #include "vtkMRMLMarkupsDisplayNode.h"
 #include "vtkMRMLProceduralColorNode.h"
 
@@ -59,10 +62,10 @@ vtkSlicerCurveRepresentation2D::vtkSlicerCurveRepresentation2D()
 
   this->TubeFilter = vtkSmartPointer<vtkTubeFilter>::New();
 
-  vtkNew<vtkCleanPolyData> cleaner;
-  cleaner->PointMergingOn();
-  cleaner->SetInputConnection(this->WorldToSliceTransformer->GetOutputPort());
-  this->TubeFilter->SetInputConnection(cleaner->GetOutputPort());
+  this->SliceCurvePointsCleaner = vtkSmartPointer<vtkCleanPolyData>::New();
+  this->SliceCurvePointsCleaner->PointMergingOn();
+  this->SliceCurvePointsCleaner->SetInputConnection(this->WorldToSliceTransformer->GetOutputPort());
+  this->TubeFilter->SetInputConnection(this->SliceCurvePointsCleaner->GetOutputPort());
   this->TubeFilter->SetNumberOfSides(6);
   this->TubeFilter->SetRadius(1);
 
@@ -78,6 +81,43 @@ vtkSlicerCurveRepresentation2D::vtkSlicerCurveRepresentation2D()
   this->LineActor->SetProperty(this->GetControlPointsPipeline(Unselected)->Property);
 
   this->SliceCurvePointLocator = vtkSmartPointer<vtkCellLocator>::New();
+
+  // Arrow glyphs initialization (2D)
+  this->ArrowGlyphPointsPoly = vtkSmartPointer<vtkPolyData>::New();
+
+  vtkNew<vtkConeSource> coneSource;
+  coneSource->SetRadius(10);
+  coneSource->SetHeight(30);
+
+  // Member variables for arrow points and normals
+  this->ArrowPoints = vtkSmartPointer<vtkPoints>::New();
+  this->ArrowGlyphPointsPoly->SetPoints(this->ArrowPoints);
+
+  this->ArrowGlyphNormals = vtkSmartPointer<vtkDoubleArray>::New();
+  this->ArrowGlyphNormals->SetNumberOfComponents(3);
+  this->ArrowGlyphNormals->SetName("Normals");
+  this->ArrowGlyphPointsPoly->GetPointData()->AddArray(this->ArrowGlyphNormals);
+  this->ArrowGlyphPointsPoly->GetPointData()->SetActiveNormals("Normals");
+
+  this->ArrowGlyphDistanceFromSlice = vtkSmartPointer<vtkDoubleArray>::New();
+  this->ArrowGlyphDistanceFromSlice->SetName(this->SliceDistance->GetScalarArrayName());
+  this->ArrowGlyphPointsPoly->GetPointData()->AddArray(this->ArrowGlyphDistanceFromSlice);
+  this->ArrowGlyphPointsPoly->GetPointData()->SetActiveScalars(this->SliceDistance->GetScalarArrayName());
+
+  this->Glypher = vtkSmartPointer<vtkGlyph2D>::New();
+  this->Glypher->SetInputData(this->ArrowGlyphPointsPoly);
+  this->Glypher->SetScaleFactor(1.0);
+  this->Glypher->SetSourceConnection(coneSource->GetOutputPort());
+  this->Glypher->SetVectorModeToUseNormal();
+  this->Glypher->OrientOn();
+  this->Glypher->ScalingOff();
+
+  this->ArrowGlyphMapper2D = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+  this->ArrowGlyphMapper2D->SetInputConnection(this->Glypher->GetOutputPort());
+
+  this->ArrowGlyphActor2D = vtkSmartPointer<vtkActor2D>::New();
+  this->ArrowGlyphActor2D->SetMapper(this->ArrowGlyphMapper2D);
+  this->ArrowGlyphActor2D->GetProperty()->SetColor(1, 0, 0); // Red arrows by default
 }
 
 //----------------------------------------------------------------------
@@ -90,13 +130,77 @@ void vtkSlicerCurveRepresentation2D::UpdateFromMRMLInternal(vtkMRMLNode* caller,
 
   this->NeedToRenderOn();
 
-  vtkMRMLMarkupsNode* markupsNode = this->GetMarkupsNode();
+  vtkMRMLMarkupsCurveNode* markupsNode = vtkMRMLMarkupsCurveNode::SafeDownCast(this->GetMarkupsNode());
   if (!markupsNode || !this->IsDisplayable())
   {
     this->VisibilityOff();
     return;
   }
   this->VisibilityOn();
+  // Arrow glyphs update (2D)
+  //vtkPolyData* curveWorld = markupsNode->GetCurveWorld();
+  this->SliceCurvePointsCleaner->Update();
+  vtkPolyData* curvePoly = this->SliceCurvePointsCleaner->GetOutput();
+  if (curvePoly && curvePoly->GetNumberOfPoints() > 1)
+  {
+    vtkPoints* arrowPoints = this->ArrowPoints;
+    vtkDoubleArray* arrowNormals = this->ArrowGlyphNormals;
+
+    vtkDataArray* sourceDistanceArray = curvePoly->GetPointData()->GetArray(this->SliceDistance->GetScalarArrayName());
+
+    arrowPoints->Reset();
+    arrowNormals->Reset();
+    this->ArrowGlyphDistanceFromSlice->Reset();
+
+    double interval = 10.0; // mm, can be made configurable
+    double curveLength = markupsNode->GetCurveLengthWorld();
+    int numArrows = static_cast<int>(curveLength / interval);
+    if (numArrows < 1) numArrows = 1;
+    for (int i = 0; i < numArrows; ++i)
+    {
+      double t = (double)i / (numArrows - 1);
+      vtkIdType ptId = static_cast<vtkIdType>(t * (curvePoly->GetNumberOfPoints() - 1));
+      double ptSlice[3];
+      curvePoly->GetPoint(ptId, ptSlice);
+      double tangent[3] = { 1, 0, 0 };
+      if (ptId + 1 < curvePoly->GetNumberOfPoints())
+      {
+        double nextPtSlice[3];
+        curvePoly->GetPoint(ptId + 1, nextPtSlice);
+        tangent[0] = nextPtSlice[0] - ptSlice[0];
+        tangent[1] = nextPtSlice[1] - ptSlice[1];
+      }
+      if (ptId - 1 >= 0)
+      {
+        double prevPtSlice[3];
+        curvePoly->GetPoint(ptId - 1, prevPtSlice);
+        tangent[0] = ptSlice[0] - prevPtSlice[0];
+        tangent[1] = ptSlice[1] - prevPtSlice[1];
+      }
+      else
+      {
+        continue;
+      }
+      double norm = sqrt(tangent[0]*tangent[0] + tangent[1]*tangent[1]);
+      if (norm > 0)
+      {
+        tangent[0] /= norm;
+        tangent[1] /= norm;
+      }
+      arrowPoints->InsertNextPoint(ptSlice);
+      arrowNormals->InsertNextTuple(tangent);
+      double distanceFromSlice = sourceDistanceArray->GetTuple1(ptId);
+      this->ArrowGlyphDistanceFromSlice->InsertNextValue(distanceFromSlice);
+    }
+    arrowPoints->Modified();
+    this->Glypher->Update();
+    this->ArrowGlyphActor2D->SetVisibility(true);
+    this->ArrowGlyphActor2D->GetProperty()->SetColor(this->LineActor->GetProperty()->GetColor());
+  }
+  else
+  {
+    this->ArrowGlyphActor2D->SetVisibility(false);
+  }
 
   // Line display
 
@@ -127,6 +231,7 @@ void vtkSlicerCurveRepresentation2D::UpdateFromMRMLInternal(vtkMRMLNode* caller,
   {
     // Update the line color mapping from the colorNode stored in the markups display node
     this->LineMapper->SetLookupTable(this->MarkupsDisplayNode->GetLineColorNode()->GetColorTransferFunction());
+    this->ArrowGlyphMapper2D->SetLookupTable(this->MarkupsDisplayNode->GetLineColorNode()->GetColorTransferFunction());
   }
   else
   {
@@ -134,6 +239,7 @@ void vtkSlicerCurveRepresentation2D::UpdateFromMRMLInternal(vtkMRMLNode* caller,
     // (color, opacity, distance fading, saturation and hue offset) stored in the display node
     this->UpdateDistanceColorMap(this->LineColorMap, this->LineActor->GetProperty()->GetColor());
     this->LineMapper->SetLookupTable(this->LineColorMap);
+    this->ArrowGlyphMapper2D->SetLookupTable(this->LineColorMap);
   }
 
   bool allNodesHidden = true;
@@ -228,6 +334,7 @@ void vtkSlicerCurveRepresentation2D::CanInteract(vtkMRMLInteractionEventData* in
 void vtkSlicerCurveRepresentation2D::GetActors(vtkPropCollection* pc)
 {
   this->LineActor->GetActors(pc);
+  this->ArrowGlyphActor2D->GetActors(pc);
   this->Superclass::GetActors(pc);
 }
 
@@ -235,6 +342,7 @@ void vtkSlicerCurveRepresentation2D::GetActors(vtkPropCollection* pc)
 void vtkSlicerCurveRepresentation2D::ReleaseGraphicsResources(vtkWindow* win)
 {
   this->LineActor->ReleaseGraphicsResources(win);
+  this->ArrowGlyphActor2D->ReleaseGraphicsResources(win);
   this->Superclass::ReleaseGraphicsResources(win);
 }
 
@@ -245,6 +353,10 @@ int vtkSlicerCurveRepresentation2D::RenderOverlay(vtkViewport* viewport)
   if (this->LineActor->GetVisibility())
   {
     count += this->LineActor->RenderOverlay(viewport);
+  }
+  if (this->ArrowGlyphActor2D->GetVisibility())
+  {
+    count += this->ArrowGlyphActor2D->RenderOverlay(viewport);
   }
   count += this->Superclass::RenderOverlay(viewport);
 
@@ -259,6 +371,10 @@ int vtkSlicerCurveRepresentation2D::RenderOpaqueGeometry(vtkViewport* viewport)
   {
     count += this->LineActor->RenderOpaqueGeometry(viewport);
   }
+  if (this->ArrowGlyphActor2D->GetVisibility())
+  {
+    count += this->ArrowGlyphActor2D->RenderOpaqueGeometry(viewport);
+  }
   count += this->Superclass::RenderOpaqueGeometry(viewport);
 
   return count;
@@ -271,6 +387,10 @@ int vtkSlicerCurveRepresentation2D::RenderTranslucentPolygonalGeometry(vtkViewpo
   if (this->LineActor->GetVisibility())
   {
     count += this->LineActor->RenderTranslucentPolygonalGeometry(viewport);
+  }
+  if (this->ArrowGlyphActor2D->GetVisibility())
+  {
+    count += this->ArrowGlyphActor2D->RenderTranslucentPolygonalGeometry(viewport);
   }
   count += this->Superclass::RenderTranslucentPolygonalGeometry(viewport);
 
@@ -285,6 +405,10 @@ vtkTypeBool vtkSlicerCurveRepresentation2D::HasTranslucentPolygonalGeometry()
     return true;
   }
   if (this->LineActor->GetVisibility() && this->LineActor->HasTranslucentPolygonalGeometry())
+  {
+    return true;
+  }
+  if (this->ArrowGlyphActor2D->GetVisibility() && this->ArrowGlyphActor2D->HasTranslucentPolygonalGeometry())
   {
     return true;
   }
@@ -310,6 +434,14 @@ void vtkSlicerCurveRepresentation2D::PrintSelf(ostream& os, vtkIndent indent)
   else
   {
     os << indent << "Line Actor: (none)\n";
+  }
+  if (this->ArrowGlyphActor2D)
+  {
+    os << indent << "Arrow Glyph Actor 2D Visibility: " << this->ArrowGlyphActor2D->GetVisibility() << "\n";
+  }
+  else
+  {
+    os << indent << "Arrow Glyph Actor 2D: (none)\n";
   }
 }
 

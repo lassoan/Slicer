@@ -20,6 +20,7 @@
 #include "vtkActor2D.h"
 #include "vtkCellLocator.h"
 #include "vtkCleanPolyData.h"
+#include "vtkConeSource.h"
 #include "vtkGlyph3DMapper.h"
 #include "vtkLookupTable.h"
 #include "vtkPolyDataMapper.h"
@@ -34,6 +35,7 @@
 // MRML includes
 #include "vtkMRMLColorNode.h"
 #include "vtkMRMLInteractionEventData.h"
+#include "vtkMRMLMarkupsCurveNode.h"
 #include "vtkMRMLMarkupsDisplayNode.h"
 
 vtkStandardNewMacro(vtkSlicerCurveRepresentation3D);
@@ -65,6 +67,29 @@ vtkSlicerCurveRepresentation3D::vtkSlicerCurveRepresentation3D()
 
   this->CurvePointLocator = vtkSmartPointer<vtkCellLocator>::New();
 
+  // Arrow glyphs initialization
+  this->ConeSource = vtkSmartPointer<vtkConeSource>::New();
+  this->ArrowGlyphPointsPoly = vtkSmartPointer<vtkPolyData>::New();
+  this->ArrowGlyphPoints = vtkSmartPointer<vtkPoints>::New();
+  this->ArrowGlyphNormals = vtkSmartPointer<vtkDoubleArray>::New();
+  this->ArrowGlyphMapper = vtkSmartPointer<vtkGlyph3DMapper>::New();
+  this->ArrowGlyphMapper->SetSourceConnection(this->ConeSource->GetOutputPort());
+  this->ArrowGlyphMapper->SetInputData(this->ArrowGlyphPointsPoly);
+  this->ArrowGlyphMapper->SetOrientationArray("Normals");
+  this->ArrowGlyphMapper->SetOrientationModeToDirection();
+  this->ArrowGlyphMapper->SetScaleFactor(1.0); // Will be set dynamically
+  this->ArrowGlyphActor = vtkSmartPointer<vtkActor>::New();
+  this->ArrowGlyphActor->SetMapper(this->ArrowGlyphMapper);
+
+  this->ArrowGlyphPointsPoly->SetPoints(this->ArrowGlyphPoints);
+
+  this->ArrowGlyphNormals->SetNumberOfComponents(3);
+  this->ArrowGlyphNormals->SetName("Normals");
+
+  this->ArrowGlyphPointsPoly->GetPointData()->AddArray(this->ArrowGlyphNormals);
+  this->ArrowGlyphPointsPoly->GetPointData()->SetActiveNormals("Normals");
+
+
   this->HideTextActorIfAllPointsOccluded = true;
 }
 
@@ -78,7 +103,7 @@ void vtkSlicerCurveRepresentation3D::UpdateFromMRMLInternal(vtkMRMLNode* caller,
 
   this->NeedToRenderOn();
 
-  vtkMRMLMarkupsNode* markupsNode = this->GetMarkupsNode();
+  vtkMRMLMarkupsCurveNode* markupsNode = vtkMRMLMarkupsCurveNode::SafeDownCast(this->GetMarkupsNode());
   if (!markupsNode || !this->IsDisplayable())
   {
     this->VisibilityOff();
@@ -86,6 +111,50 @@ void vtkSlicerCurveRepresentation3D::UpdateFromMRMLInternal(vtkMRMLNode* caller,
   }
 
   this->VisibilityOn();
+  // Arrow glyphs update
+  vtkPolyData* curveWorld = markupsNode->GetCurveWorld();
+  if (curveWorld && curveWorld->GetNumberOfPoints() > 1)
+  {
+  this->ArrowGlyphPoints->Reset();
+    this->ArrowGlyphNormals->SetNumberOfTuples(0); // clear previous
+
+    // Sample at regular intervals
+    double interval = 10.0; // mm, can be made configurable
+    double curveLength = markupsNode->GetCurveLengthWorld();
+    int numArrows = static_cast<int>(curveLength / interval);
+    if (numArrows < 1) numArrows = 1;
+    for (int i = 0; i < numArrows; ++i)
+    {
+      double t = (double)i / (numArrows - 1);
+      vtkIdType ptId = static_cast<vtkIdType>(t * (curveWorld->GetNumberOfPoints() - 1));
+      double pt[3], nextPt[3];
+      curveWorld->GetPoint(ptId, pt);
+      if (ptId < curveWorld->GetNumberOfPoints() - 1)
+      {
+        curveWorld->GetPoint(ptId + 1, nextPt);
+      }
+      else
+      {
+        curveWorld->GetPoint(ptId - 1, nextPt);
+      }
+      double tangent[3] = { nextPt[0] - pt[0], nextPt[1] - pt[1], nextPt[2] - pt[2] };
+      double norm = sqrt(tangent[0]*tangent[0] + tangent[1]*tangent[1] + tangent[2]*tangent[2]);
+      if (norm > 0)
+      {
+        tangent[0] /= norm; tangent[1] /= norm; tangent[2] /= norm;
+      }
+  this->ArrowGlyphPoints->InsertNextPoint(pt);
+      this->ArrowGlyphNormals->InsertNextTuple(tangent);
+    }
+
+    this->ArrowGlyphMapper->SetScaleFactor(this->ControlPointSize * 1.5); // scale arrows
+    this->ArrowGlyphActor->SetVisibility(true);
+    this->ArrowGlyphActor->SetProperty(this->LineActor->GetProperty());
+  }
+  else
+  {
+    this->ArrowGlyphActor->SetVisibility(false);
+  }
 
   // Properties label display
   // Display if there is at least one control point (even if preview)
@@ -252,6 +321,7 @@ void vtkSlicerCurveRepresentation3D::GetActors(vtkPropCollection* pc)
   this->Superclass::GetActors(pc);
   this->LineActor->GetActors(pc);
   this->LineOccludedActor->GetActors(pc);
+  this->ArrowGlyphActor->GetActors(pc);
 }
 
 //----------------------------------------------------------------------
@@ -260,6 +330,7 @@ void vtkSlicerCurveRepresentation3D::ReleaseGraphicsResources(vtkWindow* win)
   this->Superclass::ReleaseGraphicsResources(win);
   this->LineActor->ReleaseGraphicsResources(win);
   this->LineOccludedActor->ReleaseGraphicsResources(win);
+  this->ArrowGlyphActor->ReleaseGraphicsResources(win);
 }
 
 //----------------------------------------------------------------------
@@ -274,6 +345,10 @@ int vtkSlicerCurveRepresentation3D::RenderOverlay(vtkViewport* viewport)
   if (this->LineOccludedActor->GetVisibility())
   {
     count += this->LineOccludedActor->RenderOverlay(viewport);
+  }
+  if (this->ArrowGlyphActor->GetVisibility())
+  {
+    count += this->ArrowGlyphActor->RenderOverlay(viewport);
   }
   return count;
 }
@@ -294,6 +369,10 @@ int vtkSlicerCurveRepresentation3D::RenderOpaqueGeometry(vtkViewport* viewport)
   if (this->LineOccludedActor->GetVisibility())
   {
     count += this->LineOccludedActor->RenderOpaqueGeometry(viewport);
+  }
+  if (this->ArrowGlyphActor->GetVisibility())
+  {
+    count += this->ArrowGlyphActor->RenderOpaqueGeometry(viewport);
   }
   return count;
 }
@@ -317,6 +396,13 @@ int vtkSlicerCurveRepresentation3D::RenderTranslucentPolygonalGeometry(vtkViewpo
     this->LineOccludedActor->SetPropertyKeys(this->GetPropertyKeys());
     count += this->LineOccludedActor->RenderTranslucentPolygonalGeometry(viewport);
   }
+  if (this->ArrowGlyphActor->GetVisibility())
+  {
+    // The internal actor needs to share property keys.
+    // This ensures the mapper state is consistent and allows depth peeling to work as expected.
+    this->ArrowGlyphActor->SetPropertyKeys(this->GetPropertyKeys());
+    count += this->ArrowGlyphActor->RenderTranslucentPolygonalGeometry(viewport);
+  }
   return count;
 }
 
@@ -335,6 +421,10 @@ vtkTypeBool vtkSlicerCurveRepresentation3D::HasTranslucentPolygonalGeometry()
   {
     return true;
   }
+  if (this->ArrowGlyphActor->GetVisibility() && this->ArrowGlyphActor->HasTranslucentPolygonalGeometry())
+  {
+    return true;
+  }
   return false;
 }
 
@@ -342,7 +432,7 @@ vtkTypeBool vtkSlicerCurveRepresentation3D::HasTranslucentPolygonalGeometry()
 double* vtkSlicerCurveRepresentation3D::GetBounds()
 {
   vtkBoundingBox boundingBox;
-  const std::vector<vtkProp*> actors({ this->LineActor });
+  const std::vector<vtkProp*> actors({ this->LineActor, this->ArrowGlyphActor });
   this->AddActorsBounds(boundingBox, actors, Superclass::GetBounds());
   boundingBox.GetBounds(this->Bounds);
   return this->Bounds;
@@ -380,6 +470,14 @@ void vtkSlicerCurveRepresentation3D::PrintSelf(ostream& os, vtkIndent indent)
   else
   {
     os << indent << "Line Visibility: (none)\n";
+  }
+  if (this->ArrowGlyphActor)
+  {
+    os << indent << "Arrow Glyph Actor Visibility: " << this->ArrowGlyphActor->GetVisibility() << "\n";
+  }
+  else
+  {
+    os << indent << "Arrow Glyph Actor: (none)\n";
   }
 }
 

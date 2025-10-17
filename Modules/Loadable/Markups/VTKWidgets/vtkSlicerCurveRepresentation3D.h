@@ -36,6 +36,7 @@
 
 class vtkActor;
 class vtkCellLocator;
+class vtkConeSource;
 class vtkPolyDataMapper;
 class vtkPolyData;
 class vtkTubeFilter;
@@ -94,6 +95,13 @@ protected:
 private:
   vtkSlicerCurveRepresentation3D(const vtkSlicerCurveRepresentation3D&) = delete;
   void operator=(const vtkSlicerCurveRepresentation3D&) = delete;
+  // Arrow glyphs along curve
+  vtkSmartPointer<vtkPolyData> ArrowGlyphPointsPoly;
+  vtkSmartPointer<vtkPoints> ArrowGlyphPoints;
+  vtkSmartPointer<vtkDoubleArray> ArrowGlyphNormals;
+  vtkSmartPointer<vtkConeSource> ConeSource;
+  vtkSmartPointer<vtkGlyph3DMapper> ArrowGlyphMapper;
+  vtkSmartPointer<vtkActor> ArrowGlyphActor;
 };
 
 #endif
