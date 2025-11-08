@@ -87,14 +87,14 @@ vtkBinaryLabelmapToClosedSurfaceConversionRule::vtkBinaryLabelmapToClosedSurface
     "0 = surface normals are not computed (slightly faster but produces less smooth surface display, not used if vtkSurfaceNets3D is used).");
   this->ConversionParameters->SetParameter( //
     GetConversionMethodParameterName(),
-    CONVERSION_METHOD_FLYING_EDGES,
-    "Conversion method. 0 (default) = vtkDiscreteFlyingEdges3D is used to generate closed surface."
-    "1 = vtkSurfaceNets3D (more performant than flying edges).");
+    CONVERSION_METHOD_SURFACE_NETS,
+    "Conversion method to generate closed surface. 0 = vtkDiscreteFlyingEdges3D (was the default in earlier software versions)."
+    " 1 (default) = vtkSurfaceNets3D (fast).");
   this->ConversionParameters->SetParameter( //
     GetSurfaceNetInternalSmoothingParameterName(),
-    "0",
-    "SurfaceNets smoothing. 0 (default) = Smoothing done by vtkWindowedSincPolyDataFilter"
-    "1 = Smoothing done in surface nets filter.");
+    "1",
+    "Surface smoothing method. 0 = vtkWindowedSincPolyDataFilter (was the default in earlier software versions)."
+    " 1 (default) = vtkSurfaceNets3D uses its internal smoothing method (faster).");
   this->ConversionParameters->SetParameter( //
     GetJointSmoothingParameterName(),
     "0",

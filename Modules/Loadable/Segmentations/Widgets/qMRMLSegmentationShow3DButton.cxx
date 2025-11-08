@@ -89,24 +89,26 @@ void qMRMLSegmentationShow3DButtonPrivate::init()
   QMenu* surfaceSmoothingFactorMenu = new QMenu(qMRMLSegmentationShow3DButton::tr("Smoothing factor"), show3DButtonMenu);
   surfaceSmoothingFactorMenu->setObjectName("surfaceSmoothingFactorMenu");
 
-  // Add menu for experimental features
-  QMenu* experimentalMenu = new QMenu(qMRMLSegmentationShow3DButton::tr("Experimental"), show3DButtonMenu);
-  experimentalMenu->setObjectName("show3DExperimentalMenu");
+  // Add menu for advanced features
+  QMenu* advancedMenu = new QMenu(qMRMLSegmentationShow3DButton::tr("Advanced"), show3DButtonMenu);
+  advancedMenu->setObjectName("show3DAdvancedMenu");
 
   // Toggle for using surface nets instead of Flying Edges
-  this->SurfaceNetsEnableAction = new QAction(qMRMLSegmentationShow3DButton::tr("Use Surface Nets (fast)"), experimentalMenu);
+  this->SurfaceNetsEnableAction = new QAction(qMRMLSegmentationShow3DButton::tr("Fast surface generation"), advancedMenu);
   this->SurfaceNetsEnableAction->setToolTip(
-    qMRMLSegmentationShow3DButton::tr("Create closed surface using surface nets. By default, flying edges is used. Surface nets are more performant."));
+    qMRMLSegmentationShow3DButton::tr("Create closed surface using 'surface nets' method (default)."
+      " Uncheck to use slower 'flying edges' method, which was the default in earlier software versions."));
   this->SurfaceNetsEnableAction->setCheckable(true);
-  experimentalMenu->addAction(this->SurfaceNetsEnableAction);
+  advancedMenu->addAction(this->SurfaceNetsEnableAction);
   QObject::connect(this->SurfaceNetsEnableAction, SIGNAL(toggled(bool)), q, SLOT(onEnableSurfaceNetsToggled(bool)));
 
   // Toggle for using surface nets internal smoothing algorithm instead of vtkWindowedSincPolyDataFilter
-  this->SurfaceNetsSmoothingEnableAction = new QAction(qMRMLSegmentationShow3DButton::tr("Use Surface Nets Smoothing (faster)"), experimentalMenu);
+  this->SurfaceNetsSmoothingEnableAction = new QAction(qMRMLSegmentationShow3DButton::tr("Fast surface smoothing"), advancedMenu);
   this->SurfaceNetsSmoothingEnableAction->setToolTip(
-    qMRMLSegmentationShow3DButton::tr("Use surface nets internal smoothing (more performant). vtkWindowedSincPolyDataFilter is used by default."));
+    qMRMLSegmentationShow3DButton::tr("Smooth survace using 'surface nets' internal smoothing method (default)."
+      " Uncheck to use slower 'windowed sinc' method, which was the default in earlier software versions."));
   this->SurfaceNetsSmoothingEnableAction->setCheckable(true);
-  experimentalMenu->addAction(this->SurfaceNetsSmoothingEnableAction);
+  advancedMenu->addAction(this->SurfaceNetsSmoothingEnableAction);
   QObject::connect(this->SurfaceNetsSmoothingEnableAction, SIGNAL(toggled(bool)), q, SLOT(onEnableSurfaceNetsSmoothingToggled(bool)));
 
   this->SurfaceSmoothingSlider = new ctkSliderWidget(surfaceSmoothingFactorMenu);
@@ -123,7 +125,7 @@ void qMRMLSegmentationShow3DButtonPrivate::init()
   surfaceSmoothingFactorMenu->addAction(smoothingFactorAction);
 
   show3DButtonMenu->addMenu(surfaceSmoothingFactorMenu);
-  show3DButtonMenu->addMenu(experimentalMenu);
+  show3DButtonMenu->addMenu(advancedMenu);
   q->setMenu(show3DButtonMenu);
   q->setEnabled(false);
 }
@@ -269,7 +271,7 @@ void qMRMLSegmentationShow3DButton::updateWidgetFromMRML()
   d->SurfaceSmoothingSlider->blockSignals(wasBlocked);
 
   // Conversion method
-  std::string conversionMethod = vtkBinaryLabelmapToClosedSurfaceConversionRule::CONVERSION_METHOD_FLYING_EDGES;
+  std::string conversionMethod = vtkBinaryLabelmapToClosedSurfaceConversionRule::CONVERSION_METHOD_SURFACE_NETS;
   if (d->SegmentationNode && d->SegmentationNode->GetSegmentation())
   {
     conversionMethod = d->SegmentationNode->GetSegmentation()->GetConversionParameter(vtkBinaryLabelmapToClosedSurfaceConversionRule::GetConversionMethodParameterName());
