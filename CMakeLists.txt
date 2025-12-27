@@ -998,6 +998,9 @@ endif()
 # This means that moving forward most of the find_package calls listed below
 # will be removed.
 
+set(OpenJPEG_DIR "D:/D/OPENJPEG-install/lib/cmake/openjpeg-2.5")
+find_package(OpenJPEG REQUIRED)
+
 #-----------------------------------------------------------------------------
 # VTK
 #-----------------------------------------------------------------------------
