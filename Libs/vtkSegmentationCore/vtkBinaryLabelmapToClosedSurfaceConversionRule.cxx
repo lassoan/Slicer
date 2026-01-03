@@ -312,8 +312,14 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
 
   // Get conversion parameters
   double decimationFactor = this->ConversionParameters->GetValueAsDouble(GetDecimationFactorParameterName());
+  double relaxationFactor = 0.5;
+  if (decimationFactor < 0)
+  {
+    relaxationFactor = -decimationFactor;
+    decimationFactor = 0.0;
+  }
   double smoothingFactor = this->ConversionParameters->GetValueAsDouble(GetSmoothingFactorParameterName());
-  int computeSurfaceNormals = this->ConversionParameters->GetValueAsInt(GetComputeSurfaceNormalsParameterName());
+  bool computeSurfaceNormals = (this->ConversionParameters->GetValueAsInt(GetComputeSurfaceNormalsParameterName()) > 0);
 
   // Conversion method
   std::string conversionMethod = this->ConversionParameters->GetValue(GetConversionMethodParameterName());
@@ -321,7 +327,8 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
   // SurfaceNetInternalSmoothing
   // 0 = use vtkWindowedSincPolyDataFilter
   // 1 = use surface nets internal smoothing filter (vtkConstrainedSmoothingFilter)
-  int surfaceNetsSmoothing = this->ConversionParameters->GetValueAsInt(GetSurfaceNetInternalSmoothingParameterName());
+  bool surfaceNetsSmoothing = ((conversionMethod == vtkBinaryLabelmapToClosedSurfaceConversionRule::CONVERSION_METHOD_SURFACE_NETS)
+    && (this->ConversionParameters->GetValueAsInt(GetSurfaceNetInternalSmoothingParameterName()) == 1));
 
   vtkSmartPointer<vtkPolyData> processingResult = vtkSmartPointer<vtkPolyData>::New();
 
@@ -358,19 +365,35 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
     // Disable internal smoothing, and use vtkWindowedSincPolyDataFilter for smoothing as needed
     surfaceNets->SmoothingOff();
 
-    if (surfaceNetsSmoothing == 1)
+    if (surfaceNetsSmoothing)
     {
       surfaceNets->SmoothingOn();
 
       // This formula maps (input) -> (iteration count)
+      //
+      //   Smoothing factor                               Iterations
+      //
+      //     0.0  (almost no smoothing, blocky)      ->   0
+      //     0.25 (less smoothing, somewhat blocky)  ->   6
+      //     0.5  (default smoothing)                ->   20
+      //     0.75 (more smoothing, somewhat shrinks) ->   32
+      //     1.0  (very strong smoothing, shrinks)   ->   60
+
       // 0.0  ->  0   (almost no smoothing)
       // 0.2  ->  2   (little smoothing)
       // 0.5  ->  8   (average smoothing)
       // 0.7  ->  14  (strong smoothing)
       // 1.0  ->  24  (very strong smoothing)
-      double fCount = 15.0 * smoothingFactor * smoothingFactor + 9.0 * smoothingFactor;
-      int iterationCount = floor(fCount);
-      surfaceNets->SetNumberOfIterations(iterationCount);
+      //double fCount = 15.0 * smoothingFactor * smoothingFactor + 9.0 * smoothingFactor;
+
+      int numberOfIterations = floor(40 * smoothingFactor * smoothingFactor + 20 * smoothingFactor);
+      if (numberOfIterations < 1)
+      {
+        numberOfIterations = 1;
+      }
+
+      surfaceNets->SetNumberOfIterations(numberOfIterations);
+      surfaceNets->SetRelaxationFactor(relaxationFactor);
     }
 
     int valueIndex = 0;
@@ -424,7 +447,7 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
     processingResult = decimator->GetOutput();
   }
 
-  if (smoothingFactor > 0 && surfaceNetsSmoothing == 0)
+  if (smoothingFactor > 0 && !surfaceNetsSmoothing)
   {
     vtkSmartPointer<vtkWindowedSincPolyDataFilter> smoother = vtkSmartPointer<vtkWindowedSincPolyDataFilter>::New();
     smoother->SetInputData(processingResult);
@@ -464,7 +487,7 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
   transformPolyDataFilter->SetInputData(processingResult);
   transformPolyDataFilter->SetTransform(labelmapGeometryTransform);
 
-  if (computeSurfaceNormals > 0 && conversionMethod == vtkBinaryLabelmapToClosedSurfaceConversionRule::CONVERSION_METHOD_FLYING_EDGES)
+  if (computeSurfaceNormals)
   {
     vtkSmartPointer<vtkPolyDataNormals> polyDataNormals = vtkSmartPointer<vtkPolyDataNormals>::New();
     polyDataNormals->SetInputConnection(transformPolyDataFilter->GetOutputPort());
