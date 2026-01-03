@@ -21,6 +21,8 @@ If you are _sure_ that Slicer is not working as intended then [submit a bug repo
 
 In your question/report provide all the information that is described in the [bug reporting template](https://github.com/Slicer/Slicer/blob/main/.github/ISSUE_TEMPLATE/bug_report.md#summary).
 
+If you post to any public forum, be sure not to include any [Protected Health Information (PHI)](http://en.wikipedia.org/wiki/Protected_health_information) or any other data that would get you or anyone else in trouble. However, posting example data can be very important to people who are interested in helping you solve your problems. If you can replicate your question using data from the Sample Data module that's the first choice.
+
 :::{tip}
 
 Don't be anonymous: real people trying hard to solve real problems are more likely to get valuable help. If you tell about yourself and your project then it may get more attention and the problem may be resolved sooner.
