@@ -508,7 +508,8 @@ void qMRMLSegmentEditorWidget::updateEffectList()
   {
     // Connect callbacks that allow effects to send requests to the editor widget without
     // introducing a direct dependency of the effect on the widget.
-    effect->setCallbackSlots(this, SLOT(setActiveEffectByName(QString)), SLOT(updateVolume(void*, bool&)), SLOT(saveStateForUndo()));
+    effect->setCallbackSlots(this, SLOT(setActiveEffectByName(QString)), SLOT(updateVolume(void*, bool&)),
+                 SLOT(saveStateForUndo()), SLOT(undo()));
     effect->setSegmentEditorLogic(d->Logic);
 
     // Set parameter set node (if it has been already set in the widget)

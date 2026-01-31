@@ -72,6 +72,7 @@ signals:
   void selectEffectSignal(QString);
   void updateVolumeSignal(void*, bool&);
   void saveStateForUndoSignal();
+  void undoSignal();
 
 public:
   /// Segment editor parameter set node

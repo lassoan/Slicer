@@ -223,12 +223,14 @@ bool qSlicerSegmentEditorAbstractEffect::active()
 }
 
 //-----------------------------------------------------------------------------
-void qSlicerSegmentEditorAbstractEffect::setCallbackSlots(QObject* receiver, const char* selectEffectSlot, const char* updateVolumeSlot, const char* saveStateForUndoSlot)
+void qSlicerSegmentEditorAbstractEffect::setCallbackSlots(QObject* receiver, const char* selectEffectSlot, const char* updateVolumeSlot,
+                                                          const char* saveStateForUndoSlot, const char* undoSlot)
 {
   Q_D(qSlicerSegmentEditorAbstractEffect);
   QObject::connect(d, SIGNAL(selectEffectSignal(QString)), receiver, selectEffectSlot);
   QObject::connect(d, SIGNAL(updateVolumeSignal(void*, bool&)), receiver, updateVolumeSlot);
   QObject::connect(d, SIGNAL(saveStateForUndoSignal()), receiver, saveStateForUndoSlot);
+  QObject::connect(d, SIGNAL(undoSignal()), receiver, undoSlot);
 }
 
 //-----------------------------------------------------------------------------
@@ -1024,6 +1026,13 @@ void qSlicerSegmentEditorAbstractEffect::saveStateForUndo()
 {
   Q_D(qSlicerSegmentEditorAbstractEffect);
   emit d->saveStateForUndoSignal();
+}
+
+//-----------------------------------------------------------------------------
+void qSlicerSegmentEditorAbstractEffect::undo()
+{
+  Q_D(qSlicerSegmentEditorAbstractEffect);
+  emit d->undoSignal();
 }
 
 //-----------------------------------------------------------------------------
