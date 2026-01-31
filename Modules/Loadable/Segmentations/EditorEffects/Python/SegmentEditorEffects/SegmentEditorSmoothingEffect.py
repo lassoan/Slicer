@@ -18,6 +18,9 @@ class SegmentEditorSmoothingEffect(AbstractScriptedSegmentEditorPaintEffect):
         scriptedEffect.name = "Smoothing"  # no tr (don't translate it because modules find effects by name)
         scriptedEffect.title = _("Smoothing")
         AbstractScriptedSegmentEditorPaintEffect.__init__(self, scriptedEffect)
+        self.cancelRequested = False
+        self.cancelButton = None
+        self.progressBar = None
 
     def clone(self):
         import qSlicerSegmentationsEditorEffectsPythonQt as effects
@@ -100,12 +103,26 @@ If segments overlap, segment higher in the segments table will have priority. <b
         self.applyButton.setToolTip(_("Apply smoothing to selected segment"))
         self.scriptedEffect.addOptionsWidget(self.applyButton)
 
+        self.cancelButton = qt.QPushButton(_("Cancel"))
+        self.cancelButton.objectName = self.__class__.__name__ + "Cancel"
+        self.cancelButton.setToolTip(_("Interrupt smoothing operation"))
+        self.cancelButton.setVisible(False)
+        self.cancelButton.setEnabled(False)
+        self.scriptedEffect.addOptionsWidget(self.cancelButton)
+
+        self.progressBar = qt.QProgressBar()
+        self.progressBar.setVisible(False)
+        self.progressBar.setRange(0, 100)
+        self.progressBar.setTextVisible(True)
+        self.scriptedEffect.addOptionsWidget(self.progressBar)
+
         self.methodSelectorComboBox.connect("currentIndexChanged(int)", self.updateMRMLFromGUI)
         self.kernelSizeMMSpinBox.connect("valueChanged(double)", self.updateMRMLFromGUI)
         self.gaussianStandardDeviationMMSpinBox.connect("valueChanged(double)", self.updateMRMLFromGUI)
         self.jointTaubinSmoothingFactorSlider.connect("valueChanged(double)", self.updateMRMLFromGUI)
         self.applyToAllVisibleSegmentsCheckBox.connect("stateChanged(int)", self.updateMRMLFromGUI)
         self.applyButton.connect("clicked()", self.onApply)
+        self.cancelButton.connect("clicked()", self.onCancel)
 
         # Customize smoothing brush
         self.scriptedEffect.setColorSmudgeCheckboxVisible(False)
@@ -197,6 +214,60 @@ If segments overlap, segment higher in the segments table will have priority. <b
         slicer.util.showStatusMessage(msg, timeoutMsec)
         slicer.app.processEvents()
 
+    def onCancel(self):
+        self.cancelRequested = True
+        self.showStatusMessage(_("Canceling..."), 0)
+
+    def setProcessingState(self, processing):
+        if self.cancelButton:
+            self.cancelButton.setVisible(processing)
+            self.cancelButton.setEnabled(processing)
+        if self.applyButton:
+            self.applyButton.setEnabled(not processing)
+        if self.progressBar:
+            self.progressBar.setVisible(processing)
+            if processing:
+                self.progressBar.setValue(0)
+
+    def checkCanceled(self):
+        slicer.app.processEvents()
+        return self.cancelRequested
+
+    def addAbortObserver(self, algorithm):
+        def _abortCallback(caller, event):
+            if self.cancelRequested:
+                caller.AbortExecuteOn()
+            # Update progress bar
+            if self.progressBar and hasattr(caller, 'GetProgress'):
+                progress = int(caller.GetProgress() * 100)
+                self.progressBar.setValue(progress)
+            slicer.app.processEvents()
+
+        algorithm.AbortExecuteOff()
+        algorithm.AddObserver(vtk.vtkCommand.ProgressEvent, _abortCallback)
+
+    def addAbortObserverWithSegmentProgress(self, algorithm, segmentIndex, totalSegments):
+        """Add abort observer that accounts for multi-segment progress."""
+        def _abortCallback(caller, event):
+            if self.cancelRequested:
+                caller.AbortExecuteOn()
+            # Update progress bar accounting for multiple segments
+            if self.progressBar and hasattr(caller, 'GetProgress'):
+                # Calculate overall progress: segment progress within total segments
+                algorithmProgress = caller.GetProgress()
+                overallProgress = (segmentIndex + algorithmProgress) / totalSegments
+                self.progressBar.setValue(int(overallProgress * 100))
+            slicer.app.processEvents()
+
+        algorithm.AbortExecuteOff()
+        algorithm.AddObserver(vtk.vtkCommand.ProgressEvent, _abortCallback)
+
+    def undoAllChanges(self):
+        try:
+            self.scriptedEffect.undo()
+        except Exception:
+            logging.error("Failed to undo after cancel")
+
     def onApply(self, maskImage=None, maskExtent=None):
         """maskImage: contains nonzero where smoothing will be applied"""
         smoothingMethod = self.scriptedEffect.parameter("SmoothingMethod")
@@ -211,10 +282,17 @@ If segments overlap, segment higher in the segments table will have priority. <b
         try:
             # This can be a long operation - indicate it to the user
             qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
+            self.cancelRequested = False
+            self.setProcessingState(True)
+            slicer.app.processEvents()  # Force UI update to show progress bar and cancel button
             self.scriptedEffect.saveStateForUndo()
 
+            segmentsModified = 0
+            canceled = False
+
             if smoothingMethod == JOINT_TAUBIN:
-                self.smoothMultipleSegments(maskImage, maskExtent)
+                segmentsModified = self.smoothMultipleSegments(maskImage, maskExtent)
+                canceled = self.cancelRequested
             elif applyToAllVisibleSegments:
                 # Smooth all visible segments
                 inputSegmentIDs = vtk.vtkStringArray()
@@ -225,17 +303,34 @@ If segments overlap, segment higher in the segments table will have priority. <b
                 if inputSegmentIDs.GetNumberOfValues() == 0:
                     logging.info("Smoothing operation skipped: there are no visible segments.")
                     return
-                for index in range(inputSegmentIDs.GetNumberOfValues()):
+                totalSegments = inputSegmentIDs.GetNumberOfValues()
+                for index in range(totalSegments):
                     segmentID = inputSegmentIDs.GetValue(index)
                     self.showStatusMessage(_("Smoothing {segmentName}...").format(
                         segmentName=segmentationNode.GetSegmentation().GetSegment(segmentID).GetName()))
+                    # Update progress for overall multi-segment operation
+                    if self.progressBar:
+                        baseProgress = int((index / totalSegments) * 100)
+                        self.progressBar.setValue(baseProgress)
                     self.scriptedEffect.parameterSetNode().SetSelectedSegmentID(segmentID)
-                    self.smoothSelectedSegment(maskImage, maskExtent)
+                    if not self.smoothSelectedSegment(maskImage, maskExtent, index, totalSegments):
+                        canceled = self.cancelRequested
+                        break
+                    segmentsModified += 1
+                    if self.checkCanceled():
+                        canceled = True
+                        break
                 # restore segment selection
                 self.scriptedEffect.parameterSetNode().SetSelectedSegmentID(selectedStartSegmentID)
+                if self.progressBar:
+                    self.progressBar.setValue(100)
             else:
                 self.smoothSelectedSegment(maskImage, maskExtent)
+
+            if canceled and segmentsModified > 0:
+                self.undoAllChanges()
         finally:
+            self.setProcessingState(False)
             qt.QApplication.restoreOverrideCursor()
 
     def clipImage(self, inputImage, maskExtent, margin):
@@ -279,8 +374,10 @@ If segments overlap, segment higher in the segments table will have priority. <b
             modifierLabelmap.DeepCopy(smoothedImage)
             self.scriptedEffect.modifySelectedSegmentByLabelmap(modifierLabelmap, slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet)
 
-    def smoothSelectedSegment(self, maskImage=None, maskExtent=None):
+    def smoothSelectedSegment(self, maskImage=None, maskExtent=None, segmentIndex=0, totalSegments=1):
         try:
+            if self.checkCanceled():
+                return False
             # Get modifier labelmap
             modifierLabelmap = self.scriptedEffect.defaultModifierLabelmap()
             selectedSegmentLabelmap = self.scriptedEffect.selectedSegmentLabelmap()
@@ -313,6 +410,7 @@ If segments overlap, segment higher in the segments table will have priority. <b
                 gaussianFilter.SetInputConnection(thresh.GetOutputPort())
                 gaussianFilter.SetStandardDeviation(*standardDeviationPixel)
                 gaussianFilter.SetRadiusFactor(radiusFactor)
+                self.addAbortObserverWithSegmentProgress(gaussianFilter, segmentIndex, totalSegments)
 
                 thresh2 = vtk.vtkImageThreshold()
                 thresh2.SetInputConnection(gaussianFilter.GetOutputPort())
@@ -322,7 +420,12 @@ If segments overlap, segment higher in the segments table will have priority. <b
                 thresh2.SetOutputScalarType(selectedSegmentLabelmap.GetScalarType())
                 thresh2.Update()
 
+                if gaussianFilter.GetAbortExecute() or self.checkCanceled():
+                    return False
+
                 self.modifySelectedSegmentByLabelmap(thresh2.GetOutput(), selectedSegmentLabelmap, modifierLabelmap, maskImage, maskExtent)
+                if self.checkCanceled():
+                    return False
 
             else:
                 # size rounded to nearest odd number. If kernel size is even then image gets shifted.
@@ -359,17 +462,26 @@ If segments overlap, segment higher in the segments table will have priority. <b
                         smoothingFilter.SetCloseValue(labelValue)
 
                 smoothingFilter.SetKernelSize(kernelSizePixel[0], kernelSizePixel[1], kernelSizePixel[2])
+                self.addAbortObserverWithSegmentProgress(smoothingFilter, segmentIndex, totalSegments)
                 smoothingFilter.Update()
 
+                if smoothingFilter.GetAbortExecute() or self.checkCanceled():
+                    return False
+
                 self.modifySelectedSegmentByLabelmap(smoothingFilter.GetOutput(), selectedSegmentLabelmap, modifierLabelmap, maskImage, maskExtent)
+                if self.checkCanceled():
+                    return False
 
         except IndexError:
             logging.error("apply: Failed to apply smoothing")
+        return True
 
     def smoothMultipleSegments(self, maskImage=None, maskExtent=None):
         import vtkSegmentationCorePython as vtkSegmentationCore
 
         self.showStatusMessage(_("Joint smoothing ..."))
+        if self.checkCanceled():
+            return 0
         # Generate merged labelmap of all visible segments
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         visibleSegmentIds = vtk.vtkStringArray()
@@ -389,6 +501,8 @@ If segments overlap, segment higher in the segments table will have priority. <b
         for i in range(visibleSegmentIds.GetNumberOfValues()):
             segmentId = visibleSegmentIds.GetValue(i)
             segmentLabelValues.append([segmentId, i + 1])
+        if self.checkCanceled():
+            return 0
 
         # Perform smoothing in voxel space
         ici = vtk.vtkImageChangeInformation()
@@ -422,6 +536,8 @@ If segments overlap, segment higher in the segments table will have priority. <b
         smoother.SetPassBand(passBand)
         smoother.NonManifoldSmoothingOn()
         smoother.NormalizeCoordinatesOn()
+        if self.checkCanceled():
+            return 0
 
         # Extract a label
         threshold = vtk.vtkThreshold()
@@ -437,6 +553,8 @@ If segments overlap, segment higher in the segments table will have priority. <b
         polyDataToImageStencil.SetOutputSpacing(1, 1, 1)
         polyDataToImageStencil.SetOutputOrigin(0, 0, 0)
         polyDataToImageStencil.SetOutputWholeExtent(mergedImage.GetExtent())
+        if self.checkCanceled():
+            return 0
 
         # Convert stencil to image
         stencil = vtk.vtkImageStencil()
@@ -457,7 +575,15 @@ If segments overlap, segment higher in the segments table will have priority. <b
         # separated/merged automatically. This effect could leverage those options once they have been implemented.
         oldOverwriteMode = self.scriptedEffect.parameterSetNode().GetOverwriteMode()
         self.scriptedEffect.parameterSetNode().SetOverwriteMode(slicer.vtkMRMLSegmentEditorNode.OverwriteVisibleSegments)
-        for segmentId, labelValue in segmentLabelValues:
+        segmentsModified = 0
+        totalSegments = len(segmentLabelValues)
+        for idx, (segmentId, labelValue) in enumerate(segmentLabelValues):
+            if self.checkCanceled():
+                break
+            # Update progress bar for segment extraction
+            if self.progressBar:
+                progress = int((idx / totalSegments) * 100)
+                self.progressBar.setValue(progress)
             threshold.SetLowerThreshold(labelValue)
             threshold.SetUpperThreshold(labelValue)
             threshold.SetThresholdFunction(vtk.vtkThreshold.THRESHOLD_BETWEEN)
@@ -467,7 +593,13 @@ If segments overlap, segment higher in the segments table will have priority. <b
             smoothedBinaryLabelMap.SetImageToWorldMatrix(imageToWorldMatrix)
             self.scriptedEffect.modifySegmentByLabelmap(segmentationNode, segmentId, smoothedBinaryLabelMap,
                                                         slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet, False)
+            segmentsModified += 1
+            if self.checkCanceled():
+                break
+        if self.progressBar:
+            self.progressBar.setValue(100)
         self.scriptedEffect.parameterSetNode().SetOverwriteMode(oldOverwriteMode)
+        return segmentsModified
 
     def paintApply(self, viewWidget):
         # Current limitation: smoothing brush is not implemented for joint smoothing
