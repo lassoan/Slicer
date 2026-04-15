@@ -369,6 +369,20 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
     {
       surfaceNets->SmoothingOn();
 
+      // Smoothing factor is a user-friendly linear scale that we need to maps to low-pass filter parameters.
+      // Default smoothing aims for removing blocky appearance (staircase artifacts) while avoiding shrinking.
+      //
+      //   Smoothing factor                             RelaxationFactor   Iterations
+      //
+      //     0.0  (almost no smoothing, blocky)      ->   1.0               20
+      //     0.25 (less smoothing, somewhat blocky)  ->   0.1               30
+      //     0.5  (default smoothing)                ->   0.01              40
+      //     0.75 (more smoothing, somewhat shrinks) ->   0.001             50
+      //     1.0  (very strong smoothing, shrinks)   ->   0.0001            60
+      //
+
+
+
       // This formula maps (input) -> (iteration count)
       //
       //   Smoothing factor                               Iterations
@@ -386,14 +400,13 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
       // 1.0  ->  24  (very strong smoothing)
       //double fCount = 15.0 * smoothingFactor * smoothingFactor + 9.0 * smoothingFactor;
 
-      int numberOfIterations = floor(40 * smoothingFactor * smoothingFactor + 20 * smoothingFactor);
-      if (numberOfIterations < 1)
-      {
-        numberOfIterations = 1;
-      }
+      int numberOfIterations = floor(40 * smoothingFactor * smoothingFactor + 20 * smoothingFactor) + 1;
 
       surfaceNets->SetNumberOfIterations(numberOfIterations);
       surfaceNets->SetRelaxationFactor(relaxationFactor);
+
+      static double constraintScale = 2.0;
+      surfaceNets->SetConstraintScale(constraintScale);
     }
 
     int valueIndex = 0;
@@ -487,7 +500,8 @@ bool vtkBinaryLabelmapToClosedSurfaceConversionRule::CreateClosedSurface(vtkOrie
   transformPolyDataFilter->SetInputData(processingResult);
   transformPolyDataFilter->SetTransform(labelmapGeometryTransform);
 
-  if (computeSurfaceNormals)
+  // Normal computation on surface nets output i soften inaccurate, therefore disable normal computation
+  if (computeSurfaceNormals && (conversionMethod != vtkBinaryLabelmapToClosedSurfaceConversionRule::CONVERSION_METHOD_SURFACE_NETS))
   {
     vtkSmartPointer<vtkPolyDataNormals> polyDataNormals = vtkSmartPointer<vtkPolyDataNormals>::New();
     polyDataNormals->SetInputConnection(transformPolyDataFilter->GetOutputPort());
