@@ -672,9 +672,9 @@ void vtkMRMLNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLBooleanMacro(selectable, Selectable);
   vtkMRMLWriteXMLBooleanMacro(selected, Selected);
   vtkMRMLWriteXMLStringMacro(singletonTag, SingletonTag);
-  if (this->UndoEnabled)
+  if (!this->UndoEnabled)
   {
-    // Only write out UndoEnabled flag in case of non-default value is used,
+    // Only write out UndoEnabled flag if a non-default value is used (it is true by default),
     // to keep the written XML file cleaner.
     vtkMRMLWriteXMLBooleanMacro(undoEnabled, UndoEnabled);
   }

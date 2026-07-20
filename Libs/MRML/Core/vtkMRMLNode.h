@@ -444,15 +444,18 @@ public:
   vtkSetMacro(Selectable, int);
   vtkBooleanMacro(Selectable, int);
 
-  /// Specifies if the state of this node is stored in the scene's undo buffer.
-  /// False by default to make sure that undo can be enabled selectively,
-  /// only for nodes that are prepared to work correctly when saved/restored.
+  /// Specifies if the state of this node may be stored in the scene's undo buffer.
+  /// True by default. A node is actually saved to/restored from the undo buffer only if both this
+  /// flag is set AND the node's class is registered as an undoable node class in the scene
+  /// (see vtkMRMLScene::AddUndoableNodeClass). This flag can therefore be cleared to selectively
+  /// exclude an individual node instance from undo, even if its class supports undo.
   /// Nodes with different UndoEnabled value must not reference to each other,
   /// because restoring states could lead to unresolved node references.
-  /// Therefore, when undo is enabled for a certain node, it must be enabled
-  /// for nodes that it references (for example, if undo is enabled for
-  /// vtkMRMLModelNode then it must be enabled for vtkMRMLModelDisplayNode
+  /// Therefore, when undo is disabled for a certain node, it should be disabled
+  /// for nodes that it references (for example, if undo is disabled for
+  /// vtkMRMLModelNode then it should be disabled for vtkMRMLModelDisplayNode
   /// and vtkMRMLModelStorageNode as well).
+  /// \sa vtkMRMLScene::AddUndoableNodeClass, vtkMRMLScene::IsUndoableNodeClass
   vtkGetMacro(UndoEnabled, bool);
   vtkSetMacro(UndoEnabled, bool);
   vtkBooleanMacro(UndoEnabled, bool);
@@ -1138,7 +1141,7 @@ protected:
   int Selectable{ 1 };
   int Selected{ 0 };
   int AddToScene{ 1 };
-  bool UndoEnabled{ false };
+  bool UndoEnabled{ true };
 
   std::string TypeDisplayName;
   std::string DefaultNodeNamePrefix;

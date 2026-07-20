@@ -102,6 +102,26 @@
      </property>
     </widget>
    </item>
+   <item row="7" column="0">
+    <widget class="QLabel" name="EnableSceneUndoLabel">
+     <property name="text">
+      <string>Enable undo/redo:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="7" column="1">
+    <widget class="QCheckBox" name="EnableSceneUndoCheckBox">
+     <property name="toolTip">
+      <string>Enable undo/redo (Ctrl+Z / Ctrl+Y) of scene editing operations. Currently undo/redo is supported for markups editing (such as placing, moving, or deleting control points). When disabled, the Undo/Redo toolbar and menu items are hidden.</string>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
    <item row="9" column="0">
     <widget class="QLabel" name="DocumentationBaseURLLabel">
      <property name="text">

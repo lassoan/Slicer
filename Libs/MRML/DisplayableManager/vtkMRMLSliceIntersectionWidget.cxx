@@ -464,12 +464,12 @@ bool vtkMRMLSliceIntersectionWidget::ProcessInteractionEvent(vtkMRMLInteractionE
     case WidgetEventTouchTranslateSlice: this->ProcessTouchTranslate(eventData); break;
     case WidgetEventTranslateStart:
       this->SetWidgetState(WidgetStateTranslate);
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       processedEvent = this->ProcessStartMouseDrag(eventData);
       break;
     case WidgetEventTranslateEnd: processedEvent = this->ProcessEndMouseDrag(eventData); break;
     case WidgetEventRotateIntersectingSlicesStart:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       // Indicate interaction in the slice node to make behavior similar to the 3D reformat widget
       this->SliceLogic->StartSliceNodeInteraction(vtkMRMLSliceNode::MultiplanarReformatFlag);
       processedEvent = this->ProcessRotateIntersectingSlicesStart(eventData);
@@ -479,7 +479,7 @@ bool vtkMRMLSliceIntersectionWidget::ProcessInteractionEvent(vtkMRMLInteractionE
       this->SliceLogic->EndSliceNodeInteraction();
       break;
     case WidgetEventTranslateSliceStart:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->SliceLogic->StartSliceNodeInteraction(vtkMRMLSliceNode::XYZOriginFlag);
       this->SetWidgetState(WidgetStateTranslateSlice);
       processedEvent = this->ProcessStartMouseDrag(eventData);
@@ -489,7 +489,7 @@ bool vtkMRMLSliceIntersectionWidget::ProcessInteractionEvent(vtkMRMLInteractionE
       this->SliceLogic->EndSliceNodeInteraction();
       break;
     case WidgetEventZoomSliceStart:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->SetWidgetState(WidgetStateZoomSlice);
       this->SliceLogic->StartSliceNodeInteraction(vtkMRMLSliceNode::FieldOfViewFlag);
       this->SliceLogic->GetSliceNode()->GetFieldOfView(this->StartActionFOV);
@@ -503,7 +503,7 @@ bool vtkMRMLSliceIntersectionWidget::ProcessInteractionEvent(vtkMRMLInteractionE
     {
       this->SetWidgetState(WidgetStateBlend);
       vtkMRMLSliceCompositeNode* sliceCompositeNode = this->SliceLogic->GetSliceCompositeNode();
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->LastForegroundOpacity = sliceCompositeNode->GetForegroundOpacity();
       this->LastLabelOpacity = this->GetLabelOpacity();
       this->StartActionSegmentationDisplayNode = this->GetVisibleSegmentationDisplayNode();
@@ -518,7 +518,7 @@ bool vtkMRMLSliceIntersectionWidget::ProcessInteractionEvent(vtkMRMLInteractionE
     case WidgetEventToggleLabelOpacity:
     {
       this->StartActionSegmentationDisplayNode = nullptr;
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->StartActionSegmentationDisplayNode = nullptr;
       double opacity = this->GetLabelOpacity();
       if (opacity != 0.0)
@@ -535,7 +535,7 @@ bool vtkMRMLSliceIntersectionWidget::ProcessInteractionEvent(vtkMRMLInteractionE
     case WidgetEventToggleForegroundOpacity:
     {
       vtkMRMLSliceCompositeNode* sliceCompositeNode = this->SliceLogic->GetSliceCompositeNode();
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       double opacity = sliceCompositeNode->GetForegroundOpacity();
       if (opacity != 0.0)
       {
@@ -551,17 +551,17 @@ bool vtkMRMLSliceIntersectionWidget::ProcessInteractionEvent(vtkMRMLInteractionE
     case WidgetEventIncrementSlice: this->IncrementSlice(); break;
     case WidgetEventDecrementSlice: this->DecrementSlice(); break;
     case WidgetEventToggleSliceVisibility:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->GetSliceNode()->SetSliceVisible(!this->GetSliceNode()->GetSliceVisible());
       break;
     case WidgetEventToggleAllSlicesVisibility:
       // TODO: need to set all slices visible
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->GetSliceNode()->SetSliceVisible(!this->GetSliceNode()->GetSliceVisible());
       break;
     case WidgetEventResetFieldOfView:
     {
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->SliceLogic->StartSliceNodeInteraction(vtkMRMLSliceNode::ResetFieldOfViewFlag);
       this->SliceLogic->FitSliceToBackground();
       this->GetSliceNode()->UpdateMatrices();
@@ -574,36 +574,36 @@ bool vtkMRMLSliceIntersectionWidget::ProcessInteractionEvent(vtkMRMLInteractionE
       break;
       break;
     case WidgetEventShowPreviousBackgroundVolume:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->CycleVolumeLayer(LayerBackground, -1);
       break;
     case WidgetEventShowNextBackgroundVolume:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->CycleVolumeLayer(LayerBackground, 1);
       break;
     case WidgetEventShowPreviousForegroundVolume:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->CycleVolumeLayer(LayerForeground, -1);
       break;
     case WidgetEventShowNextForegroundVolume:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       this->CycleVolumeLayer(LayerForeground, 1);
       break;
     case WidgetEventMenu: processedEvent = this->ProcessWidgetMenu(eventData); break;
     case WidgetEventMaximizeView: processedEvent = this->ProcessMaximizeView(eventData); break;
 
     case WidgetEventRotateIntersectingSlicesHandleStart:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       processedEvent = this->ProcessRotateIntersectingSlicesHandleStart(eventData);
       break;
     case WidgetEventRotateIntersectingSlicesHandleEnd: processedEvent = this->ProcessEndMouseDrag(eventData); break;
     case WidgetEventTranslateIntersectingSlicesHandleStart:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       processedEvent = this->ProcessTranslateIntersectingSlicesHandleStart(eventData);
       break;
     case WidgetEventTranslateIntersectingSlicesHandleEnd: processedEvent = this->ProcessEndMouseDrag(eventData); break;
     case WidgetEventTranslateSingleIntersectingSliceHandleStart:
-      this->SliceLogic->GetMRMLScene()->SaveStateForUndo();
+      this->SaveStateForUndo();
       processedEvent = this->ProcessTranslateSingleIntersectingSliceHandleStart(eventData);
       break;
     case WidgetEventTranslateSingleIntersectingSliceHandleEnd: processedEvent = this->ProcessEndMouseDrag(eventData); break;
@@ -1058,6 +1058,20 @@ void vtkMRMLSliceIntersectionWidget::SetSliceNode(vtkMRMLSliceNode* sliceNode)
 vtkMRMLSliceNode* vtkMRMLSliceIntersectionWidget::GetSliceNode()
 {
   return this->SliceNode;
+}
+
+//----------------------------------------------------------------------
+void vtkMRMLSliceIntersectionWidget::SaveStateForUndo()
+{
+  vtkMRMLSliceNode* sliceNode = this->GetSliceNode();
+  vtkMRMLScene* mrmlScene = sliceNode ? sliceNode->GetScene() : nullptr;
+  if (!mrmlScene || !sliceNode)
+  {
+    return;
+  }
+  // Passing the slice node makes this a no-op unless the slice node has undo enabled, so that
+  // slice view manipulations do not add markups (or other) nodes' states to the undo stack.
+  mrmlScene->SaveStateForUndo(sliceNode);
 }
 
 //----------------------------------------------------------------------

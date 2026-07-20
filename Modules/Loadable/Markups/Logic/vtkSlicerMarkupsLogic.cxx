@@ -2119,6 +2119,12 @@ void vtkSlicerMarkupsLogic::RegisterMarkupsNode(vtkMRMLMarkupsNode* markupsNode,
     this->GetMRMLScene()->RegisterNodeClass(markupsNode);
   }
 
+  // Markups nodes support undo/redo: register the node class so that the scene undo mechanism
+  // saves and restores nodes of this type (a node also needs its UndoEnabled flag set, which is
+  // the default). Turning the scene undo mechanism on/off is an application-wide setting handled
+  // by the main window.
+  this->GetMRMLScene()->AddUndoableNodeClass(markupsNode->GetClassName());
+
   // Check for nullptr
   if (markupsWidget == nullptr)
   {

@@ -1005,11 +1005,13 @@ void vtkMRMLCameraWidget::SaveStateForUndo()
 {
   vtkMRMLCameraNode* cameraNode = this->GetCameraNode();
   vtkMRMLScene* mrmlScene = cameraNode ? cameraNode->GetScene() : nullptr;
-  if (!mrmlScene || !cameraNode || !cameraNode->GetUndoEnabled())
+  if (!mrmlScene || !cameraNode)
   {
     return;
   }
-  mrmlScene->SaveStateForUndo();
+  // Passing the camera node makes this a no-op unless the camera node has undo enabled, so that
+  // camera manipulations do not add markups (or other) nodes' states to the undo stack.
+  mrmlScene->SaveStateForUndo(cameraNode);
 }
 
 //-------------------------------------------------------------------------

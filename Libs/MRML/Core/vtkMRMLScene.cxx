@@ -113,6 +113,7 @@ Version:   $Revision: 1.18 $
 #include <vtkObjectFactory.h>
 #include <vtkPNGWriter.h>
 #include <vtkSmartPointer.h>
+#include <vtkStringArray.h>
 
 // VTKSYS includes
 #include <vtksys/Glob.hxx>
@@ -2717,6 +2718,53 @@ void vtkMRMLScene::RemoveReservedIDs()
 }
 
 //------------------------------------------------------------------------------
+void vtkMRMLScene::AddUndoableNodeClass(const std::string& className)
+{
+  this->UndoableNodeClasses.insert(className);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::RemoveUndoableNodeClass(const std::string& className)
+{
+  this->UndoableNodeClasses.erase(className);
+}
+
+//------------------------------------------------------------------------------
+bool vtkMRMLScene::IsUndoableNodeClass(const std::string& className)
+{
+  return this->UndoableNodeClasses.find(className) != this->UndoableNodeClasses.end();
+}
+
+//------------------------------------------------------------------------------
+bool vtkMRMLScene::IsNodeUndoable(vtkMRMLNode* node)
+{
+  return node != nullptr                       //
+         && node->GetUndoEnabled()             //
+         && this->IsUndoableNodeClass(node->GetClassName());
+}
+
+//------------------------------------------------------------------------------
+std::vector<std::string> vtkMRMLScene::GetUndoableNodeClasses()
+{
+  return std::vector<std::string>(this->UndoableNodeClasses.begin(), this->UndoableNodeClasses.end());
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::GetUndoableNodeClasses(vtkStringArray* undoableNodeClasses)
+{
+  if (undoableNodeClasses == nullptr)
+  {
+    vtkErrorMacro("vtkMRMLScene::GetUndoableNodeClasses: undoableNodeClasses is invalid");
+    return;
+  }
+  undoableNodeClasses->Reset();
+  for (const std::string& className : this->UndoableNodeClasses)
+  {
+    undoableNodeClasses->InsertNextValue(className);
+  }
+}
+
+//------------------------------------------------------------------------------
 // Pushes the current scene onto the undo stack, and makes a backup copy of the
 // passed node so that changes to the node are undoable; several signatures to handle
 // individual nodes or a vtkCollection of nodes, or a vector of nodes
@@ -2738,7 +2786,7 @@ void vtkMRMLScene::SaveStateForUndo(vtkMRMLNode* node)
     return;
   }
 
-  if (node && !node->GetUndoEnabled())
+  if (node && !this->IsNodeUndoable(node))
   {
     return;
   }
@@ -2776,7 +2824,7 @@ void vtkMRMLScene::SaveStateForUndo(std::vector<vtkMRMLNode*> nodes)
   for (n = 0; n < nodes.size(); n++)
   {
     vtkMRMLNode* node = nodes[n];
-    if (node && node->GetUndoEnabled())
+    if (this->IsNodeUndoable(node))
     {
       this->CopyNodeInUndoStack(node);
     }
@@ -2815,7 +2863,7 @@ void vtkMRMLScene::SaveStateForUndo(vtkCollection* nodes)
   for (int n = 0; n < nnodes; n++)
   {
     vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(nodes->GetItemAsObject(n));
-    if (node && node->GetUndoEnabled())
+    if (this->IsNodeUndoable(node))
     {
       this->CopyNodeInUndoStack(node);
     }
@@ -2858,7 +2906,7 @@ void vtkMRMLScene::PushIntoUndoStack()
   for (int n = 0; n < nnodes; n++)
   {
     vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(currentScene->GetItemAsObject(n));
-    if (node && node->GetUndoEnabled())
+    if (this->IsNodeUndoable(node))
     {
       newScene->AddItem(node);
     }
@@ -2886,7 +2934,7 @@ void vtkMRMLScene::PushIntoRedoStack()
   for (int n = 0; n < nnodes; n++)
   {
     vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(currentScene->GetItemAsObject(n));
-    if (node && node->GetUndoEnabled())
+    if (this->IsNodeUndoable(node))
     {
       newScene->AddItem(node);
     }
@@ -2988,7 +3036,7 @@ void vtkMRMLScene::Undo()
   for (n = 0; n < nnodes; n++)
   {
     vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(currentScene->GetItemAsObject(n));
-    if (node && node->GetUndoEnabled())
+    if (this->IsNodeUndoable(node))
     {
       currentIDs.emplace_back(node->GetID());
       currentNodes.push_back(node);
@@ -3006,7 +3054,7 @@ void vtkMRMLScene::Undo()
     for (n = 0; n < nnodes; n++)
     {
       vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(undoScene->GetItemAsObject(n));
-      if (node && node->GetUndoEnabled())
+      if (this->IsNodeUndoable(node))
       {
         undoIDs.emplace_back(node->GetID());
         undoNodes.push_back(node);
@@ -3117,7 +3165,7 @@ void vtkMRMLScene::Redo()
   for (n = 0; n < nnodes; n++)
   {
     vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(currentScene->GetItemAsObject(n));
-    if (node && node->GetUndoEnabled())
+    if (this->IsNodeUndoable(node))
     {
       currentMap[node->GetID()] = node;
     }
@@ -3137,7 +3185,7 @@ void vtkMRMLScene::Redo()
       for (n = 0; n < nnodes; n++)
       {
         vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(undoScene->GetItemAsObject(n));
-        if (node && node->GetUndoEnabled())
+        if (this->IsNodeUndoable(node))
         {
           undoMap[node->GetID()] = node;
         }
@@ -3206,6 +3254,18 @@ void vtkMRMLScene::Redo()
   this->Modified();
 
   this->EndState(vtkMRMLScene::RedoState);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::SetUndoFlag(bool flag)
+{
+  this->UndoFlag = flag;
+  if (!flag)
+  {
+    // Discard any accumulated history so it cannot be applied while undo is disabled.
+    this->ClearUndoStack();
+    this->ClearRedoStack();
+  }
 }
 
 //------------------------------------------------------------------------------

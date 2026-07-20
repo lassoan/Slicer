@@ -36,6 +36,7 @@ class vtkCallbackCommand;
 class vtkCollection;
 class vtkGeneralTransform;
 class vtkImageData;
+class vtkStringArray;
 
 // STD includes
 #include <list>
@@ -373,11 +374,12 @@ public:
   /// insert a node in the scene before a specified node
   vtkMRMLNode* InsertBeforeNode(vtkMRMLNode* item, vtkMRMLNode* newItem);
 
-  /// Set undo on/off
-  void SetUndoOn() { UndoFlag = true; }
-  void SetUndoOff() { UndoFlag = false; }
+  /// Set undo on/off. Turning undo off also discards the undo and redo history,
+  /// so that stored states cannot be applied while undo is disabled.
+  void SetUndoOn() { this->SetUndoFlag(true); }
+  void SetUndoOff() { this->SetUndoFlag(false); }
   bool GetUndoFlag() { return UndoFlag; }
-  void SetUndoFlag(bool flag) { UndoFlag = flag; }
+  void SetUndoFlag(bool flag);
 
   /// undo, set the scene to previous state
   void Undo();
@@ -414,6 +416,35 @@ public:
   /// will tell if that node's state must be stored or not.
   void SaveStateForUndo(vtkCollection* nodes);
   void SaveStateForUndo(std::vector<vtkMRMLNode*> nodes);
+
+  /// \name Undoable node classes
+  /// Manage the set of node classes that participate in the scene undo mechanism.
+  /// A node is saved to / restored from the undo buffer only if its class is registered here
+  /// AND the node's UndoEnabled flag is set. Modules that support undo for their node types
+  /// register them here (for example, the Markups module registers its node types).
+  //@{
+
+  /// Register a node class name so that nodes of this class participate in undo/redo.
+  void AddUndoableNodeClass(const std::string& className);
+
+  /// Unregister a node class name so that nodes of this class no longer participate in undo/redo.
+  void RemoveUndoableNodeClass(const std::string& className);
+
+  /// Return true if the given node class name is registered as an undoable node class.
+  bool IsUndoableNodeClass(const std::string& className);
+
+  /// Return true if the node participates in undo/redo: its class is registered as an undoable
+  /// node class (\sa AddUndoableNodeClass) and its UndoEnabled flag is set
+  /// (\sa vtkMRMLNode::UndoEnabled).
+  bool IsNodeUndoable(vtkMRMLNode* node);
+
+  /// Get the list of registered undoable node class names.
+  std::vector<std::string> GetUndoableNodeClasses();
+
+  /// Get the list of registered undoable node class names. Python-wrappable version.
+  void GetUndoableNodeClasses(vtkStringArray* undoableNodeClasses);
+
+  //@}
 
   /// The Scene maintains a map (NodeReferences) to keep track of the relationship
   /// between node IDs and the nodes referencing those IDs.  Each
@@ -987,6 +1018,9 @@ protected:
 
   std::list<vtkCollection*> UndoStack;
   std::list<vtkCollection*> RedoStack;
+
+  /// Node class names whose nodes participate in the undo/redo mechanism.
+  std::set<std::string> UndoableNodeClasses;
 
   std::string URL;
   std::string RootDirectory;

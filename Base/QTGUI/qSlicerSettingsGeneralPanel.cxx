@@ -165,6 +165,8 @@ void qSlicerSettingsGeneralPanelPrivate::init()
 
   q->registerProperty("no-splash", this->ShowSplashScreenCheckBox, /*no tr*/ "checked", SIGNAL(toggled(bool)));
 
+  q->registerProperty("EnableSceneUndo", this->EnableSceneUndoCheckBox, /*no tr*/ "checked", SIGNAL(toggled(bool)));
+
   ctkBooleanMapper* restartMapper = new ctkBooleanMapper(this->ConfirmRestartCheckBox, /*no tr*/ "checked", SIGNAL(toggled(bool)));
   restartMapper->setTrueValue(static_cast<int>(QMessageBox::InvalidRole));
   restartMapper->setFalseValue(static_cast<int>(QMessageBox::Ok));

@@ -205,6 +205,11 @@ protected:
   bool ProcessEndMouseDrag(vtkMRMLInteractionEventData* eventData);
   bool ProcessBlend(vtkMRMLInteractionEventData* eventData);
 
+  /// Save the state of the slice node for undo. This is a no-op unless the slice node has undo
+  /// enabled, so that slice view manipulations do not create undo states unless slice undo is
+  /// explicitly enabled.
+  void SaveStateForUndo();
+
   bool ProcessRotateIntersectingSlicesStart(vtkMRMLInteractionEventData* eventData);
   bool ProcessRotateIntersectingSlices(vtkMRMLInteractionEventData* eventData);
   bool ProcessSetCrosshair(vtkMRMLInteractionEventData* eventData);

@@ -214,6 +214,14 @@ void qMRMLSliceControllerWidgetPrivate::setupPopupUi()
   this->connect(this->ForegroundOpacitySlider, SIGNAL(valueChanged(double)), q, SLOT(setForegroundOpacity(double)));
   this->connect(this->BackgroundOpacitySlider, SIGNAL(valueChanged(double)), q, SLOT(setBackgroundOpacity(double)));
 
+  // Track opacity slider drags so that a whole drag results in a single undo step, instead of one
+  // undo state per intermediate slider value.
+  for (ctkSliderWidget* const opacitySlider : { this->LabelMapOpacitySlider, this->ForegroundOpacitySlider, this->BackgroundOpacitySlider })
+  {
+    this->connect(opacitySlider->slider(), SIGNAL(sliderPressed()), this, SLOT(onOpacitySliderPressed()));
+    this->connect(opacitySlider->slider(), SIGNAL(sliderReleased()), this, SLOT(onOpacitySliderReleased()));
+  }
+
   // Interpolation column
   QObject::connect(this->actionSegmentationOutlineFill, SIGNAL(triggered()), q, SLOT(toggleSegmentationOutlineFill()));
   QObject::connect(this->actionLabelMapOutline, SIGNAL(toggled(bool)), q, SLOT(showLabelOutline(bool)));
@@ -637,9 +645,57 @@ vtkSmartPointer<vtkCollection> qMRMLSliceControllerWidgetPrivate::saveNodesForUn
   if (q->mrmlScene())
   {
     nodes.TakeReference(q->mrmlScene()->GetNodesByClass(nodeTypes.toUtf8()));
-    q->mrmlScene()->SaveStateForUndo();
+    // Only save the state of these nodes for undo if at least one of them participates in undo
+    // (its class is registered as undoable in the scene). This avoids adding spurious undo states,
+    // for example when only markups undo is enabled, adjusting slice view controls should not
+    // create undo steps.
+    bool anyUndoable = false;
+    for (int i = 0; nodes && i < nodes->GetNumberOfItems(); ++i)
+    {
+      if (q->mrmlScene()->IsNodeUndoable(vtkMRMLNode::SafeDownCast(nodes->GetItemAsObject(i))))
+      {
+        anyUndoable = true;
+        break;
+      }
+    }
+    if (anyUndoable)
+    {
+      q->mrmlScene()->SaveStateForUndo(nodes);
+    }
   }
   return nodes;
+}
+
+// --------------------------------------------------------------------------
+vtkSmartPointer<vtkCollection> qMRMLSliceControllerWidgetPrivate::saveCompositeNodeForUndo()
+{
+  Q_Q(qMRMLSliceControllerWidget);
+  // While an opacity slider is being dragged, save only the first change for undo so that the whole
+  // drag results in a single undo step; do not save again until the slider is released.
+  if (this->OpacitySliderBeingDragged && this->OpacityUndoStateSaved)
+  {
+    vtkSmartPointer<vtkCollection> nodes;
+    if (q->mrmlScene())
+    {
+      nodes.TakeReference(q->mrmlScene()->GetNodesByClass("vtkMRMLSliceCompositeNode"));
+    }
+    return nodes;
+  }
+  this->OpacityUndoStateSaved = true;
+  return this->saveNodesForUndo("vtkMRMLSliceCompositeNode");
+}
+
+// --------------------------------------------------------------------------
+void qMRMLSliceControllerWidgetPrivate::onOpacitySliderPressed()
+{
+  this->OpacitySliderBeingDragged = true;
+  this->OpacityUndoStateSaved = false;
+}
+
+// --------------------------------------------------------------------------
+void qMRMLSliceControllerWidgetPrivate::onOpacitySliderReleased()
+{
+  this->OpacitySliderBeingDragged = false;
 }
 
 // --------------------------------------------------------------------------
@@ -1241,7 +1297,8 @@ void qMRMLSliceControllerWidgetPrivate::setForegroundInterpolation(vtkMRMLSliceL
   vtkMRMLScalarVolumeDisplayNode* displayNode = volumeNode ? vtkMRMLScalarVolumeDisplayNode::SafeDownCast(volumeNode->GetVolumeDisplayNode()) : nullptr;
   if (displayNode)
   {
-    q->mrmlScene()->SaveStateForUndo();
+    // Passing the display node makes this a no-op unless that node has undo enabled.
+    q->mrmlScene()->SaveStateForUndo(displayNode);
     displayNode->SetInterpolate(linear);
   }
   // historic code that doesn't seem to work
@@ -1268,7 +1325,8 @@ void qMRMLSliceControllerWidgetPrivate::setBackgroundInterpolation(vtkMRMLSliceL
   vtkMRMLScalarVolumeDisplayNode* displayNode = volumeNode ? vtkMRMLScalarVolumeDisplayNode::SafeDownCast(volumeNode->GetVolumeDisplayNode()) : nullptr;
   if (displayNode)
   {
-    q->mrmlScene()->SaveStateForUndo();
+    // Passing the display node makes this a no-op unless that node has undo enabled.
+    q->mrmlScene()->SaveStateForUndo(displayNode);
     displayNode->SetInterpolate(linear);
   }
   // historic code that doesn't seem to work
@@ -2037,7 +2095,7 @@ void qMRMLSliceControllerWidget::setSegmentationOpacity(double opacity)
 void qMRMLSliceControllerWidget::setLabelMapOpacity(double opacity)
 {
   Q_D(qMRMLSliceControllerWidget);
-  vtkSmartPointer<vtkCollection> nodes = d->saveNodesForUndo("vtkMRMLSliceCompositeNode");
+  vtkSmartPointer<vtkCollection> nodes = d->saveCompositeNodeForUndo();
   if (!nodes.GetPointer())
   {
     return;
@@ -2060,7 +2118,7 @@ void qMRMLSliceControllerWidget::setLabelMapOpacity(double opacity)
 void qMRMLSliceControllerWidget::setForegroundOpacity(double opacity)
 {
   Q_D(qMRMLSliceControllerWidget);
-  vtkSmartPointer<vtkCollection> nodes = d->saveNodesForUndo("vtkMRMLSliceCompositeNode");
+  vtkSmartPointer<vtkCollection> nodes = d->saveCompositeNodeForUndo();
   if (!nodes.GetPointer())
   {
     return;

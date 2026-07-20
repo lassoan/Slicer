@@ -94,6 +94,11 @@ public:
 
   vtkSmartPointer<vtkCollection> saveNodesForUndo(const QString& nodeTypes);
 
+  /// Save the slice composite node state for undo. While an opacity slider is being dragged, only
+  /// the first change is saved for undo, so that a whole drag results in a single undo step
+  /// (\sa onOpacitySliderPressed). Changes outside of a drag are always saved.
+  vtkSmartPointer<vtkCollection> saveCompositeNodeForUndo();
+
   void enableLayerWidgets();
 
   vtkMRMLSliceLogic* compositeNodeLogic(vtkMRMLSliceCompositeNode* node);
@@ -155,6 +160,12 @@ public slots:
 
   void updateSliceOffsetSliderVisibility();
 
+  /// Called when an opacity slider drag starts: the next opacity change saves a single undo state
+  /// for the whole drag.
+  void onOpacitySliderPressed();
+  /// Called when an opacity slider drag ends.
+  void onOpacitySliderReleased();
+
 protected:
   void setupPopupUi() override;
   void setMRMLSliceCompositeNodeInternal(vtkMRMLSliceCompositeNode* sliceComposite);
@@ -176,6 +187,11 @@ public:
   double LastLabelMapOpacity;
   double LastForegroundOpacity;
   double LastBackgroundOpacity;
+
+  /// True while an opacity slider is being dragged (between slider press and release).
+  bool OpacitySliderBeingDragged{ false };
+  /// True if an undo state has already been saved during the current opacity slider drag.
+  bool OpacityUndoStateSaved{ false };
 
   QMenu* CompositingMenu;
   QMenu* SliceSpacingMenu;

@@ -89,6 +89,10 @@ public slots:
   virtual void on_EditUndoAction_triggered();
   virtual void on_EditRedoAction_triggered();
 
+  /// Enable or disable scene undo/redo (driven by the "EnableSceneUndo" application setting).
+  /// Turns the scene undo mechanism on/off and shows/hides the Undo/Redo toolbar and Edit menu actions accordingly.
+  virtual void setSceneUndoEnabled(bool enabled);
+
   virtual void on_ModuleHomeAction_triggered();
 
   virtual void onLayoutActionTriggered(QAction* action);

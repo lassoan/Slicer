@@ -420,7 +420,14 @@ bool vtkMRMLWindowLevelWidget::ProcessAdjustWindowLevelStart(vtkMRMLInteractionE
   {
     return false;
   }
-  sliceLogic->GetMRMLScene()->SaveStateForUndo();
+  // Passing the volume display node makes this a no-op unless that node has undo enabled, so that
+  // window/level adjustments do not add markups (or other) nodes' states to the undo stack.
+  vtkMRMLVolumeNode* editedVolumeNode = this->GetVolumeNodeFromSliceLayer(editedLayer);
+  vtkMRMLVolumeDisplayNode* editedVolumeDisplayNode = editedVolumeNode ? editedVolumeNode->GetVolumeDisplayNode() : nullptr;
+  if (editedVolumeDisplayNode)
+  {
+    sliceLogic->GetMRMLScene()->SaveStateForUndo(editedVolumeDisplayNode);
+  }
   this->WindowLevelAdjustedLayer = editedLayer;
   if (editedLayer == vtkMRMLSliceLogic::LayerForeground)
   {
@@ -484,7 +491,8 @@ bool vtkMRMLWindowLevelWidget::ProcessResetWindowLevel(vtkMRMLInteractionEventDa
   vtkMRMLSliceLogic* sliceLogic = this->GetSliceLogic();
   if (sliceLogic)
   {
-    sliceLogic->GetMRMLScene()->SaveStateForUndo();
+    // Passing the display node makes this a no-op unless that node has undo enabled.
+    sliceLogic->GetMRMLScene()->SaveStateForUndo(displayNode);
   }
   displayNode->AutoWindowLevelOn();
   return true;

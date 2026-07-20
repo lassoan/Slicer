@@ -45,6 +45,7 @@
 // CTK includes
 #include <ctkErrorLogWidget.h>
 #include <ctkMessageBox.h>
+#include <ctkSettingsDialog.h>
 #ifdef Slicer_USE_PYTHONQT
 # include <ctkPythonConsole.h>
 #endif
@@ -125,6 +126,11 @@ void qSlicerMainWindowPrivate::init()
   q->setupMenuActions();
   this->StartupState = q->saveState();
   q->restoreGUIState();
+
+  // restoreGUIState() may restore a saved window state that overrides the Undo/Redo toolbar
+  // visibility, so re-apply the "EnableSceneUndo" setting last to keep the toolbar and menu
+  // actions in sync with the setting.
+  q->setSceneUndoEnabled(qSlicerApplication::application()->userSettings()->value("EnableSceneUndo", true).toBool());
 }
 
 //-----------------------------------------------------------------------------
@@ -200,7 +206,7 @@ void qSlicerMainWindowPrivate::setupUi(QMainWindow* mainWindow)
 
   QList<QAction*> toolBarActions;
   toolBarActions << this->MainToolBar->toggleViewAction();
-  // toolBarActions << this->UndoRedoToolBar->toggleViewAction();
+  toolBarActions << this->UndoRedoToolBar->toggleViewAction();
   toolBarActions << this->ModuleSelectorToolBar->toggleViewAction();
   toolBarActions << this->ModuleToolBar->toggleViewAction();
   toolBarActions << this->ViewToolBar->toggleViewAction();
@@ -220,14 +226,13 @@ void qSlicerMainWindowPrivate::setupUi(QMainWindow* mainWindow)
   // minimizing the application and restore it doesn't hide the module panel. check
   // also the geometry and the state of the menu qactions are correctly restored when
   // loading slicer.
-  this->UndoRedoToolBar->toggleViewAction()->trigger();
   this->LayoutToolBar->toggleViewAction()->trigger();
-  // q->removeToolBar(this->UndoRedoToolBar);
   // q->removeToolBar(this->LayoutToolBar);
-  delete this->UndoRedoToolBar;
-  this->UndoRedoToolBar = nullptr;
   delete this->LayoutToolBar;
   this->LayoutToolBar = nullptr;
+
+  // The Undo/Redo toolbar's visibility is managed by qSlicerMainWindow::setSceneUndoEnabled(),
+  // according to the "EnableSceneUndo" application setting (see setupMenuActions()).
 
   // Color of the spacing between views:
   QFrame* layoutFrame = new QFrame(this->CentralWidget);
@@ -1058,6 +1063,31 @@ void qSlicerMainWindow::on_EditRedoAction_triggered()
 }
 
 //---------------------------------------------------------------------------
+void qSlicerMainWindow::setSceneUndoEnabled(bool enabled)
+{
+  Q_D(qSlicerMainWindow);
+
+  // Turn the scene undo mechanism on/off. This is an application-wide setting; individual modules
+  // (for example Markups) register their undoable node types with the scene. Turning undo off also
+  // clears the undo/redo history (see vtkMRMLScene::SetUndoFlag).
+  vtkMRMLScene* scene = qSlicerApplication::application()->mrmlScene();
+  if (scene)
+  {
+    scene->SetUndoFlag(enabled);
+  }
+
+  // Show the Undo/Redo user interface only when the feature is enabled.
+  d->EditUndoAction->setVisible(enabled);
+  d->EditRedoAction->setVisible(enabled);
+  if (d->UndoRedoToolBar)
+  {
+    d->UndoRedoToolBar->setVisible(enabled);
+    // Prevent the hidden toolbar from being toggled back on from the View > Toolbars menu.
+    d->UndoRedoToolBar->toggleViewAction()->setVisible(enabled);
+  }
+}
+
+//---------------------------------------------------------------------------
 void qSlicerMainWindow::on_ModuleHomeAction_triggered()
 {
   this->setHomeModuleCurrent();
@@ -1401,6 +1431,32 @@ void qSlicerMainWindow::setupMenuActions()
     app->testingUtility()->addPlayer(new qSlicerCLIModuleWidgetEventPlayer());
   }
 #endif
+
+  // Scene undo/redo: apply the "EnableSceneUndo" application setting (enabled by default) and keep
+  // it in sync. This turns the scene undo mechanism on/off and shows/hides the Undo/Redo toolbar
+  // and Edit menu actions. Individual modules (for example Markups) opt their node types into undo
+  // separately, driven by the same setting.
+  this->setSceneUndoEnabled(app->userSettings()->value("EnableSceneUndo", true).toBool());
+  if (app->settingsDialog())
+  {
+    QObject::connect(app->settingsDialog(),
+                     &ctkSettingsDialog::settingChanged,
+                     this,
+                     [this](const QString& key, const QVariant& value)
+                     {
+                       if (key == QLatin1String("EnableSceneUndo"))
+                       {
+                         this->setSceneUndoEnabled(value.toBool());
+                       }
+                     });
+  }
+  // Re-apply the scene undo flag when the scene is replaced (a new scene defaults to undo off).
+  QObject::connect(app,
+                   &qSlicerCoreApplication::mrmlSceneChanged,
+                   this,
+                   [this, app]()
+                   { this->setSceneUndoEnabled(app->userSettings()->value("EnableSceneUndo", true).toBool()); });
+
   Q_UNUSED(app);
 }
 
