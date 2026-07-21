@@ -31,12 +31,14 @@
 #include <QKeySequence>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPushButton>
 #include <QQueue>
 #include <QSettings>
 #include <QShowEvent>
 #include <QSignalMapper>
 #include <QStyle>
+#include <QStyleOptionMenuItem>
 #include <QTableView>
 #include <QTextEdit>
 #include <QTimer>
@@ -102,6 +104,62 @@ void setThemeIcon(QAction* action, const QString& name)
 {
   action->setIcon(QIcon::fromTheme(name, action->icon()));
 }
+
+//-----------------------------------------------------------------------------
+/// Menu used for the Undo/Redo history dropdowns. Triggering an item applies several undo/redo
+/// steps (all the states from the top of the list down to the triggered item), so while an item is
+/// hovered, all the items above it are highlighted as well to show what will be affected.
+class qSlicerUndoRedoHistoryMenu : public QMenu
+{
+public:
+  qSlicerUndoRedoHistoryMenu(const QString& title, QWidget* parent)
+    : QMenu(title, parent)
+  {
+    QObject::connect(this,
+                     &QMenu::hovered,
+                     this,
+                     [this](QAction* action)
+                     {
+                       this->HoveredAction = action;
+                       this->update();
+                     });
+  }
+
+protected:
+  void hideEvent(QHideEvent* event) override
+  {
+    this->HoveredAction = nullptr;
+    QMenu::hideEvent(event);
+  }
+
+  void paintEvent(QPaintEvent* event) override
+  {
+    // Let the base class paint the menu normally (this highlights the single hovered item).
+    QMenu::paintEvent(event);
+
+    const QList<QAction*> menuActions = this->actions();
+    int hoveredIndex = this->HoveredAction ? menuActions.indexOf(this->HoveredAction) : -1;
+    if (hoveredIndex < 0)
+    {
+      return;
+    }
+
+    // Draw all items above the hovered one as selected, too.
+    QPainter painter(this);
+    for (int index = 0; index < hoveredIndex; ++index)
+    {
+      QAction* action = menuActions.at(index);
+      QStyleOptionMenuItem option;
+      this->initStyleOption(&option, action);
+      option.state |= QStyle::State_Selected | QStyle::State_Enabled;
+      option.rect = this->actionGeometry(action);
+      this->style()->drawControl(QStyle::CE_MenuItem, &option, &painter, this);
+    }
+  }
+
+private:
+  QAction* HoveredAction{ nullptr };
+};
 
 } // end of anonymous namespace
 
@@ -1545,8 +1603,8 @@ void qSlicerMainWindow::setupMenuActions()
   }
   // Undo/Redo history dropdown menus on the toolbar buttons. Each menu is populated on demand from
   // the descriptions stored in the scene undo/redo stacks (\sa vtkMRMLScene::GetUndoStackNames).
-  d->UndoHistoryMenu = new QMenu(qSlicerMainWindow::tr("Undo history"), this);
-  d->RedoHistoryMenu = new QMenu(qSlicerMainWindow::tr("Redo history"), this);
+  d->UndoHistoryMenu = new qSlicerUndoRedoHistoryMenu(qSlicerMainWindow::tr("Undo history"), this);
+  d->RedoHistoryMenu = new qSlicerUndoRedoHistoryMenu(qSlicerMainWindow::tr("Redo history"), this);
   QObject::connect(d->UndoHistoryMenu, &QMenu::aboutToShow, this, &qSlicerMainWindow::populateUndoHistoryMenu);
   QObject::connect(d->RedoHistoryMenu, &QMenu::aboutToShow, this, &qSlicerMainWindow::populateRedoHistoryMenu);
   if (d->UndoRedoToolBar)
