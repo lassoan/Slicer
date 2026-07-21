@@ -21,6 +21,7 @@
 #include "vtkMRMLApplicationLogic.h"
 #include "vtkMRMLCrosshairDisplayableManager.h"
 #include "vtkMRMLCrosshairNode.h"
+#include "vtkMRMLI18N.h"
 #include "vtkMRMLInteractionEventData.h"
 #include "vtkMRMLInteractionNode.h"
 #include "vtkMRMLScalarVolumeDisplayNode.h"
@@ -426,7 +427,8 @@ bool vtkMRMLWindowLevelWidget::ProcessAdjustWindowLevelStart(vtkMRMLInteractionE
   vtkMRMLVolumeDisplayNode* editedVolumeDisplayNode = editedVolumeNode ? editedVolumeNode->GetVolumeDisplayNode() : nullptr;
   if (editedVolumeDisplayNode)
   {
-    sliceLogic->GetMRMLScene()->SaveStateForUndo(editedVolumeDisplayNode);
+    sliceLogic->GetMRMLScene()->SaveStateForUndo(
+      editedVolumeDisplayNode, vtkMRMLI18N::Format(vtkMRMLTr("vtkMRMLWindowLevelWidget", "Adjust window/level (%1)"), editedVolumeNode->GetName()));
   }
   this->WindowLevelAdjustedLayer = editedLayer;
   if (editedLayer == vtkMRMLSliceLogic::LayerForeground)
@@ -492,7 +494,8 @@ bool vtkMRMLWindowLevelWidget::ProcessResetWindowLevel(vtkMRMLInteractionEventDa
   if (sliceLogic)
   {
     // Passing the display node makes this a no-op unless that node has undo enabled.
-    sliceLogic->GetMRMLScene()->SaveStateForUndo(displayNode);
+    sliceLogic->GetMRMLScene()->SaveStateForUndo(
+      displayNode, vtkMRMLI18N::Format(vtkMRMLTr("vtkMRMLWindowLevelWidget", "Reset window/level (%1)"), volumeNode->GetName()));
   }
   displayNode->AutoWindowLevelOn();
   return true;

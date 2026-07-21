@@ -2769,7 +2769,7 @@ void vtkMRMLScene::GetUndoableNodeClasses(vtkStringArray* undoableNodeClasses)
 // passed node so that changes to the node are undoable; several signatures to handle
 // individual nodes or a vtkCollection of nodes, or a vector of nodes
 //
-void vtkMRMLScene::SaveStateForUndo(vtkMRMLNode* node)
+void vtkMRMLScene::SaveStateForUndo(vtkMRMLNode* node, const std::string& undoName)
 {
   if (!this->UndoFlag)
   {
@@ -2793,7 +2793,7 @@ void vtkMRMLScene::SaveStateForUndo(vtkMRMLNode* node)
 
   this->ClearRedoStack();
   // this->SetUndoOn();
-  this->PushIntoUndoStack();
+  this->PushIntoUndoStack(undoName);
   if (node)
   {
     this->CopyNodeInUndoStack(node);
@@ -2801,7 +2801,7 @@ void vtkMRMLScene::SaveStateForUndo(vtkMRMLNode* node)
 }
 
 //------------------------------------------------------------------------------
-void vtkMRMLScene::SaveStateForUndo(std::vector<vtkMRMLNode*> nodes)
+void vtkMRMLScene::SaveStateForUndo(std::vector<vtkMRMLNode*> nodes, const std::string& undoName)
 {
   if (!this->UndoFlag)
   {
@@ -2819,7 +2819,7 @@ void vtkMRMLScene::SaveStateForUndo(std::vector<vtkMRMLNode*> nodes)
 
   this->ClearRedoStack();
   // this->SetUndoOn();
-  this->PushIntoUndoStack();
+  this->PushIntoUndoStack(undoName);
   unsigned int n;
   for (n = 0; n < nodes.size(); n++)
   {
@@ -2832,7 +2832,7 @@ void vtkMRMLScene::SaveStateForUndo(std::vector<vtkMRMLNode*> nodes)
 }
 
 //------------------------------------------------------------------------------
-void vtkMRMLScene::SaveStateForUndo(vtkCollection* nodes)
+void vtkMRMLScene::SaveStateForUndo(vtkCollection* nodes, const std::string& undoName)
 {
   if (!this->UndoFlag)
   {
@@ -2856,7 +2856,7 @@ void vtkMRMLScene::SaveStateForUndo(vtkCollection* nodes)
 
   this->ClearRedoStack();
   // this->SetUndoOn();
-  this->PushIntoUndoStack();
+  this->PushIntoUndoStack(undoName);
 
   int nnodes = nodes->GetNumberOfItems();
 
@@ -2871,7 +2871,7 @@ void vtkMRMLScene::SaveStateForUndo(vtkCollection* nodes)
 }
 
 //------------------------------------------------------------------------------
-void vtkMRMLScene::SaveStateForUndo()
+void vtkMRMLScene::SaveStateForUndo(const std::string& undoName)
 {
   if (!this->UndoFlag)
   {
@@ -2884,13 +2884,13 @@ void vtkMRMLScene::SaveStateForUndo()
   }
   if (this->Nodes)
   {
-    this->SaveStateForUndo(this->Nodes);
+    this->SaveStateForUndo(this->Nodes, undoName);
   }
 }
 
 //------------------------------------------------------------------------------
 // Make a new collection that has pointers to all the nodes in the current scene
-void vtkMRMLScene::PushIntoUndoStack()
+void vtkMRMLScene::PushIntoUndoStack(const std::string& undoName)
 {
   if (this->Nodes == nullptr)
   {
@@ -2913,12 +2913,14 @@ void vtkMRMLScene::PushIntoUndoStack()
   }
 
   this->UndoStack.push_back(newScene);
+  this->UndoStackNames.push_back(undoName);
   this->TrimUndoStack();
+  this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
 }
 
 //------------------------------------------------------------------------------
 // Make a new collection that has pointers to the current scene nodes
-void vtkMRMLScene::PushIntoRedoStack()
+void vtkMRMLScene::PushIntoRedoStack(const std::string& undoName)
 {
   if (this->Nodes == nullptr)
   {
@@ -2941,6 +2943,8 @@ void vtkMRMLScene::PushIntoRedoStack()
   }
 
   this->RedoStack.push_back(newScene);
+  this->RedoStackNames.push_back(undoName);
+  this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
 }
 
 //------------------------------------------------------------------------------
@@ -3025,7 +3029,10 @@ void vtkMRMLScene::Undo()
   int n;
   unsigned int nn;
 
-  this->PushIntoRedoStack();
+  // The state being undone describes a change; carry its description to the redo stack so that
+  // redoing re-applies the same change.
+  std::string undoName = this->UndoStackNames.empty() ? std::string() : this->UndoStackNames.back();
+  this->PushIntoRedoStack(undoName);
 
   vtkCollection* currentScene = this->Nodes;
   // We use 2 vectors instead of a map in order to keep the ordering of the
@@ -3126,6 +3133,11 @@ void vtkMRMLScene::Undo()
   {
     this->UndoStack.pop_back();
   }
+  if (!this->UndoStackNames.empty())
+  {
+    this->UndoStackNames.pop_back();
+  }
+  this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
   this->Modified();
 
   this->EndState(vtkMRMLScene::UndoState);
@@ -3156,7 +3168,10 @@ void vtkMRMLScene::Redo()
 
   this->RemoveUnusedNodeReferences();
 
-  this->PushIntoUndoStack();
+  // The state being redone describes a change; carry its description to the undo stack so that
+  // undoing reverts the same change.
+  std::string redoName = this->RedoStackNames.empty() ? std::string() : this->RedoStackNames.back();
+  this->PushIntoUndoStack(redoName);
 
   vtkCollection* currentScene = this->Nodes;
   // std::hash_map<std::string, vtkMRMLNode*> currentMap;
@@ -3251,6 +3266,11 @@ void vtkMRMLScene::Redo()
     undoScene->Delete();
   }
   this->RedoStack.pop_back();
+  if (!this->RedoStackNames.empty())
+  {
+    this->RedoStackNames.pop_back();
+  }
+  this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
   this->Modified();
 
   this->EndState(vtkMRMLScene::RedoState);
@@ -3271,6 +3291,7 @@ void vtkMRMLScene::SetUndoFlag(bool flag)
 //------------------------------------------------------------------------------
 void vtkMRMLScene::ClearUndoStack()
 {
+  bool modified = !this->UndoStack.empty();
   std::list<vtkCollection*>::iterator iter;
   for (iter = this->UndoStack.begin(); iter != this->UndoStack.end(); iter++)
   {
@@ -3278,11 +3299,17 @@ void vtkMRMLScene::ClearUndoStack()
     (*iter)->Delete();
   }
   this->UndoStack.clear();
+  this->UndoStackNames.clear();
+  if (modified)
+  {
+    this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
+  }
 }
 
 //------------------------------------------------------------------------------
 void vtkMRMLScene::ClearRedoStack()
 {
+  bool modified = !this->RedoStack.empty();
   std::list<vtkCollection*>::iterator iter;
   for (iter = this->RedoStack.begin(); iter != this->RedoStack.end(); iter++)
   {
@@ -3290,6 +3317,55 @@ void vtkMRMLScene::ClearRedoStack()
     (*iter)->Delete();
   }
   this->RedoStack.clear();
+  this->RedoStackNames.clear();
+  if (modified)
+  {
+    this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
+  }
+}
+
+//------------------------------------------------------------------------------
+std::vector<std::string> vtkMRMLScene::GetUndoStackNames()
+{
+  // Most recently saved state (applied by the next Undo) first.
+  return std::vector<std::string>(this->UndoStackNames.rbegin(), this->UndoStackNames.rend());
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::GetUndoStackNames(vtkStringArray* undoStackNames)
+{
+  if (undoStackNames == nullptr)
+  {
+    vtkErrorMacro("vtkMRMLScene::GetUndoStackNames: undoStackNames is invalid");
+    return;
+  }
+  undoStackNames->Reset();
+  for (std::list<std::string>::reverse_iterator it = this->UndoStackNames.rbegin(); it != this->UndoStackNames.rend(); ++it)
+  {
+    undoStackNames->InsertNextValue(*it);
+  }
+}
+
+//------------------------------------------------------------------------------
+std::vector<std::string> vtkMRMLScene::GetRedoStackNames()
+{
+  // Most recently undone state (applied by the next Redo) first.
+  return std::vector<std::string>(this->RedoStackNames.rbegin(), this->RedoStackNames.rend());
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::GetRedoStackNames(vtkStringArray* redoStackNames)
+{
+  if (redoStackNames == nullptr)
+  {
+    vtkErrorMacro("vtkMRMLScene::GetRedoStackNames: redoStackNames is invalid");
+    return;
+  }
+  redoStackNames->Reset();
+  for (std::list<std::string>::reverse_iterator it = this->RedoStackNames.rbegin(); it != this->RedoStackNames.rend(); ++it)
+  {
+    redoStackNames->InsertNextValue(*it);
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -4014,6 +4090,10 @@ void vtkMRMLScene::TrimUndoStack()
   {
     removedStacks.emplace_back(this->UndoStack.front());
     this->UndoStack.pop_front();
+    if (!this->UndoStackNames.empty())
+    {
+      this->UndoStackNames.pop_front();
+    }
   }
 }
 

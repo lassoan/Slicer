@@ -27,6 +27,7 @@
 
 // CTK includes
 #include <ctkErrorLogModel.h>
+#include <ctkVTKObject.h>
 
 // Slicer includes
 #include "qSlicerBaseQTAppExport.h"
@@ -43,6 +44,7 @@ class vtkObject;
 class Q_SLICER_BASE_QTAPP_EXPORT qSlicerMainWindow : public QMainWindow
 {
   Q_OBJECT
+  QVTK_OBJECT
 public:
   typedef QMainWindow Superclass;
 
@@ -92,6 +94,15 @@ public slots:
   /// Enable or disable scene undo/redo (driven by the "EnableSceneUndo" application setting).
   /// Turns the scene undo mechanism on/off and shows/hides the Undo/Redo toolbar and Edit menu actions accordingly.
   virtual void setSceneUndoEnabled(bool enabled);
+
+  /// Update the enabled state and tooltip of the Undo/Redo actions from the scene undo/redo stacks.
+  /// The tooltip shows the description of the state that the next Undo/Redo will apply.
+  virtual void updateUndoRedoActions();
+
+  /// Populate the Undo history dropdown menu from the descriptions in the scene undo stack.
+  virtual void populateUndoHistoryMenu();
+  /// Populate the Redo history dropdown menu from the descriptions in the scene redo stack.
+  virtual void populateRedoHistoryMenu();
 
   virtual void on_ModuleHomeAction_triggered();
 

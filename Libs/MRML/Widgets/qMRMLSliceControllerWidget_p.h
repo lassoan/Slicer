@@ -92,7 +92,7 @@ public:
   void setupRulerMenu();
   void setupSlabReconstructionMenu();
 
-  vtkSmartPointer<vtkCollection> saveNodesForUndo(const QString& nodeTypes);
+  vtkSmartPointer<vtkCollection> saveNodesForUndo(const QString& nodeTypes, const QString& undoName = QString());
 
   /// Save the slice composite node state for undo. While an opacity slider is being dragged, only
   /// the first change is saved for undo, so that a whole drag results in a single undo step

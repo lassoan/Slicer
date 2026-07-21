@@ -1085,6 +1085,99 @@ void qSlicerMainWindow::setSceneUndoEnabled(bool enabled)
     // Prevent the hidden toolbar from being toggled back on from the View > Toolbars menu.
     d->UndoRedoToolBar->toggleViewAction()->setVisible(enabled);
   }
+  this->updateUndoRedoActions();
+}
+
+//---------------------------------------------------------------------------
+void qSlicerMainWindow::updateUndoRedoActions()
+{
+  Q_D(qSlicerMainWindow);
+  vtkMRMLScene* scene = qSlicerApplication::application()->mrmlScene();
+  std::vector<std::string> undoNames = scene ? scene->GetUndoStackNames() : std::vector<std::string>();
+  std::vector<std::string> redoNames = scene ? scene->GetRedoStackNames() : std::vector<std::string>();
+
+  d->EditUndoAction->setEnabled(!undoNames.empty());
+  d->EditRedoAction->setEnabled(!redoNames.empty());
+
+  // Tooltip shows the description of the change that the next Undo/Redo will apply.
+  if (!undoNames.empty() && !undoNames.front().empty())
+  {
+    d->EditUndoAction->setToolTip(qSlicerMainWindow::tr("Undo: %1").arg(QString::fromStdString(undoNames.front())));
+  }
+  else
+  {
+    d->EditUndoAction->setToolTip(qSlicerMainWindow::tr("Undo the last change."));
+  }
+  if (!redoNames.empty() && !redoNames.front().empty())
+  {
+    d->EditRedoAction->setToolTip(qSlicerMainWindow::tr("Redo: %1").arg(QString::fromStdString(redoNames.front())));
+  }
+  else
+  {
+    d->EditRedoAction->setToolTip(qSlicerMainWindow::tr("Redo the last undone change."));
+  }
+}
+
+//---------------------------------------------------------------------------
+void qSlicerMainWindow::populateUndoHistoryMenu()
+{
+  Q_D(qSlicerMainWindow);
+  d->UndoHistoryMenu->clear();
+  vtkMRMLScene* scene = qSlicerApplication::application()->mrmlScene();
+  if (!scene)
+  {
+    return;
+  }
+  // Names are ordered so that the first item is the state that the next Undo applies. Triggering
+  // the N-th item (1-based) applies N undo steps.
+  std::vector<std::string> undoNames = scene->GetUndoStackNames();
+  for (int index = 0; index < static_cast<int>(undoNames.size()); ++index)
+  {
+    QString text = undoNames[index].empty() ? qSlicerMainWindow::tr("Unnamed state") : QString::fromStdString(undoNames[index]);
+    QAction* action = d->UndoHistoryMenu->addAction(text);
+    int steps = index + 1;
+    QObject::connect(action,
+                     &QAction::triggered,
+                     this,
+                     [steps]()
+                     {
+                       vtkMRMLScene* scene = qSlicerApplication::application()->mrmlScene();
+                       for (int step = 0; scene && step < steps; ++step)
+                       {
+                         scene->Undo();
+                       }
+                     });
+  }
+}
+
+//---------------------------------------------------------------------------
+void qSlicerMainWindow::populateRedoHistoryMenu()
+{
+  Q_D(qSlicerMainWindow);
+  d->RedoHistoryMenu->clear();
+  vtkMRMLScene* scene = qSlicerApplication::application()->mrmlScene();
+  if (!scene)
+  {
+    return;
+  }
+  std::vector<std::string> redoNames = scene->GetRedoStackNames();
+  for (int index = 0; index < static_cast<int>(redoNames.size()); ++index)
+  {
+    QString text = redoNames[index].empty() ? qSlicerMainWindow::tr("Unnamed state") : QString::fromStdString(redoNames[index]);
+    QAction* action = d->RedoHistoryMenu->addAction(text);
+    int steps = index + 1;
+    QObject::connect(action,
+                     &QAction::triggered,
+                     this,
+                     [steps]()
+                     {
+                       vtkMRMLScene* scene = qSlicerApplication::application()->mrmlScene();
+                       for (int step = 0; scene && step < steps; ++step)
+                       {
+                         scene->Redo();
+                       }
+                     });
+  }
 }
 
 //---------------------------------------------------------------------------
@@ -1450,12 +1543,41 @@ void qSlicerMainWindow::setupMenuActions()
                        }
                      });
   }
-  // Re-apply the scene undo flag when the scene is replaced (a new scene defaults to undo off).
+  // Undo/Redo history dropdown menus on the toolbar buttons. Each menu is populated on demand from
+  // the descriptions stored in the scene undo/redo stacks (\sa vtkMRMLScene::GetUndoStackNames).
+  d->UndoHistoryMenu = new QMenu(qSlicerMainWindow::tr("Undo history"), this);
+  d->RedoHistoryMenu = new QMenu(qSlicerMainWindow::tr("Redo history"), this);
+  QObject::connect(d->UndoHistoryMenu, &QMenu::aboutToShow, this, &qSlicerMainWindow::populateUndoHistoryMenu);
+  QObject::connect(d->RedoHistoryMenu, &QMenu::aboutToShow, this, &qSlicerMainWindow::populateRedoHistoryMenu);
+  if (d->UndoRedoToolBar)
+  {
+    if (QToolButton* undoButton = qobject_cast<QToolButton*>(d->UndoRedoToolBar->widgetForAction(d->EditUndoAction)))
+    {
+      undoButton->setMenu(d->UndoHistoryMenu);
+      undoButton->setPopupMode(QToolButton::MenuButtonPopup);
+    }
+    if (QToolButton* redoButton = qobject_cast<QToolButton*>(d->UndoRedoToolBar->widgetForAction(d->EditRedoAction)))
+    {
+      redoButton->setMenu(d->RedoHistoryMenu);
+      redoButton->setPopupMode(QToolButton::MenuButtonPopup);
+    }
+  }
+
+  // Keep the Undo/Redo actions (enabled state and tooltip) in sync with the scene undo/redo stacks.
+  this->qvtkReconnect(app->mrmlScene(), vtkMRMLScene::UndoStackModifiedEvent, this, SLOT(updateUndoRedoActions()));
+  this->updateUndoRedoActions();
+
+  // Re-apply the scene undo flag and re-observe the undo stack when the scene is replaced (a new
+  // scene defaults to undo off).
   QObject::connect(app,
                    &qSlicerCoreApplication::mrmlSceneChanged,
                    this,
                    [this, app]()
-                   { this->setSceneUndoEnabled(app->userSettings()->value("EnableSceneUndo", true).toBool()); });
+                   {
+                     this->setSceneUndoEnabled(app->userSettings()->value("EnableSceneUndo", true).toBool());
+                     this->qvtkReconnect(app->mrmlScene(), vtkMRMLScene::UndoStackModifiedEvent, this, SLOT(updateUndoRedoActions()));
+                     this->updateUndoRedoActions();
+                   });
 
   Q_UNUSED(app);
 }

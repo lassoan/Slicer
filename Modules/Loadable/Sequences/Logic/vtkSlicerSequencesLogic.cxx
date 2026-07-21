@@ -202,7 +202,7 @@ vtkMRMLSequenceNode* vtkSlicerSequencesLogic::AddSequence(const char* filename, 
   std::string uname(this->GetMRMLScene()->GetUniqueNameByString(baseName.c_str()));
   sequenceNode->SetName(uname.c_str());
 
-  this->GetMRMLScene()->SaveStateForUndo();
+  this->GetMRMLScene()->SaveStateForUndo(vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerSequencesLogic", "Add sequence (%1)"), sequenceNode->GetName()));
 
   this->GetMRMLScene()->AddNode(storageNode);
 

@@ -176,14 +176,14 @@ bool qMRMLSceneViewMenuPrivate::hasNoSceneViewItem() const
 // --------------------------------------------------------------------------
 void qMRMLSceneViewMenuPrivate::restoreSceneView(int index)
 {
-  this->MRMLScene->SaveStateForUndo();
+  this->MRMLScene->SaveStateForUndo(qMRMLSceneViewMenu::tr("Restore scene view").toStdString());
   this->SceneViewsLogic->RestoreSceneView(index);
 }
 
 // --------------------------------------------------------------------------
 void qMRMLSceneViewMenuPrivate::deleteSceneView(int index)
 {
-  this->MRMLScene->SaveStateForUndo();
+  this->MRMLScene->SaveStateForUndo(qMRMLSceneViewMenu::tr("Delete scene view").toStdString());
   this->SceneViewsLogic->RemoveSceneView(index);
 }
 

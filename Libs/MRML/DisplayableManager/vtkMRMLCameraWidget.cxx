@@ -17,6 +17,8 @@
 
 #include "vtkMRMLCameraWidget.h"
 
+#include "vtkMRMLI18N.h"
+
 // VTK includes
 #include "vtkCamera.h"
 #include "vtkEvent.h"
@@ -1011,7 +1013,7 @@ void vtkMRMLCameraWidget::SaveStateForUndo()
   }
   // Passing the camera node makes this a no-op unless the camera node has undo enabled, so that
   // camera manipulations do not add markups (or other) nodes' states to the undo stack.
-  mrmlScene->SaveStateForUndo(cameraNode);
+  mrmlScene->SaveStateForUndo(cameraNode, vtkMRMLI18N::Format(vtkMRMLTr("vtkMRMLCameraWidget", "Adjust camera (%1)"), cameraNode->GetName()));
 }
 
 //-------------------------------------------------------------------------

@@ -18,6 +18,7 @@
 
 #include "vtkSlicerCurveWidget.h"
 
+#include "vtkMRMLI18N.h"
 #include "vtkMRMLInteractionEventData.h"
 #include "vtkMRMLMarkupsCurveNode.h"
 #include "vtkMRMLScene.h"
@@ -121,7 +122,7 @@ bool vtkSlicerCurveWidget::ProcessControlPointInsert(vtkMRMLInteractionEventData
     rep2d->GetSliceToWorldCoordinates(doubleDisplayPos, worldPos);
   }
 
-  markupsNode->GetScene()->SaveStateForUndo();
+  markupsNode->GetScene()->SaveStateForUndo(vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerCurveWidget", "Insert control point (%1)"), markupsNode->GetName()));
 
   // Create new control point and insert
   vtkMRMLMarkupsNode::ControlPoint* controlPoint = new vtkMRMLMarkupsNode::ControlPoint;

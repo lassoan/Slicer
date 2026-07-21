@@ -84,6 +84,8 @@ public:
   QIcon                           ErrorLogIconNormal;
   bool                            ErrorLogIconIsHighlighted{ false };
   QToolButton*                    LayoutButton{ nullptr };
+  QMenu*                          UndoHistoryMenu{ nullptr };
+  QMenu*                          RedoHistoryMenu{ nullptr };
   qSlicerModuleSelectorToolBar*   ModuleSelectorToolBar{ nullptr };
   QStringList                     FavoriteModules;
   // In case of a custom CentralWidget is used, the layout manager may get deleted.

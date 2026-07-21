@@ -399,23 +399,39 @@ public:
   /// returns number of redo steps in the history buffer
   int GetNumberOfRedoLevels() { return static_cast<int>(this->RedoStack.size()); }
 
-  /// Save current state in the undo buffer
-  void SaveStateForUndo();
+  /// Save current state in the undo buffer.
+  /// \param undoName Optional user-displayable description of the change that this saved state can
+  /// undo (for example, "Move control point"). It is stored in the undo/redo stack and can be shown
+  /// in the user interface (\sa GetUndoStackNames). The text should be translatable (for example,
+  /// created with the vtkMRMLTr macro).
+  void SaveStateForUndo(const std::string& undoName = "");
 
   /// Save current state of the node in the undo buffer
   /// \deprecated Use SaveStateForUndo() instead.
   /// Storing of only selected nodes may result in incomplete saving of
   /// important changes in the scene. Instead, each node's UndoEnabled flag
   /// will tell if that node's state must be stored or not.
-  void SaveStateForUndo(vtkMRMLNode* node);
+  void SaveStateForUndo(vtkMRMLNode* node, const std::string& undoName = "");
 
   /// Save current state of the nodes in the undo buffer
   /// \deprecated Use SaveStateForUndo() instead.
   /// Storing of only selected nodes may result in incomplete saving of
   /// important changes in the scene. Instead, each node's UndoEnabled flag
   /// will tell if that node's state must be stored or not.
-  void SaveStateForUndo(vtkCollection* nodes);
-  void SaveStateForUndo(std::vector<vtkMRMLNode*> nodes);
+  void SaveStateForUndo(vtkCollection* nodes, const std::string& undoName = "");
+  void SaveStateForUndo(std::vector<vtkMRMLNode*> nodes, const std::string& undoName = "");
+
+  /// \name Undo/redo state descriptions
+  /// Get the user-displayable descriptions stored with the states in the undo and redo stacks
+  /// (\sa SaveStateForUndo). The first item in the returned list corresponds to the state that the
+  /// next Undo() (respectively Redo()) call will apply, the following items to the states that
+  /// subsequent calls will apply.
+  //@{
+  std::vector<std::string> GetUndoStackNames();
+  void GetUndoStackNames(vtkStringArray* undoStackNames);
+  std::vector<std::string> GetRedoStackNames();
+  void GetRedoStackNames(vtkStringArray* redoStackNames);
+  //@}
 
   /// \name Undoable node classes
   /// Manage the set of node classes that participate in the scene undo mechanism.
@@ -732,6 +748,9 @@ public:
     MetadataAddedEvent = 66032, // ### Slicer 4.5: Simplify - Do not explicitly set for backward compat. See issue #3472
     ImportProgressFeedbackEvent,
     SaveProgressFeedbackEvent,
+    /// Invoked when the undo or redo stack changes (a state is saved, applied, or cleared),
+    /// so that the user interface can update undo/redo actions (\sa GetUndoStackNames).
+    UndoStackModifiedEvent = 66035,
 
     /// \internal
     /// not to be used directly
@@ -897,8 +916,8 @@ protected:
   vtkMRMLScene();
   ~vtkMRMLScene() override;
 
-  void PushIntoUndoStack();
-  void PushIntoRedoStack();
+  void PushIntoUndoStack(const std::string& undoName = "");
+  void PushIntoRedoStack(const std::string& undoName = "");
 
   void CopyNodeInUndoStack(vtkMRMLNode* node);
   void CopyNodeInRedoStack(vtkMRMLNode* node);
@@ -1018,6 +1037,11 @@ protected:
 
   std::list<vtkCollection*> UndoStack;
   std::list<vtkCollection*> RedoStack;
+
+  /// User-displayable descriptions stored with each state in the undo/redo stacks,
+  /// kept in sync with UndoStack/RedoStack. \sa SaveStateForUndo, GetUndoStackNames
+  std::list<std::string> UndoStackNames;
+  std::list<std::string> RedoStackNames;
 
   /// Node class names whose nodes participate in the undo/redo mechanism.
   std::set<std::string> UndoableNodeClasses;

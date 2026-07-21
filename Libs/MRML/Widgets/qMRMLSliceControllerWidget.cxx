@@ -638,13 +638,15 @@ void qMRMLSliceControllerWidgetPrivate::setMRMLSliceCompositeNodeInternal(vtkMRM
 }
 
 // --------------------------------------------------------------------------
-vtkSmartPointer<vtkCollection> qMRMLSliceControllerWidgetPrivate::saveNodesForUndo(const QString& nodeTypes)
+vtkSmartPointer<vtkCollection> qMRMLSliceControllerWidgetPrivate::saveNodesForUndo(const QString& nodeTypes, const QString& undoName)
 {
   Q_Q(qMRMLSliceControllerWidget);
   vtkSmartPointer<vtkCollection> nodes;
   if (q->mrmlScene())
   {
     nodes.TakeReference(q->mrmlScene()->GetNodesByClass(nodeTypes.toUtf8()));
+    // User-displayable description of the change, saved with the undo state.
+    QString undoDescription = undoName.isEmpty() ? qMRMLSliceControllerWidget::tr("Adjust slice view") : undoName;
     // Only save the state of these nodes for undo if at least one of them participates in undo
     // (its class is registered as undoable in the scene). This avoids adding spurious undo states,
     // for example when only markups undo is enabled, adjusting slice view controls should not
@@ -660,7 +662,7 @@ vtkSmartPointer<vtkCollection> qMRMLSliceControllerWidgetPrivate::saveNodesForUn
     }
     if (anyUndoable)
     {
-      q->mrmlScene()->SaveStateForUndo(nodes);
+      q->mrmlScene()->SaveStateForUndo(nodes, undoDescription.toStdString());
     }
   }
   return nodes;
@@ -682,7 +684,7 @@ vtkSmartPointer<vtkCollection> qMRMLSliceControllerWidgetPrivate::saveCompositeN
     return nodes;
   }
   this->OpacityUndoStateSaved = true;
-  return this->saveNodesForUndo("vtkMRMLSliceCompositeNode");
+  return this->saveNodesForUndo("vtkMRMLSliceCompositeNode", qMRMLSliceControllerWidget::tr("Set opacity"));
 }
 
 // --------------------------------------------------------------------------
@@ -1298,7 +1300,7 @@ void qMRMLSliceControllerWidgetPrivate::setForegroundInterpolation(vtkMRMLSliceL
   if (displayNode)
   {
     // Passing the display node makes this a no-op unless that node has undo enabled.
-    q->mrmlScene()->SaveStateForUndo(displayNode);
+    q->mrmlScene()->SaveStateForUndo(displayNode, qMRMLSliceControllerWidget::tr("Set interpolation (%1)").arg(displayNode->GetName()).toStdString());
     displayNode->SetInterpolate(linear);
   }
   // historic code that doesn't seem to work
@@ -1326,7 +1328,7 @@ void qMRMLSliceControllerWidgetPrivate::setBackgroundInterpolation(vtkMRMLSliceL
   if (displayNode)
   {
     // Passing the display node makes this a no-op unless that node has undo enabled.
-    q->mrmlScene()->SaveStateForUndo(displayNode);
+    q->mrmlScene()->SaveStateForUndo(displayNode, qMRMLSliceControllerWidget::tr("Set interpolation (%1)").arg(displayNode->GetName()).toStdString());
     displayNode->SetInterpolate(linear);
   }
   // historic code that doesn't seem to work

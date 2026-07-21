@@ -21,6 +21,7 @@
 #include "vtkSlicerMarkupsInteractionWidget.h"
 #include "vtkSlicerMarkupsInteractionWidgetRepresentation.h"
 
+#include "vtkMRMLI18N.h"
 #include "vtkMRMLInteractionEventData.h"
 #include "vtkMRMLScene.h"
 
@@ -211,7 +212,8 @@ bool vtkSlicerMarkupsInteractionWidget::ProcessWidgetJumpCursor(vtkMRMLInteracti
   int componentIndex = markupsDisplayNode->GetActiveComponentIndex();
   int componentType = markupsDisplayNode->GetActiveComponentType();
 
-  markupsNode->GetScene()->SaveStateForUndo();
+  markupsNode->GetScene()->SaveStateForUndo(
+    vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsInteractionWidget", "Interact with markup (%1)"), markupsNode->GetName()));
 
   vtkNew<vtkMRMLInteractionEventData> jumpToPointEventData;
   jumpToPointEventData->SetType(vtkMRMLMarkupsDisplayNode::JumpToPointEvent);

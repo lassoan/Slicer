@@ -21,6 +21,7 @@
 #include "vtkMRMLVolumeRenderingDisplayableManager.h"
 
 // VolumeRendering MRML includes
+#include <vtkMRMLI18N.h>
 #include <vtkMRMLVolumePropertyNode.h>
 #include <vtkMRMLVolumeRenderingDisplayNode.h>
 
@@ -507,7 +508,7 @@ bool vtkMRMLVolumeRenderingWindowLevelWidget::ProcessAdjustTransferFunctionStart
   vtkMRMLScene* scene = this->Internal->GetMRMLScene();
   if (scene)
   {
-    scene->SaveStateForUndo();
+    scene->SaveStateForUndo(vtkMRMLTr("vtkMRMLVolumeRenderingWindowLevelWidget", "Adjust volume rendering window/level"));
   }
 
   // Save original transfer function states

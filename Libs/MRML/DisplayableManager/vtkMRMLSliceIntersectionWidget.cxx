@@ -18,6 +18,7 @@
 #include "vtkMRMLApplicationLogic.h"
 #include "vtkMRMLCrosshairDisplayableManager.h"
 #include "vtkMRMLCrosshairNode.h"
+#include "vtkMRMLI18N.h"
 #include "vtkMRMLInteractionEventData.h"
 #include "vtkMRMLInteractionNode.h"
 #include "vtkMRMLLayoutNode.h"
@@ -1071,7 +1072,7 @@ void vtkMRMLSliceIntersectionWidget::SaveStateForUndo()
   }
   // Passing the slice node makes this a no-op unless the slice node has undo enabled, so that
   // slice view manipulations do not add markups (or other) nodes' states to the undo stack.
-  mrmlScene->SaveStateForUndo(sliceNode);
+  mrmlScene->SaveStateForUndo(sliceNode, vtkMRMLI18N::Format(vtkMRMLTr("vtkMRMLSliceIntersectionWidget", "Adjust slice view (%1)"), sliceNode->GetName()));
 }
 
 //----------------------------------------------------------------------
