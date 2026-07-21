@@ -1870,6 +1870,21 @@ void qSlicerMarkupsModuleWidget::onCreateMarkupByClass(const QString& className)
     qWarning() << Q_FUNC_INFO << " failed: invalid markups logic";
     return;
   }
+
+  // Save the scene state before the new node is created, so that its creation can be undone. This
+  // must be done before the node is added to the scene. The new node's name is not known yet, so
+  // the markup type name is used in the undo description.
+  if (this->mrmlScene())
+  {
+    QString markupTypeName = className;
+    if (vtkMRMLNode* templateNode = this->mrmlScene()->CreateNodeByClass(className.toUtf8()))
+    {
+      markupTypeName = QString::fromStdString(templateNode->GetTypeDisplayName());
+      templateNode->Delete();
+    }
+    this->mrmlScene()->SaveStateForUndo(qSlicerMarkupsModuleWidget::tr("Add %1").arg(markupTypeName).toStdString());
+  }
+
   vtkMRMLMarkupsNode* markupsNode = this->markupsLogic()->AddNewMarkupsNode(className.toStdString());
   if (markupsNode)
   {

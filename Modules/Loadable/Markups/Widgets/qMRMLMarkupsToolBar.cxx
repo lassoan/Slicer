@@ -529,6 +529,19 @@ void qMRMLMarkupsToolBar::onAddNewMarkupsNodeByClass(const QString& className)
   vtkSlicerMarkupsLogic* markupsLogic = vtkSlicerMarkupsLogic::SafeDownCast(d->MRMLAppLogic->GetModuleLogic(/*no tr*/ "Markups"));
   if (markupsLogic)
   {
+    // Save the scene state before the new node is created, so that its creation can be undone. This
+    // must be done before the node is added to the scene. The new node's name is not known yet, so
+    // the markup type name is used in the undo description.
+    if (vtkMRMLScene* scene = markupsLogic->GetMRMLScene())
+    {
+      QString markupTypeName = className;
+      if (vtkMRMLNode* templateNode = scene->CreateNodeByClass(className.toUtf8()))
+      {
+        markupTypeName = QString::fromStdString(templateNode->GetTypeDisplayName());
+        templateNode->Delete();
+      }
+      scene->SaveStateForUndo(qMRMLMarkupsToolBar::tr("Add %1").arg(markupTypeName).toStdString());
+    }
     markupsNode = markupsLogic->AddNewMarkupsNode(className.toStdString());
   }
   if (!markupsNode)
