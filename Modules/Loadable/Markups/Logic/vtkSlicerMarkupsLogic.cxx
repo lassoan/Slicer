@@ -54,6 +54,7 @@
 #include "vtkMRMLSceneViewNode.h"
 #include "vtkMRMLSelectionNode.h"
 #include "vtkMRMLSliceNode.h"
+#include "vtkMRMLStorageNode.h"
 #include <vtkMRMLSubjectHierarchyNode.h>
 #include "vtkMRMLTableNode.h"
 
@@ -455,11 +456,17 @@ void vtkSlicerMarkupsLogic::OnMRMLSceneNodeAdded(vtkMRMLNode* node)
   {
     return;
   }
-  if (this->GetMRMLScene() &&                 //
-      (this->GetMRMLScene()->IsImporting() || //
-       this->GetMRMLScene()->IsRestoring() || //
-       this->GetMRMLScene()->IsBatchProcessing()))
+  if (this->GetMRMLScene() &&                    //
+      (this->GetMRMLScene()->IsImporting() ||    //
+       this->GetMRMLScene()->IsRestoring() ||    //
+       this->GetMRMLScene()->IsBatchProcessing() //
+       || this->GetMRMLScene()->IsUndoing()      //
+       || this->GetMRMLScene()->IsRedoing()))
   {
+    // During undo/redo the markups node is restored from a saved state that already references its
+    // display node (which is restored, too, as it is an undoable node class). Do not auto-create a
+    // new display node here, otherwise the restored node would end up with a duplicate, orphaned
+    // display node and a dangling reference.
     return;
   }
   vtkMRMLMarkupsNode* markupsNode = vtkMRMLMarkupsNode::SafeDownCast(node);
@@ -2124,6 +2131,23 @@ void vtkSlicerMarkupsLogic::RegisterMarkupsNode(vtkMRMLMarkupsNode* markupsNode,
   // the default). Turning the scene undo mechanism on/off is an application-wide setting handled
   // by the main window.
   this->GetMRMLScene()->AddUndoableNodeClass(markupsNode->GetClassName());
+
+  // The display and storage nodes referenced by a markups node must be undoable, too, so that they
+  // are saved and restored together with the markups node (see vtkMRMLNode::UndoEnabled). Otherwise
+  // undoing/redoing the creation or deletion of a markups node would leave a dangling display node
+  // reference (the node would appear invisible/incomplete until its display node is recreated).
+  this->GetMRMLScene()->AddUndoableNodeClass("vtkMRMLMarkupsDisplayNode");
+  // The storage node class name is obtained from a default storage node instance. The storage node
+  // is created using the scene's node factory, so the scene must be set on the template node
+  // temporarily (the template node is not in a scene; setting the scene has no side effects on it
+  // because a template node has no node references).
+  markupsNode->SetScene(this->GetMRMLScene());
+  if (vtkMRMLStorageNode* storageNode = markupsNode->CreateDefaultStorageNode())
+  {
+    this->GetMRMLScene()->AddUndoableNodeClass(storageNode->GetClassName());
+    storageNode->Delete();
+  }
+  markupsNode->SetScene(nullptr);
 
   // Check for nullptr
   if (markupsWidget == nullptr)
