@@ -5,6 +5,7 @@
 
 api
 mrml_overview
+undo_redo
 module_overview
 parameter_nodes/index
 modules/index
