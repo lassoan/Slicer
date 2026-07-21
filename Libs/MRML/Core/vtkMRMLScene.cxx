@@ -28,7 +28,9 @@ Version:   $Revision: 1.18 $
 #include "vtkMRMLDiffusionTensorDisplayPropertiesNode.h"
 #include "vtkMRMLDiffusionWeightedVolumeDisplayNode.h"
 #include "vtkMRMLDiffusionWeightedVolumeNode.h"
+#include "vtkMRMLDisplayNode.h"
 #include "vtkMRMLDisplayableHierarchyNode.h"
+#include "vtkMRMLDisplayableNode.h"
 #include "vtkMRMLFolderDisplayNode.h"
 #include "vtkMRMLGridTransformNode.h"
 #include "vtkMRMLHierarchyNode.h"
@@ -80,6 +82,8 @@ Version:   $Revision: 1.18 $
 #include "vtkMRMLSliceDisplayNode.h"
 #include "vtkMRMLSliceNode.h"
 #include "vtkMRMLSnapshotClipNode.h"
+#include "vtkMRMLStorableNode.h"
+#include "vtkMRMLStorageNode.h"
 #include "vtkMRMLSubjectHierarchyNode.h"
 #include "vtkMRMLTableNode.h"
 #include "vtkMRMLTableStorageNode.h"
@@ -2744,6 +2748,46 @@ bool vtkMRMLScene::IsNodeUndoable(vtkMRMLNode* node)
 }
 
 //------------------------------------------------------------------------------
+void vtkMRMLScene::WarnIfOwnedNodesNotUndoable(vtkMRMLNode* node)
+{
+  // A node that participates in undo/redo must have its owned display and storage nodes participate
+  // as well, otherwise undoing/redoing the creation or deletion of the node would leave a dangling
+  // display/storage node reference. Warn once per referenced node class so that the developer can
+  // register the missing class with AddUndoableNodeClass().
+  vtkMRMLDisplayableNode* displayableNode = vtkMRMLDisplayableNode::SafeDownCast(node);
+  if (displayableNode)
+  {
+    for (int displayNodeIndex = 0; displayNodeIndex < displayableNode->GetNumberOfDisplayNodes(); ++displayNodeIndex)
+    {
+      vtkMRMLDisplayNode* displayNode = displayableNode->GetNthDisplayNode(displayNodeIndex);
+      if (displayNode && !this->IsNodeUndoable(displayNode) //
+          && this->UndoReferenceWarningsIssued.insert(displayNode->GetClassName()).second)
+      {
+        vtkWarningMacro("Undo/redo: node of class '" << node->GetClassName() << "' is undoable, but its display node of class '"
+                                                     << displayNode->GetClassName() << "' is not. Register the display node class with "
+                                                     << "vtkMRMLScene::AddUndoableNodeClass() so that display and storage nodes are saved and "
+                                                     << "restored together with the node.");
+      }
+    }
+  }
+  vtkMRMLStorableNode* storableNode = vtkMRMLStorableNode::SafeDownCast(node);
+  if (storableNode)
+  {
+    for (int storageNodeIndex = 0; storageNodeIndex < storableNode->GetNumberOfStorageNodes(); ++storageNodeIndex)
+    {
+      vtkMRMLStorageNode* storageNode = storableNode->GetNthStorageNode(storageNodeIndex);
+      if (storageNode && !this->IsNodeUndoable(storageNode) //
+          && this->UndoReferenceWarningsIssued.insert(storageNode->GetClassName()).second)
+      {
+        vtkWarningMacro("Undo/redo: node of class '" << node->GetClassName() << "' is undoable, but its storage node of class '"
+                                                     << storageNode->GetClassName() << "' is not. Register the storage node class with "
+                                                     << "vtkMRMLScene::AddUndoableNodeClass().");
+      }
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
 std::vector<std::string> vtkMRMLScene::GetUndoableNodeClasses()
 {
   return std::vector<std::string>(this->UndoableNodeClasses.begin(), this->UndoableNodeClasses.end());
@@ -3045,6 +3089,7 @@ void vtkMRMLScene::Undo()
     vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(currentScene->GetItemAsObject(n));
     if (this->IsNodeUndoable(node))
     {
+      this->WarnIfOwnedNodesNotUndoable(node);
       currentIDs.emplace_back(node->GetID());
       currentNodes.push_back(node);
     }
@@ -3182,6 +3227,7 @@ void vtkMRMLScene::Redo()
     vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(currentScene->GetItemAsObject(n));
     if (this->IsNodeUndoable(node))
     {
+      this->WarnIfOwnedNodesNotUndoable(node);
       currentMap[node->GetID()] = node;
     }
   }

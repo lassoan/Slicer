@@ -919,6 +919,10 @@ protected:
   void PushIntoUndoStack(const std::string& undoName = "");
   void PushIntoRedoStack(const std::string& undoName = "");
 
+  /// Warn (once per referenced node class) if an undoable node references owned display or storage
+  /// nodes that are not undoable, which would break reference integrity during undo/redo.
+  void WarnIfOwnedNodesNotUndoable(vtkMRMLNode* node);
+
   void CopyNodeInUndoStack(vtkMRMLNode* node);
   void CopyNodeInRedoStack(vtkMRMLNode* node);
 
@@ -1045,6 +1049,10 @@ protected:
 
   /// Node class names whose nodes participate in the undo/redo mechanism.
   std::set<std::string> UndoableNodeClasses;
+
+  /// Referenced node class names for which a "not undoable" warning has already been issued,
+  /// to avoid repeating the same warning on every undo/redo. \sa WarnIfOwnedNodesNotUndoable
+  std::set<std::string> UndoReferenceWarningsIssued;
 
   std::string URL;
   std::string RootDirectory;
