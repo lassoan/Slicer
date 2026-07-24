@@ -368,7 +368,14 @@ bool vtkSlicerMarkupsWidget::ProcessWidgetJumpCursor(vtkMRMLInteractionEventData
     }
   }
 
-  markupsNode->GetScene()->SaveStateForUndo(vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsWidget", "Jump to control point (%1)"), markupsNode->GetName()));
+  // Jumping to a control point moves the slice views to the point; it does not modify the markups
+  // node. Only save the state for undo if slice nodes participate in undo/redo, otherwise the saved
+  // state would be a no-op snapshot of the unchanged markups node.
+  if (markupsNode->GetScene()->IsUndoableNodeClass("vtkMRMLSliceNode"))
+  {
+    markupsNode->GetScene()->SaveStateForUndo(
+      vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsWidget", "Jump to control point (%1)"), markupsNode->GetName()));
+  }
 
   vtkNew<vtkMRMLInteractionEventData> jumpToPointEventData;
   jumpToPointEventData->SetType(vtkMRMLMarkupsDisplayNode::JumpToPointEvent);
