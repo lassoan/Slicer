@@ -159,6 +159,44 @@ Guidelines for *where* and *how often* to save:
   }
   ```
 
+## Other changes (changes made without saving an undo state)
+
+The scene detects changes to undoable nodes that are made **without** a preceding
+`SaveStateForUndo()` - for example from a Python script - and automatically turns them into their
+own undoable step, named **"Other changes"**. Without this, such changes would not be represented
+in the undo history and the next undo would silently revert them together with the previous change.
+
+How it works:
+
+- `SaveStateForUndo()` marks the start of a **tracked change period**. The application completes the
+  period when the scene has been idle for one second (`vtkMRMLScene::MarkTrackedChangePeriodCompleted()`,
+  driven by a timer in `qSlicerCoreApplication` that is restarted on every scene activity), so all
+  responses triggered by the change - including ones executed from zero-timeout timers - belong to
+  the same period.
+- If an undoable node is **added or removed** outside a tracked period, the scene saves an
+  "Other changes" state just before the change is applied.
+- If an existing undoable node is **modified** outside a tracked period (detected by observing the
+  node's content modified events - the same events that sequence recording uses - and its node
+  reference events), the state before the change is provided by *clean state copies*: per-node
+  copies taken when the last change period completed, refreshed incrementally while the application
+  is idle.
+- Consecutive external changes between two tracked changes are **collapsed into a single step**, so
+  frequent small untracked changes (for example, display updates when hovering over a markup) do not
+  fill the undo history.
+
+For scripts this means undo keeps working without any extra calls. However, if a script performs a
+change that should appear in the history as a *named* action (rather than "Other changes"), it
+should call `SaveStateForUndo("description")` before the change, exactly like GUI code. In C++ the
+`vtkMRMLScene::UndoStateGuard` RAII helper can be used instead; nested guards produce a single undo
+state:
+
+```cpp
+{
+  vtkMRMLScene::UndoStateGuard undoGuard(scene, vtkMRMLTr("vtkSlicerMyModule", "My action"));
+  // ... modify undoable nodes ...
+}
+```
+
 ## Application settings and user interface (GUI)
 
 In the Slicer application the generic parts of the feature (the scene undo flag and the undo/redo
@@ -245,6 +283,12 @@ MRML scene ([vtkMRMLScene](https://apidocs.slicer.org/main/classvtkMRMLScene.htm
 - `GetUndoStackNames()` / `GetRedoStackNames()` - descriptions stored with the saved states.
 - `UndoStackModifiedEvent` - invoked when the undo/redo stacks change.
 - `IsUndoing()` / `IsRedoing()` - true while an undo/redo operation is in progress.
+- `MarkTrackedChangePeriodCompleted()` - called by the application when the scene has been idle,
+  to complete the current tracked change period (see [Other changes](#other-changes-changes-made-without-saving-an-undo-state)).
+- `SceneActivityEvent` - invoked when the content or references of an undoable node change; the
+  application uses it to detect when the scene is idle.
+- `UndoStateGuard` - RAII helper that saves an undo state on construction; nested guards produce a
+  single undo state.
 
 MRML node ([vtkMRMLNode](https://apidocs.slicer.org/main/classvtkMRMLNode.html)):
 
