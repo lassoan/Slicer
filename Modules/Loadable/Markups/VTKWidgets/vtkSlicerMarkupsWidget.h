@@ -159,6 +159,11 @@ protected:
   /// If <0 it means that there is currently no point being previewed.
   int PreviewPointIndex;
 
+  /// True if an undo state has already been saved for the control point that is currently being
+  /// placed. Used to ensure exactly one undo state is saved per placed control point (before the
+  /// preview point is added), regardless of how many times the preview point is added or removed.
+  bool PreviewPointUndoStateSaved{ false };
+
   // Callback interface to capture events when
   // placing the widget.
   // Return true if the event is processed.

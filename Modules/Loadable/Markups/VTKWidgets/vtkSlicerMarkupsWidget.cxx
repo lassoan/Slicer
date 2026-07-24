@@ -161,6 +161,17 @@ bool vtkSlicerMarkupsWidget::ProcessMouseMove(vtkMRMLInteractionEventData* event
     {
       positionPreviewState = markupsNode->GetNthControlPointPositionStatus(PreviewPointIndex);
     }
+    else if (!this->PreviewPointUndoStateSaved)
+    {
+      // A new preview point is about to be added. Save the undo state now, before the preview point
+      // is added, so that undoing the placement of this point returns to the current state (with only
+      // the already-placed control points) rather than to a state that still contains a preview point.
+      // The state must be saved here rather than by adding and later removing a temporary point,
+      // which would fire misleading control point added/removed event notifications.
+      markupsNode->GetScene()->SaveStateForUndo(
+        vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsWidget", "Place control point (%1)"), markupsNode->GetName()));
+      this->PreviewPointUndoStateSaved = true;
+    }
     this->UpdatePreviewPoint(eventData, associatedNodeID, positionPreviewState);
   }
   else if (state == WidgetStateIdle //
@@ -757,6 +768,9 @@ bool vtkSlicerMarkupsWidget::ProcessInteractionEvent(vtkMRMLInteractionEventData
 void vtkSlicerMarkupsWidget::Leave(vtkMRMLInteractionEventData* eventData)
 {
   this->RemovePreviewPoint();
+  // The preview point (if any) has been removed, so any undo state saved for the point that was
+  // about to be placed is no longer pending. Reset the flag so the next placement saves its own state.
+  this->PreviewPointUndoStateSaved = false;
 
   // Ensure that EndInteractionEvent is invoked, even if interrupted by an unexpected event
   if (this->WidgetState == vtkSlicerMarkupsWidget::WidgetStateTranslateControlPoint //
@@ -1183,9 +1197,18 @@ bool vtkSlicerMarkupsWidget::PlacePoint(vtkMRMLInteractionEventData* eventData)
   {
     return false;
   }
-  // save for undo and add the node to the scene after any reset of the
-  // interaction node so that don't end up back in place mode
-  markupsNode->GetScene()->SaveStateForUndo(vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsWidget", "Place control point (%1)"), markupsNode->GetName()));
+
+  // If no undo state has been saved yet for the point being placed (for example when the point is
+  // placed without a preceding mouse-move that would have created a preview point), save it now,
+  // before the control point is added, so that the saved state contains only the previously placed
+  // control points. The undo state must be saved before adding the point rather than by adding and
+  // then removing a temporary point, which would fire misleading control point added/removed events.
+  if (!this->PreviewPointUndoStateSaved)
+  {
+    markupsNode->GetScene()->SaveStateForUndo(
+      vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsWidget", "Place control point (%1)"), markupsNode->GetName()));
+  }
+  this->PreviewPointUndoStateSaved = false;
 
   // Add/update preview point
   const char* associatedNodeID = this->GetAssociatedNodeID(eventData);
