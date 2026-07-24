@@ -125,6 +125,15 @@ public:
   bool getPersistanceModeEnabled();
   vtkMRMLMarkupsDisplayNode* markupsDisplayNode();
 
+  /// Save the current scene state for undo before the active markups node is modified, using the
+  /// given human-readable action description (the active node name is appended). Must be called
+  /// before the node is modified. Does nothing if there is no active markups node.
+  /// If requireUndoableNodeClass is set, the state is saved only if that node class participates in
+  /// undo/redo. This is used for actions that do not modify the markups node but change other nodes
+  /// (such as jumping to a control point, which only changes slice nodes), so that no no-op undo
+  /// state is saved when those nodes are not undoable.
+  void saveStateForUndo(const QString& description, const char* requireUndoableNodeClass = nullptr);
+
   // update the markups creation buttons.
   void createMarkupsPushButtons();
 
@@ -553,6 +562,24 @@ vtkMRMLMarkupsDisplayNode* qSlicerMarkupsModuleWidgetPrivate::markupsDisplayNode
     return nullptr;
   }
   return vtkMRMLMarkupsDisplayNode::SafeDownCast(this->MarkupsNode->GetDisplayNode());
+}
+
+//-----------------------------------------------------------------------------
+void qSlicerMarkupsModuleWidgetPrivate::saveStateForUndo(const QString& description, const char* requireUndoableNodeClass /*=nullptr*/)
+{
+  if (!this->MarkupsNode || !this->MarkupsNode->GetScene())
+  {
+    return;
+  }
+  if (requireUndoableNodeClass && !this->MarkupsNode->GetScene()->IsUndoableNodeClass(requireUndoableNodeClass))
+  {
+    // The action only changes nodes of the given class (for example slice nodes when jumping to a
+    // control point); if that class does not participate in undo/redo, saving would produce a no-op
+    // undo state, so it is skipped.
+    return;
+  }
+  // SaveStateForUndo is a no-op when scene undo is disabled, so it is safe to always call it here.
+  this->MarkupsNode->GetScene()->SaveStateForUndo(QString("%1 (%2)").arg(description, QString::fromUtf8(this->MarkupsNode->GetName())).toStdString());
 }
 
 //-----------------------------------------------------------------------------
@@ -1341,6 +1368,7 @@ void qSlicerMarkupsModuleWidget::onVisibilityOnAllControlPointsInListPushButtonC
   {
     return;
   }
+  d->saveStateForUndo(tr("Show all control points"));
   this->markupsLogic()->SetAllControlPointsVisibility(d->MarkupsNode, true);
   d->MarkupsNode->SetDisplayVisibility(true);
 }
@@ -1353,6 +1381,7 @@ void qSlicerMarkupsModuleWidget::onVisibilityOffAllControlPointsInListPushButton
   {
     return;
   }
+  d->saveStateForUndo(tr("Hide all control points"));
   this->markupsLogic()->SetAllControlPointsVisibility(d->MarkupsNode, false);
   d->MarkupsNode->SetDisplayVisibility(false);
 }
@@ -1365,6 +1394,7 @@ void qSlicerMarkupsModuleWidget::onVisibilityAllControlPointsInListToggled()
   {
     return;
   }
+  d->saveStateForUndo(tr("Toggle control point visibility"));
   this->markupsLogic()->ToggleAllControlPointsVisibility(d->MarkupsNode);
 }
 
@@ -1376,6 +1406,7 @@ void qSlicerMarkupsModuleWidget::onLockAllControlPointsInListPushButtonClicked()
   {
     return;
   }
+  d->saveStateForUndo(tr("Lock all control points"));
   this->markupsLogic()->SetAllControlPointsLocked(d->MarkupsNode, true);
 }
 
@@ -1387,6 +1418,7 @@ void qSlicerMarkupsModuleWidget::onUnlockAllControlPointsInListPushButtonClicked
   {
     return;
   }
+  d->saveStateForUndo(tr("Unlock all control points"));
   this->markupsLogic()->SetAllControlPointsLocked(d->MarkupsNode, false);
 }
 
@@ -1398,6 +1430,7 @@ void qSlicerMarkupsModuleWidget::onLockAllControlPointsInListToggled()
   {
     return;
   }
+  d->saveStateForUndo(tr("Toggle control point lock"));
   this->markupsLogic()->ToggleAllControlPointsLocked(d->MarkupsNode);
 }
 
@@ -1409,6 +1442,7 @@ void qSlicerMarkupsModuleWidget::onSelectAllControlPointsInListPushButtonClicked
   {
     return;
   }
+  d->saveStateForUndo(tr("Select all control points"));
   this->markupsLogic()->SetAllControlPointsSelected(d->MarkupsNode, true);
 }
 
@@ -1420,6 +1454,7 @@ void qSlicerMarkupsModuleWidget::onDeselectAllControlPointsInListPushButtonClick
   {
     return;
   }
+  d->saveStateForUndo(tr("Deselect all control points"));
   this->markupsLogic()->SetAllControlPointsSelected(d->MarkupsNode, false);
 }
 
@@ -1431,6 +1466,7 @@ void qSlicerMarkupsModuleWidget::onSelectedAllControlPointsInListToggled()
   {
     return;
   }
+  d->saveStateForUndo(tr("Toggle control point selection"));
   this->markupsLogic()->ToggleAllControlPointsSelected(d->MarkupsNode);
 }
 
@@ -1454,6 +1490,7 @@ void qSlicerMarkupsModuleWidget::onAddControlPointPushButtonClicked()
     return;
   }
 
+  d->saveStateForUndo(tr("Add control point"));
   int index = d->MarkupsNode->AddControlPoint(vtkVector3d(0, 0, 0));
   d->MarkupsNode->UnsetNthControlPointPosition(index);
   d->setPlaceModeEnabled(false);
@@ -1479,6 +1516,7 @@ void qSlicerMarkupsModuleWidget::onMoveControlPointUpPushButtonClicked()
   }
   int thisIndex = selectedItems.at(0)->row();
   // qDebug() << "Swapping " << thisIndex << " and " << thisIndex - 1;
+  d->saveStateForUndo(tr("Move control point up"));
   d->MarkupsNode->SwapControlPoints(thisIndex, thisIndex - 1);
   // now make sure the new row is selected so a user can keep moving it up
   d->activeMarkupTableWidget->selectRow(thisIndex - 1);
@@ -1503,6 +1541,7 @@ void qSlicerMarkupsModuleWidget::onMoveControlPointDownPushButtonClicked()
   }
   int thisIndex = selectedItems.at(0)->row();
   // qDebug() << "Swapping " << thisIndex << " and " << thisIndex + 1;
+  d->saveStateForUndo(tr("Move control point down"));
   d->MarkupsNode->SwapControlPoints(thisIndex, thisIndex + 1);
   // now make sure the new row is selected so a user can keep moving it down
   d->activeMarkupTableWidget->selectRow(thisIndex + 1);
@@ -1560,6 +1599,7 @@ void qSlicerMarkupsModuleWidget::onDeleteControlPointPushButtonClicked(bool conf
     }
   }
 
+  d->saveStateForUndo(tr("Delete control points"));
   // delete from the end
   for (int i = rows.size() - 1; i >= 0; --i)
   {
@@ -1604,6 +1644,7 @@ void qSlicerMarkupsModuleWidget::onResetControlPointPushButtonClicked()
   // sort the list
   std::sort(rows.begin(), rows.end());
 
+  d->saveStateForUndo(tr("Reset control point position"));
   // unplace from the end
   for (int i = rows.size() - 1; i >= 0; --i)
   {
@@ -1645,6 +1686,7 @@ void qSlicerMarkupsModuleWidget::onRestoreControlPointPushButtonClicked()
   // sort the list
   std::sort(rows.begin(), rows.end());
 
+  d->saveStateForUndo(tr("Restore control point position"));
   // unplace from the end
   for (int i = rows.size() - 1; i >= 0; --i)
   {
@@ -1684,6 +1726,7 @@ void qSlicerMarkupsModuleWidget::onUnsetControlPointPushButtonClicked()
   // sort the list
   std::sort(rows.begin(), rows.end());
 
+  d->saveStateForUndo(tr("Clear control point position"));
   // unplace from the end
   for (int i = rows.size() - 1; i >= 0; --i)
   {
@@ -1723,6 +1766,7 @@ void qSlicerMarkupsModuleWidget::onMissingControlPointPushButtonClicked()
   // sort the list
   std::sort(rows.begin(), rows.end());
 
+  d->saveStateForUndo(tr("Skip control point placement"));
   // unplace from the end
   for (int i = rows.size() - 1; i >= 0; --i)
   {
@@ -1764,6 +1808,7 @@ void qSlicerMarkupsModuleWidget::onDeleteAllControlPointsInListPushButtonClicked
   deleteAllMsgBox.exec();
   if (deleteAllMsgBox.clickedButton() == deleteButton)
   {
+    d->saveStateForUndo(tr("Delete all control points"));
     d->MarkupsNode->RemoveAllControlPoints();
   }
 }
@@ -1909,6 +1954,7 @@ void qSlicerMarkupsModuleWidget::onListVisibleInvisiblePushButtonClicked()
     return;
   }
 
+  d->saveStateForUndo(tr("Toggle list visibility"));
   // toggle the visibility
   bool visibleFlag = d->MarkupsNode->GetDisplayVisibility();
   visibleFlag = !visibleFlag;
@@ -1928,6 +1974,7 @@ void qSlicerMarkupsModuleWidget::onListLockedUnlockedPushButtonClicked()
   {
     return;
   }
+  d->saveStateForUndo(tr("Toggle list lock"));
   bool locked = d->MarkupsNode->GetLocked();
   d->MarkupsNode->SetLocked(!locked);
   this->updateWidgetFromMRML();
@@ -1941,6 +1988,7 @@ void qSlicerMarkupsModuleWidget::onFixedNumberOfControlPointsPushButtonClicked()
   {
     return;
   }
+  d->saveStateForUndo(tr("Toggle fixed number of control points"));
   d->MarkupsNode->SetFixedNumberOfControlPoints(!d->MarkupsNode->GetFixedNumberOfControlPoints());
 
   // end point placement for locked node
@@ -1977,6 +2025,7 @@ void qSlicerMarkupsModuleWidget::onResetNameFormatToDefaultPushButtonClicked()
   {
     qCritical() << Q_FUNC_INFO << " failed: invalid default markups node";
   }
+  d->saveStateForUndo(tr("Reset control point name format"));
   d->MarkupsNode->SetControlPointLabelFormat(defaultNode->GetControlPointLabelFormat());
 }
 
@@ -1988,6 +2037,7 @@ void qSlicerMarkupsModuleWidget::onRenameAllWithCurrentNameFormatPushButtonClick
   {
     return;
   }
+  d->saveStateForUndo(tr("Rename all control points"));
   this->markupsLogic()->RenameAllControlPointsFromCurrentFormat(d->MarkupsNode);
 }
 
@@ -2010,6 +2060,33 @@ void qSlicerMarkupsModuleWidget::onActiveMarkupTableCellChanged(int row, int col
     qDebug() << QString("Unable to find item in table at ") + QString::number(row) + QString(", ") + QString::number(column);
     return;
   }
+
+  // Save the state before the control point is modified so that the edit can be undone. The signals
+  // of the table are blocked while it is populated from MRML (see updateRow), so reaching this point
+  // means a genuine user edit. The description depends on which property is edited. The coordinate
+  // columns are handled separately below, so that a state is saved only when the position changes.
+  QString undoDescription;
+  switch (column)
+  {
+    case qSlicerMarkupsModuleWidgetPrivate::SelectedColumn: undoDescription = tr("Change control point selection"); break;
+    case qSlicerMarkupsModuleWidgetPrivate::LockedColumn: undoDescription = tr("Change control point lock"); break;
+    case qSlicerMarkupsModuleWidgetPrivate::VisibleColumn: undoDescription = tr("Change control point visibility"); break;
+    case qSlicerMarkupsModuleWidgetPrivate::NameColumn: undoDescription = tr("Rename control point"); break;
+    case qSlicerMarkupsModuleWidgetPrivate::DescriptionColumn: undoDescription = tr("Edit control point description"); break;
+    case qSlicerMarkupsModuleWidgetPrivate::PositionColumn: undoDescription = tr("Change control point position status"); break;
+    default: break;
+  }
+  if (!undoDescription.isEmpty())
+  {
+    d->saveStateForUndo(undoDescription);
+  }
+
+  // Setting the decoration (icon) on the table items below (for the visible/locked/position columns)
+  // re-emits cellChanged and re-enters this slot, which would save a second, redundant undo state
+  // and repeat the node modification. Block the table signals for the rest of this slot to prevent
+  // that re-entrancy (the item data and the view are still updated, as in updateRow).
+  QSignalBlocker tableSignalBlocker(d->activeMarkupTableWidget);
+
   if (column == qSlicerMarkupsModuleWidgetPrivate::SelectedColumn)
   {
     bool flag = (item->checkState() == Qt::Unchecked ? false : true);
@@ -2092,6 +2169,7 @@ void qSlicerMarkupsModuleWidget::onActiveMarkupTableCellChanged(int row, int col
         fabs(newPoint[1] - point[1]) > minChange || //
         fabs(newPoint[2] - point[2]) > minChange)
     {
+      d->saveStateForUndo(tr("Edit control point position"));
       if (d->coordinatesComboBox->currentIndex() == COORDINATE_COMBOBOX_INDEX_WORLD)
       {
         d->MarkupsNode->SetNthControlPointPositionWorld(n, newPoint[0], newPoint[1], newPoint[2]);
@@ -2212,6 +2290,7 @@ void qSlicerMarkupsModuleWidget::onActiveMarkupTableCurrentCellChanged(int curre
   }
   // Jump slices
   bool jumpCentered = (d->jumpModeComboBox->currentIndex() == JUMP_MODE_COMBOBOX_INDEX_CENTERED);
+  d->saveStateForUndo(tr("Jump to control point"), "vtkMRMLSliceNode");
   this->markupsLogic()->JumpSlicesToNthPointInMarkup(d->MarkupsNode->GetID(), currentRow, jumpCentered);
 }
 
@@ -2409,6 +2488,7 @@ void qSlicerMarkupsModuleWidget::onJumpSlicesActionTriggered()
   if (this->markupsLogic())
   {
     // use the first selected
+    d->saveStateForUndo(tr("Jump to control point"), "vtkMRMLSliceNode");
     this->markupsLogic()->JumpSlicesToNthPointInMarkup(d->MarkupsNode->GetID(), selectedItems.at(0)->row(), jumpCentered);
   }
 }
@@ -2571,6 +2651,8 @@ void qSlicerMarkupsModuleWidget::pasteSelectedFromClipboard()
   {
     storageNode->SetFieldDelimiterCharacters("\t");
   }
+
+  d->saveStateForUndo(tr("Paste control points"));
 
   // SetPointFromString calls various events reporting the id of the point modified.
   // However, already for > 200 points, it gets bad performance. Therefore, we call a simply modified call at the end.
@@ -2974,6 +3056,7 @@ void qSlicerMarkupsModuleWidget::onResetToDefaultDisplayPropertiesPushButtonClic
   {
     return;
   }
+  d->saveStateForUndo(tr("Reset display properties to default"));
   this->markupsLogic()->SetDisplayNodeToDefaults(displayNode);
 }
 
@@ -3168,6 +3251,8 @@ void qSlicerMarkupsModuleWidget::onMeasurementEnabledCheckboxToggled(bool on)
   // Get measurement name from checkbox
   QCheckBox* checkbox = qobject_cast<QCheckBox*>(this->sender());
   QString measurementName = checkbox->property(NAME_PROPERTY).toString();
+
+  d->saveStateForUndo(on ? tr("Enable measurement") : tr("Disable measurement"));
 
   // Enable/disable measurement with name
   for (int i = 0; i < d->MarkupsNode->Measurements->GetNumberOfItems(); ++i)
