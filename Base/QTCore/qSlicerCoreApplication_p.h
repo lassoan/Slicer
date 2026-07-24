@@ -37,6 +37,7 @@
 #include <QProcessEnvironment>
 #include <QSettings>
 #include <QSharedPointer>
+#include <QTimer>
 
 // CTK includes
 #include <ctkErrorLogAbstractModel.h>
@@ -145,6 +146,11 @@ public:
   /// MRMLScene and AppLogic pointers
   vtkSmartPointer<vtkMRMLScene> MRMLScene;
   vtkSmartPointer<vtkSlicerApplicationLogic> AppLogic;
+
+  /// Single-shot timer restarted on every scene modification. When it fires (after the scene has
+  /// been quiet long enough that all responses to the last change have been processed), the current
+  /// tracked-change period is marked completed. \sa vtkMRMLScene::MarkTrackedChangePeriodCompleted
+  QTimer* TrackedChangePeriodTimer{ nullptr };
   vtkSmartPointer<vtkMRMLRemoteIOLogic> MRMLRemoteIOLogic;
 
   /// Data manager

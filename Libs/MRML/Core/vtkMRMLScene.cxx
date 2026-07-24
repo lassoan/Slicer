@@ -33,6 +33,7 @@ Version:   $Revision: 1.18 $
 #include "vtkMRMLDisplayableNode.h"
 #include "vtkMRMLFolderDisplayNode.h"
 #include "vtkMRMLGridTransformNode.h"
+#include "vtkMRMLI18N.h"
 #include "vtkMRMLHierarchyNode.h"
 #include "vtkMRMLHierarchyStorageNode.h"
 #include "vtkMRMLInteractionNode.h"
@@ -112,6 +113,7 @@ Version:   $Revision: 1.18 $
 
 // VTK includes
 #include <vtkCallbackCommand.h>
+#include <vtkIntArray.h>
 #include <vtkCollection.h>
 #include <vtkDebugLeaks.h>
 #include <vtkObjectFactory.h>
@@ -187,6 +189,10 @@ vtkMRMLScene::vtkMRMLScene()
   // NodeRemovedEvent and SceneCloseddEvent are fired and caught before DeleteEvent
   // is caught by other observers.
   this->AddObserver(vtkCommand::DeleteEvent, this->DeleteEventCallback, 1000.);
+
+  this->NodeEventCallbackCommand = vtkCallbackCommand::New();
+  this->NodeEventCallbackCommand->SetClientData(reinterpret_cast<void*>(this));
+  this->NodeEventCallbackCommand->SetCallback(vtkMRMLScene::NodeEventCallback);
 
   //
   // Register all the 'built-in' nodes for the library
@@ -332,6 +338,14 @@ vtkMRMLScene::~vtkMRMLScene()
   {
     this->DeleteEventCallback->Delete();
     this->DeleteEventCallback = nullptr;
+  }
+  if (this->NodeEventCallbackCommand != nullptr)
+  {
+    // Nodes that outlive the scene may still invoke observed events; clearing the client data
+    // makes the callback a no-op in that case.
+    this->NodeEventCallbackCommand->SetClientData(nullptr);
+    this->NodeEventCallbackCommand->Delete();
+    this->NodeEventCallbackCommand = nullptr;
   }
 }
 
@@ -1358,6 +1372,14 @@ vtkMRMLNode* vtkMRMLScene::AddNodeNoNotify(vtkMRMLNode* n)
   // cache the node so the whole scene cache stays up-to date
   this->AddNodeID(n);
 
+  // Observe the node so that untracked modifications can be detected (\sa OnUndoableNodeEvent),
+  // and remember that the node has no up-to-date copy in the clean undo state yet.
+  this->StartObservingNodeEvents(n);
+  if (n->GetID())
+  {
+    this->CleanUndoStateDirtyNodeIDs.insert(n->GetID());
+  }
+
   // Keep the SH up-to-date
   if (vtkMRMLSubjectHierarchyNode::SafeDownCast(n) != nullptr && //
       !(this->IsImporting() || this->IsRestoring()))
@@ -1406,6 +1428,7 @@ vtkMRMLNode* vtkMRMLScene::AddNode(vtkMRMLNode* n)
 #endif
   if (add)
   {
+    this->DetectUntrackedChange(n);
     this->InvokeEvent(this->NodeAboutToBeAddedEvent, n);
   }
   vtkMRMLNode* node = this->AddNodeNoNotify(n);
@@ -1553,6 +1576,7 @@ void vtkMRMLScene::RemoveNode(vtkMRMLNode* n)
 #endif
 
   n->Register(this);
+  this->DetectUntrackedChange(n);
   this->InvokeEvent(vtkMRMLScene::NodeAboutToBeRemovedEvent, n);
 
   if (n->GetScene() == this) // extra precaution that might not be useful
@@ -1565,6 +1589,8 @@ void vtkMRMLScene::RemoveNode(vtkMRMLNode* n)
   this->RemoveNodeID(n->GetID());
 
   this->InvokeEvent(vtkMRMLScene::NodeRemovedEvent, n);
+
+  this->StopObservingNodeEvents(n);
 
   // Node references must be deleted immediately, even during batch processing.
   // Otherwise node IDs would remain in the node references and next time when that node ID is created
@@ -2748,6 +2774,226 @@ bool vtkMRMLScene::IsNodeUndoable(vtkMRMLNode* node)
 }
 
 //------------------------------------------------------------------------------
+void vtkMRMLScene::DetectUntrackedChange(vtkMRMLNode* node)
+{
+  if (!this->UndoFlag)
+  {
+    return;
+  }
+  if (this->TrackedChangeInThisPeriod   //
+      || this->IsUndoing()              //
+      || this->IsRedoing()              //
+      || this->IsBatchProcessing())     // covers importing, restoring, and closing
+  {
+    // The change is part of a tracked change, or of an undo/redo/import/restore that manages the
+    // undo history itself, so it is not an untracked change.
+    return;
+  }
+  if (!this->IsNodeUndoable(node))
+  {
+    return;
+  }
+  if (this->UndoStackTopIsOtherChanges)
+  {
+    // The state on the top of the undo stack is already an "Other changes" state and no tracked
+    // change has been saved since: collapse this untracked change into that step instead of saving
+    // a new state, so that frequent small untracked changes do not fill the undo history.
+    this->TrackedChangeInThisPeriod = true;
+    return;
+  }
+  // An undoable node is about to be added or removed without a SaveStateForUndo: this is an
+  // untracked (external) change, for example a node added from a script. Save the current state
+  // now, before the change is applied, so that the external change becomes its own undoable step
+  // instead of being reverted together with the previous tracked change. SaveStateForUndo marks the
+  // current change period as tracked, so all further changes until the period completes (\sa
+  // MarkTrackedChangePeriodCompleted) are grouped into this step.
+  this->SaveStateForUndo(vtkMRMLTr("vtkMRMLScene", "Other changes"));
+  this->UndoStackTopIsOtherChanges = true;
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::StartObservingNodeEvents(vtkMRMLNode* node)
+{
+  if (!node || !this->NodeEventCallbackCommand)
+  {
+    return;
+  }
+  // Observe the same events that sequence recording uses to detect that the content of a node has
+  // changed (this includes the generic ModifiedEvent and node-type-specific events, such as
+  // PointModifiedEvent of markups nodes).
+  vtkIntArray* contentModifiedEvents = node->GetContentModifiedEvents();
+  if (contentModifiedEvents)
+  {
+    for (vtkIdType eventIndex = 0; eventIndex < contentModifiedEvents->GetNumberOfTuples(); ++eventIndex)
+    {
+      node->AddObserver(contentModifiedEvents->GetValue(eventIndex), this->NodeEventCallbackCommand);
+    }
+  }
+  // Node reference changes (for example, setting a different display or transform node) do not
+  // necessarily invoke a content modified event, so observe them separately.
+  node->AddObserver(vtkMRMLNode::ReferenceAddedEvent, this->NodeEventCallbackCommand);
+  node->AddObserver(vtkMRMLNode::ReferenceModifiedEvent, this->NodeEventCallbackCommand);
+  node->AddObserver(vtkMRMLNode::ReferenceRemovedEvent, this->NodeEventCallbackCommand);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::StopObservingNodeEvents(vtkMRMLNode* node)
+{
+  if (!node || !this->NodeEventCallbackCommand)
+  {
+    return;
+  }
+  node->RemoveObserver(this->NodeEventCallbackCommand);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::NodeEventCallback(vtkObject* caller, unsigned long vtkNotUsed(eventID), void* clientData, void* vtkNotUsed(callData))
+{
+  vtkMRMLScene* self = reinterpret_cast<vtkMRMLScene*>(clientData);
+  vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(caller);
+  if (!self || !node)
+  {
+    return;
+  }
+  self->OnUndoableNodeEvent(node);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::OnUndoableNodeEvent(vtkMRMLNode* node)
+{
+  if (!this->UndoFlag || !this->IsNodeUndoable(node) || !node->GetID())
+  {
+    return;
+  }
+  // Let the application know that there is activity, so that the current change period is not
+  // marked completed while changes are still being made (\sa MarkTrackedChangePeriodCompleted).
+  this->InvokeEvent(vtkMRMLScene::SceneActivityEvent);
+  // The node now differs from its copy in the clean undo state; the copy is updated when the
+  // change period is completed.
+  this->CleanUndoStateDirtyNodeIDs.insert(node->GetID());
+  if (this->TrackedChangeInThisPeriod //
+      || this->IsUndoing()            //
+      || this->IsRedoing()            //
+      || this->IsBatchProcessing())   // covers importing, restoring, and closing
+  {
+    // The modification is part of a tracked change, or of an undo/redo/import/restore that manages
+    // the undo history itself.
+    return;
+  }
+  if (this->UndoStackTopIsOtherChanges)
+  {
+    // The state on the top of the undo stack is already an "Other changes" state and no tracked
+    // change has been saved since: collapse this untracked change into that step instead of saving
+    // a new state, so that frequent small untracked changes (for example, display changes when
+    // hovering over a markup) do not fill the undo history.
+    this->TrackedChangeInThisPeriod = true;
+    return;
+  }
+  // An undoable node has been modified without a SaveStateForUndo: this is an untracked (external)
+  // change, for example a change made from a script. The state before the change is provided by the
+  // clean undo state copies; push it so that the external change becomes its own undoable step.
+  // Marking the current change period as tracked groups all further changes until the period
+  // completes into this step.
+  this->PushCleanUndoStateIntoUndoStack(vtkMRMLTr("vtkMRMLScene", "Other changes"));
+  this->TrackedChangeInThisPeriod = true;
+  this->UndoStackTopIsOtherChanges = true;
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::UpdateCleanUndoState()
+{
+  if (!this->UndoFlag)
+  {
+    // While undo is disabled the clean state is not maintained (it is cleared in SetUndoFlag);
+    // the dirty node list keeps accumulating so that the state can be rebuilt after re-enabling.
+    return;
+  }
+  // Remove copies of nodes that are no longer in the scene.
+  for (auto copyIt = this->CleanUndoState.begin(); copyIt != this->CleanUndoState.end();)
+  {
+    if (this->GetNodeByID(copyIt->first) == nullptr)
+    {
+      copyIt = this->CleanUndoState.erase(copyIt);
+    }
+    else
+    {
+      ++copyIt;
+    }
+  }
+  // Update the copies of the nodes that changed since the last update.
+  for (const std::string& nodeID : this->CleanUndoStateDirtyNodeIDs)
+  {
+    vtkMRMLNode* node = this->GetNodeByID(nodeID);
+    if (!node || !this->IsNodeUndoable(node))
+    {
+      this->CleanUndoState.erase(nodeID);
+      continue;
+    }
+    vtkSmartPointer<vtkMRMLNode> nodeCopy = vtkSmartPointer<vtkMRMLNode>::Take(node->CreateNodeInstance());
+    if (!nodeCopy)
+    {
+      continue;
+    }
+    nodeCopy->CopyWithScene(node);
+    this->CleanUndoState[nodeID] = nodeCopy;
+  }
+  this->CleanUndoStateDirtyNodeIDs.clear();
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::PushCleanUndoStateIntoUndoStack(const std::string& undoName)
+{
+  if (this->Nodes == nullptr)
+  {
+    return;
+  }
+  // The external change invalidates the redo history, just as a tracked change does through
+  // SaveStateForUndo.
+  this->ClearRedoStack();
+
+  vtkCollection* newScene = vtkCollection::New();
+  int nnodes = this->Nodes->GetNumberOfItems();
+  for (int n = 0; n < nnodes; n++)
+  {
+    vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(this->Nodes->GetItemAsObject(n));
+    if (!this->IsNodeUndoable(node) || !node->GetID())
+    {
+      continue;
+    }
+    auto copyIt = this->CleanUndoState.find(node->GetID());
+    if (copyIt != this->CleanUndoState.end())
+    {
+      newScene->AddItem(copyIt->second);
+    }
+    else
+    {
+      // No clean copy is available (for example, undo has just been enabled and no change period
+      // has been completed yet); fall back to the current state of the node.
+      vtkMRMLNode* nodeCopy = node->CreateNodeInstance();
+      if (nodeCopy)
+      {
+        nodeCopy->CopyWithScene(node);
+        newScene->AddItem(nodeCopy);
+        nodeCopy->Delete();
+      }
+    }
+  }
+  this->UndoStack.push_back(newScene);
+  this->UndoStackNames.push_back(undoName);
+  this->TrimUndoStack();
+  this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
+}
+
+//------------------------------------------------------------------------------
+void vtkMRMLScene::MarkTrackedChangePeriodCompleted()
+{
+  this->TrackedChangeInThisPeriod = false;
+  // The application is idle, so the current state of the undoable nodes is a complete, settled
+  // state: refresh the clean state copies that untracked modifications are compared against.
+  this->UpdateCleanUndoState();
+}
+
+//------------------------------------------------------------------------------
 void vtkMRMLScene::WarnIfOwnedNodesNotUndoable(vtkMRMLNode* node)
 {
   // A node that participates in undo/redo must have its owned display and storage nodes participate
@@ -2835,6 +3081,8 @@ void vtkMRMLScene::SaveStateForUndo(vtkMRMLNode* node, const std::string& undoNa
     return;
   }
 
+  this->TrackedChangeInThisPeriod = true;
+  this->UndoStackTopIsOtherChanges = false;
   this->ClearRedoStack();
   // this->SetUndoOn();
   this->PushIntoUndoStack(undoName);
@@ -2861,6 +3109,8 @@ void vtkMRMLScene::SaveStateForUndo(std::vector<vtkMRMLNode*> nodes, const std::
     return;
   }
 
+  this->TrackedChangeInThisPeriod = true;
+  this->UndoStackTopIsOtherChanges = false;
   this->ClearRedoStack();
   // this->SetUndoOn();
   this->PushIntoUndoStack(undoName);
@@ -2897,6 +3147,11 @@ void vtkMRMLScene::SaveStateForUndo(vtkCollection* nodes, const std::string& und
   {
     return;
   }
+
+  // A tracked change is being started: remember it for the current change period so that undoable
+  // node additions/removals made as part of this change are not mistaken for untracked changes.
+  this->TrackedChangeInThisPeriod = true;
+  this->UndoStackTopIsOtherChanges = false;
 
   this->ClearRedoStack();
   // this->SetUndoOn();
@@ -3182,6 +3437,8 @@ void vtkMRMLScene::Undo()
   {
     this->UndoStackNames.pop_back();
   }
+  // The top of the undo stack has changed; a later untracked change must save a new state.
+  this->UndoStackTopIsOtherChanges = false;
   this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
   this->Modified();
 
@@ -3316,6 +3573,8 @@ void vtkMRMLScene::Redo()
   {
     this->RedoStackNames.pop_back();
   }
+  // The top of the undo stack has changed; a later untracked change must save a new state.
+  this->UndoStackTopIsOtherChanges = false;
   this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
   this->Modified();
 
@@ -3331,6 +3590,9 @@ void vtkMRMLScene::SetUndoFlag(bool flag)
     // Discard any accumulated history so it cannot be applied while undo is disabled.
     this->ClearUndoStack();
     this->ClearRedoStack();
+    // The clean state copies are only needed while undo is enabled; free them. The copies are
+    // rebuilt from the dirty node list after undo is re-enabled and a change period completes.
+    this->CleanUndoState.clear();
   }
 }
 
@@ -3346,6 +3608,7 @@ void vtkMRMLScene::ClearUndoStack()
   }
   this->UndoStack.clear();
   this->UndoStackNames.clear();
+  this->UndoStackTopIsOtherChanges = false;
   if (modified)
   {
     this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);

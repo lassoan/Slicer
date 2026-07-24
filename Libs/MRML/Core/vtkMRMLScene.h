@@ -399,6 +399,19 @@ public:
   /// returns number of redo steps in the history buffer
   int GetNumberOfRedoLevels() { return static_cast<int>(this->RedoStack.size()); }
 
+  /// Mark the current tracked-change period as completed.
+  ///
+  /// SaveStateForUndo only marks the start of a change; there is no signal for when a change (and
+  /// the responses triggered by it, some of which may be executed from zero-timeout timers) is
+  /// completed. This method provides that signal: it is expected to be called when the application
+  /// has been idle long enough that all responses to the last change have been processed (see
+  /// qSlicerCoreApplication). After it is called, an undoable node that is added or removed without
+  /// a corresponding SaveStateForUndo is recognized as an untracked (external) change, and an undo
+  /// state named "Other changes" is saved for it automatically, so that the external change can
+  /// be undone and redone as its own step instead of being reverted together with the previous
+  /// change.
+  void MarkTrackedChangePeriodCompleted();
+
   /// Save current state in the undo buffer.
   /// \param undoName Optional user-displayable description of the change that this saved state can
   /// undo (for example, "Move control point"). It is stored in the undo/redo stack and can be shown
@@ -420,6 +433,49 @@ public:
   /// will tell if that node's state must be stored or not.
   void SaveStateForUndo(vtkCollection* nodes, const std::string& undoName = "");
   void SaveStateForUndo(std::vector<vtkMRMLNode*> nodes, const std::string& undoName = "");
+
+#ifndef __VTK_WRAP__
+  /// RAII helper that brackets a change that should be undoable.
+  ///
+  /// On construction it saves an undo state (only the outermost guard does, so nested guards produce
+  /// a single undo state) and marks that a tracked change is in progress. Prefer this over calling
+  /// SaveStateForUndo() directly, so that nested changes produce a single undo state (\sa
+  /// MarkTrackedChangePeriodCompleted). Example:
+  /// \code
+  ///   {
+  ///     vtkMRMLScene::UndoStateGuard undoGuard(scene, "Move control point");
+  ///     // ... modify undoable nodes ...
+  ///   }
+  /// \endcode
+  class UndoStateGuard
+  {
+  public:
+    UndoStateGuard(vtkMRMLScene* scene, const std::string& undoName = "")
+      : Scene(scene)
+    {
+      if (this->Scene)
+      {
+        if (this->Scene->UndoStateGuardDepth == 0)
+        {
+          this->Scene->SaveStateForUndo(undoName);
+        }
+        ++this->Scene->UndoStateGuardDepth;
+      }
+    }
+    ~UndoStateGuard()
+    {
+      if (this->Scene && this->Scene->UndoStateGuardDepth > 0)
+      {
+        --this->Scene->UndoStateGuardDepth;
+      }
+    }
+    UndoStateGuard(const UndoStateGuard&) = delete;
+    UndoStateGuard& operator=(const UndoStateGuard&) = delete;
+
+  private:
+    vtkMRMLScene* Scene;
+  };
+#endif // __VTK_WRAP__
 
   /// \name Undo/redo state descriptions
   /// Get the user-displayable descriptions stored with the states in the undo and redo stacks
@@ -751,6 +807,10 @@ public:
     /// Invoked when the undo or redo stack changes (a state is saved, applied, or cleared),
     /// so that the user interface can update undo/redo actions (\sa GetUndoStackNames).
     UndoStackModifiedEvent = 66035,
+    /// Invoked when the content or node references of an undoable node change. The application uses
+    /// it to detect when the scene has been quiet long enough that the current change period can be
+    /// marked completed (\sa MarkTrackedChangePeriodCompleted).
+    SceneActivityEvent = 66036,
 
     /// \internal
     /// not to be used directly
@@ -923,6 +983,37 @@ protected:
   /// nodes that are not undoable, which would break reference integrity during undo/redo.
   void WarnIfOwnedNodesNotUndoable(vtkMRMLNode* node);
 
+  /// Called from AddNode/RemoveNode just before the node is added or removed: if an undoable node
+  /// is about to be added or removed outside undo/redo and without a SaveStateForUndo in the
+  /// current change period, save an undo state ("Other changes") so that the external change
+  /// becomes its own undoable step. \sa MarkTrackedChangePeriodCompleted
+  void DetectUntrackedChange(vtkMRMLNode* node);
+
+  /// Start/stop observing the node's content modified events (the same events that sequence
+  /// recording uses to detect changes) and node reference events, so that untracked modifications
+  /// of undoable nodes can be detected. \sa OnUndoableNodeEvent
+  void StartObservingNodeEvents(vtkMRMLNode* node);
+  void StopObservingNodeEvents(vtkMRMLNode* node);
+
+  /// Called (via NodeEventCallbackCommand) when a node in the scene invokes a content modified or
+  /// node reference event. Invokes SceneActivityEvent, remembers that the node differs from its
+  /// copy in CleanUndoState and, if the modification is untracked (no SaveStateForUndo in the
+  /// current change period and not during undo/redo/batch processing), pushes the clean state into
+  /// the undo stack as an "Other changes" step, so that the modification can be undone.
+  void OnUndoableNodeEvent(vtkMRMLNode* node);
+  static void NodeEventCallback(vtkObject* caller, unsigned long eventID, void* clientData, void* callData);
+
+  /// Update the CleanUndoState copies of the nodes that changed since the last update
+  /// (\sa CleanUndoStateDirtyNodeIDs) and remove copies of deleted nodes. Called when the current
+  /// change period is completed, that is, while the application is idle.
+  void UpdateCleanUndoState();
+
+  /// Push the clean state (the state of the undoable nodes when the last change period was
+  /// completed, \sa CleanUndoState) into the undo stack. Used when an untracked modification of an
+  /// existing undoable node is detected: at that point the node has already changed, so the state
+  /// before the change can only be provided by the clean state copies.
+  void PushCleanUndoStateIntoUndoStack(const std::string& undoName);
+
   void CopyNodeInUndoStack(vtkMRMLNode* node);
   void CopyNodeInRedoStack(vtkMRMLNode* node);
 
@@ -1053,6 +1144,35 @@ protected:
   /// Referenced node class names for which a "not undoable" warning has already been issued,
   /// to avoid repeating the same warning on every undo/redo. \sa WarnIfOwnedNodesNotUndoable
   std::set<std::string> UndoReferenceWarningsIssued;
+
+  /// True if a SaveStateForUndo has been called since the last completed change period. It is used
+  /// to tell tracked changes (which snapshot the state before they are made) from untracked ones.
+  /// Reset by MarkTrackedChangePeriodCompleted. \sa DetectUntrackedChange
+  bool TrackedChangeInThisPeriod{ false };
+
+  /// Nesting depth of active UndoStateGuard objects; only the outermost guard saves an undo state.
+  /// \sa UndoStateGuard
+  int UndoStateGuardDepth{ 0 };
+
+  /// True if the state on the top of the undo stack is an "Other changes" state that was saved
+  /// automatically for an untracked change, and no tracked change has been saved since. In that
+  /// case further untracked changes do not save a new state: they are collapsed into that state, so
+  /// that frequent small untracked changes (for example, display changes when hovering over a
+  /// markup) do not fill the undo history. \sa DetectUntrackedChange, OnUndoableNodeEvent
+  bool UndoStackTopIsOtherChanges{ false };
+
+  /// Copies of the undoable nodes (indexed by node ID) as they were when the last change period was
+  /// completed. Used as the "before" state when an untracked modification of an existing node is
+  /// detected. \sa PushCleanUndoStateIntoUndoStack, UpdateCleanUndoState
+  std::map<std::string, vtkSmartPointer<vtkMRMLNode>> CleanUndoState;
+
+  /// IDs of the nodes that may differ from their copies in CleanUndoState. Only these nodes are
+  /// copied again when the clean state is updated. \sa UpdateCleanUndoState
+  std::set<std::string> CleanUndoStateDirtyNodeIDs;
+
+  /// Command that calls OnUndoableNodeEvent when an observed node invokes a content modified or
+  /// node reference event. \sa StartObservingNodeEvents
+  vtkCallbackCommand* NodeEventCallbackCommand{ nullptr };
 
   std::string URL;
   std::string RootDirectory;

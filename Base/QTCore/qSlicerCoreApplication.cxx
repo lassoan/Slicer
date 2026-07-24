@@ -463,6 +463,24 @@ void qSlicerCoreApplicationPrivate::init()
   // Set up Data IO
   this->initDataIO();
 
+  // Timer used to detect when the application has been idle long enough after a change that all
+  // responses to it (including those triggered on a zero-timeout timer) have been processed. It is
+  // restarted on every scene modification (see setMRMLScene) and, when it fires, marks the current
+  // tracked-change period completed (\sa vtkMRMLScene::MarkTrackedChangePeriodCompleted).
+  this->TrackedChangePeriodTimer = new QTimer(q);
+  this->TrackedChangePeriodTimer->setSingleShot(true);
+  this->TrackedChangePeriodTimer->setInterval(1000);
+  QObject::connect(this->TrackedChangePeriodTimer,
+                   &QTimer::timeout,
+                   q,
+                   [q]()
+                   {
+                     if (q->mrmlScene())
+                     {
+                       q->mrmlScene()->MarkTrackedChangePeriodCompleted();
+                     }
+                   });
+
   // Create MRML scene
   vtkMRMLScene* scene = vtkMRMLScene::New();
   q->setMRMLScene(scene);
@@ -1528,6 +1546,18 @@ void qSlicerCoreApplication::setMRMLScene(vtkMRMLScene* newMRMLScene)
   {
     d->AppLogic->SetMRMLScene(newMRMLScene);
     d->AppLogic->SetMRMLSceneDataIO(newMRMLScene, d->MRMLRemoteIOLogic.GetPointer(), d->DataIOManagerLogic.GetPointer());
+  }
+
+  // Restart the change-period idle timer on every scene modification, so that the tracked-change
+  // period is marked completed only after the scene has been quiet (\sa
+  // vtkMRMLScene::MarkTrackedChangePeriodCompleted). The timer is a single-shot timer, so restarting
+  // it on activity means it only fires once the scene has been idle for its full interval.
+  if (d->TrackedChangePeriodTimer)
+  {
+    this->qvtkReconnect(d->MRMLScene, newMRMLScene, vtkCommand::ModifiedEvent, d->TrackedChangePeriodTimer, SLOT(start()));
+    this->qvtkReconnect(d->MRMLScene, newMRMLScene, vtkMRMLScene::NodeAddedEvent, d->TrackedChangePeriodTimer, SLOT(start()));
+    this->qvtkReconnect(d->MRMLScene, newMRMLScene, vtkMRMLScene::NodeRemovedEvent, d->TrackedChangePeriodTimer, SLOT(start()));
+    this->qvtkReconnect(d->MRMLScene, newMRMLScene, vtkMRMLScene::SceneActivityEvent, d->TrackedChangePeriodTimer, SLOT(start()));
   }
 
   d->MRMLScene = newMRMLScene;
