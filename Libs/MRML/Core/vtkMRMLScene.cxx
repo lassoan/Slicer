@@ -3374,6 +3374,34 @@ void vtkMRMLScene::Undo()
   std::vector<std::string>::iterator curIterID;
   std::vector<vtkMRMLNode*>::iterator curIterNode;
 
+  // Count how many nodes this undo will add, remove, or modify, so that batch processing is used
+  // only when more than one node is affected. Batch processing makes observers fully reinitialize at
+  // the end, which is expensive (and in some places not fully implemented), so it is not worth it for
+  // a single-node change; but for a multi-node change it prevents observers from reacting to transient
+  // inconsistent states, such as a displayable node whose display node has not been re-added yet.
+  int numberOfChangedNodes = 0;
+  for (iterID = undoIDs.begin(), iterNode = undoNodes.begin(); iterID != undoIDs.end(); iterID++, iterNode++)
+  {
+    curIterID = std::find(currentIDs.begin(), currentIDs.end(), *iterID);
+    if (curIterID == currentIDs.end() // node was deleted, will be added back
+        || *iterNode != *(currentNodes.begin() + std::distance(currentIDs.begin(), curIterID))) // node differs, will be copied
+    {
+      ++numberOfChangedNodes;
+    }
+  }
+  for (curIterID = currentIDs.begin(); curIterID != currentIDs.end(); curIterID++)
+  {
+    if (std::find(undoIDs.begin(), undoIDs.end(), *curIterID) == undoIDs.end()) // node was created after the saved state, will be removed
+    {
+      ++numberOfChangedNodes;
+    }
+  }
+  bool useBatchProcessing = (numberOfChangedNodes > 1);
+  if (useBatchProcessing)
+  {
+    this->StartState(vtkMRMLScene::BatchProcessState);
+  }
+
   // copy back changes and add deleted nodes to the current scene
   std::vector<vtkMRMLNode*> addNodes;
 
@@ -3442,6 +3470,10 @@ void vtkMRMLScene::Undo()
   this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
   this->Modified();
 
+  if (useBatchProcessing)
+  {
+    this->EndState(vtkMRMLScene::BatchProcessState);
+  }
   this->EndState(vtkMRMLScene::UndoState);
 
   // Some untracked nodes may need to be restored to the scene after undo has completed
@@ -3514,6 +3546,34 @@ void vtkMRMLScene::Redo()
   std::map<std::string, vtkWeakPointer<vtkMRMLNode>>::iterator iter;
   std::map<std::string, vtkWeakPointer<vtkMRMLNode>>::iterator curIter;
 
+  // Count how many nodes this redo will add, remove, or modify, so that batch processing is used only
+  // when more than one node is affected (see Undo for the rationale).
+  int numberOfChangedNodes = 0;
+  for (iter = undoMap.begin(); iter != undoMap.end(); iter++)
+  {
+    curIter = currentMap.find(iter->first);
+    if (curIter == currentMap.end()) // node was deleted, will be added back
+    {
+      ++numberOfChangedNodes;
+    }
+    else if (curIter->second && iter->second && iter->second != curIter->second) // node differs, will be copied
+    {
+      ++numberOfChangedNodes;
+    }
+  }
+  for (curIter = currentMap.begin(); curIter != currentMap.end(); curIter++)
+  {
+    if (curIter->second && undoMap.find(curIter->first) == undoMap.end()) // node was created after the saved state, will be removed
+    {
+      ++numberOfChangedNodes;
+    }
+  }
+  bool useBatchProcessing = (numberOfChangedNodes > 1);
+  if (useBatchProcessing)
+  {
+    this->StartState(vtkMRMLScene::BatchProcessState);
+  }
+
   // copy back changes and add deleted nodes to the current scene
   std::vector<vtkWeakPointer<vtkMRMLNode>> addNodes;
   for (iter = undoMap.begin(); iter != undoMap.end(); iter++)
@@ -3578,6 +3638,10 @@ void vtkMRMLScene::Redo()
   this->InvokeEvent(vtkMRMLScene::UndoStackModifiedEvent);
   this->Modified();
 
+  if (useBatchProcessing)
+  {
+    this->EndState(vtkMRMLScene::BatchProcessState);
+  }
   this->EndState(vtkMRMLScene::RedoState);
 }
 
