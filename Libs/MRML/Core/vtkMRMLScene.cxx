@@ -2751,12 +2751,14 @@ void vtkMRMLScene::RemoveReservedIDs()
 void vtkMRMLScene::AddUndoableNodeClass(const std::string& className)
 {
   this->UndoableNodeClasses.insert(className);
+  this->UndoableNodeClassCache.clear();
 }
 
 //------------------------------------------------------------------------------
 void vtkMRMLScene::RemoveUndoableNodeClass(const std::string& className)
 {
   this->UndoableNodeClasses.erase(className);
+  this->UndoableNodeClassCache.clear();
 }
 
 //------------------------------------------------------------------------------
@@ -2768,9 +2770,32 @@ bool vtkMRMLScene::IsUndoableNodeClass(const std::string& className)
 //------------------------------------------------------------------------------
 bool vtkMRMLScene::IsNodeUndoable(vtkMRMLNode* node)
 {
-  return node != nullptr                       //
-         && node->GetUndoEnabled()             //
-         && this->IsUndoableNodeClass(node->GetClassName());
+  if (node == nullptr || !node->GetUndoEnabled())
+  {
+    return false;
+  }
+  // A node is undoable if its class or any of its base classes is registered as undoable. This way
+  // registering a base class (for example, vtkMRMLMarkupsDisplayNode) makes all its specialized
+  // subclasses (for example, vtkMRMLMarkupsFiducialDisplayNode) undoable as well. The result is
+  // cached per class name, because this method is called frequently (for example, whenever an
+  // observed node event is received).
+  const std::string className = node->GetClassName();
+  auto cacheIt = this->UndoableNodeClassCache.find(className);
+  if (cacheIt != this->UndoableNodeClassCache.end())
+  {
+    return cacheIt->second;
+  }
+  bool undoable = false;
+  for (const std::string& undoableClassName : this->UndoableNodeClasses)
+  {
+    if (node->IsA(undoableClassName.c_str()))
+    {
+      undoable = true;
+      break;
+    }
+  }
+  this->UndoableNodeClassCache[className] = undoable;
+  return undoable;
 }
 
 //------------------------------------------------------------------------------

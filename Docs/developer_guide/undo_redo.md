@@ -57,10 +57,10 @@ void vtkSlicerMyModuleLogic::RegisterNodes()
 }
 ```
 
-`AddUndoableNodeClass()` only affects nodes whose class name matches exactly, so each concrete node
-type must be registered (registering a base class does not make its subclasses undoable). The
-registry is stored on the scene, so a module registers its types every time it is attached to a
-scene.
+`AddUndoableNodeClass()` applies to the registered class and all its subclasses, so registering a
+base class (for example, `vtkMRMLMarkupsDisplayNode`) also makes specialized types (such as
+`vtkMRMLMarkupsFiducialDisplayNode`) undoable. The registry is stored on the scene, so a module
+registers its types every time it is attached to a scene.
 
 ### Reference integrity: owned vs. shared nodes
 

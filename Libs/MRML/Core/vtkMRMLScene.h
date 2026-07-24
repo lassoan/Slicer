@@ -496,18 +496,22 @@ public:
   /// register them here (for example, the Markups module registers its node types).
   //@{
 
-  /// Register a node class name so that nodes of this class participate in undo/redo.
+  /// Register a node class name so that nodes of this class (and its subclasses) participate in
+  /// undo/redo. For example, registering vtkMRMLMarkupsDisplayNode makes specialized display node
+  /// types, such as vtkMRMLMarkupsFiducialDisplayNode, undoable as well.
   void AddUndoableNodeClass(const std::string& className);
 
   /// Unregister a node class name so that nodes of this class no longer participate in undo/redo.
   void RemoveUndoableNodeClass(const std::string& className);
 
   /// Return true if the given node class name is registered as an undoable node class.
+  /// Note that this checks the exact class name only; a node instance also participates in
+  /// undo/redo if any of its base classes is registered (\sa IsNodeUndoable).
   bool IsUndoableNodeClass(const std::string& className);
 
-  /// Return true if the node participates in undo/redo: its class is registered as an undoable
-  /// node class (\sa AddUndoableNodeClass) and its UndoEnabled flag is set
-  /// (\sa vtkMRMLNode::UndoEnabled).
+  /// Return true if the node participates in undo/redo: its class or any of its base classes is
+  /// registered as an undoable node class (\sa AddUndoableNodeClass) and its UndoEnabled flag is
+  /// set (\sa vtkMRMLNode::UndoEnabled).
   bool IsNodeUndoable(vtkMRMLNode* node);
 
   /// Get the list of registered undoable node class names.
@@ -1140,6 +1144,11 @@ protected:
 
   /// Node class names whose nodes participate in the undo/redo mechanism.
   std::set<std::string> UndoableNodeClasses;
+
+  /// Caches for each encountered node class name whether it is undoable (its class or any of its
+  /// base classes is in UndoableNodeClasses). Cleared when the registered classes change.
+  /// \sa IsNodeUndoable
+  std::map<std::string, bool> UndoableNodeClassCache;
 
   /// Referenced node class names for which a "not undoable" warning has already been issued,
   /// to avoid repeating the same warning on every undo/redo. \sa WarnIfOwnedNodesNotUndoable
