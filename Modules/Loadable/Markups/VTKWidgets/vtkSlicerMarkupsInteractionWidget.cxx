@@ -184,6 +184,25 @@ bool vtkSlicerMarkupsInteractionWidget::ProcessInteractionEvent(vtkMRMLInteracti
     case WidgetEventTranslateStart:
     case WidgetEventScaleStart:
     case WidgetEventRotateStart:
+      // Save the state before the interaction handle drag starts, so that the whole drag becomes a
+      // single undoable step.
+      if (markupsNode->GetScene())
+      {
+        std::string undoName;
+        if (widgetEvent == WidgetEventTranslateStart)
+        {
+          undoName = vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsInteractionWidget", "Move markup (%1)"), markupsNode->GetName());
+        }
+        else if (widgetEvent == WidgetEventRotateStart)
+        {
+          undoName = vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsInteractionWidget", "Rotate markup (%1)"), markupsNode->GetName());
+        }
+        else
+        {
+          undoName = vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsInteractionWidget", "Scale markup (%1)"), markupsNode->GetName());
+        }
+        markupsNode->GetScene()->SaveStateForUndo(undoName);
+      }
       // Just invoke the custom event, the interaction will be handled by the superclass
       markupsNode->InvokeCustomModifiedEvent(vtkMRMLMarkupsNode::PointStartInteractionEvent);
       break;
@@ -212,8 +231,14 @@ bool vtkSlicerMarkupsInteractionWidget::ProcessWidgetJumpCursor(vtkMRMLInteracti
   int componentIndex = markupsDisplayNode->GetActiveComponentIndex();
   int componentType = markupsDisplayNode->GetActiveComponentType();
 
-  markupsNode->GetScene()->SaveStateForUndo(
-    vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsInteractionWidget", "Interact with markup (%1)"), markupsNode->GetName()));
+  // Jumping to the handle position moves the slice views; it does not modify the markups node.
+  // Only save the state for undo if slice nodes participate in undo/redo, otherwise the saved
+  // state would be a no-op snapshot of the unchanged markups node.
+  if (markupsNode->GetScene()->IsUndoableNodeClass("vtkMRMLSliceNode"))
+  {
+    markupsNode->GetScene()->SaveStateForUndo(
+      vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerMarkupsInteractionWidget", "Jump to markup (%1)"), markupsNode->GetName()));
+  }
 
   vtkNew<vtkMRMLInteractionEventData> jumpToPointEventData;
   jumpToPointEventData->SetType(vtkMRMLMarkupsDisplayNode::JumpToPointEvent);
