@@ -13,7 +13,9 @@
 // MRML includes
 #include <vtkEventBroker.h>
 #include <vtkMRMLApplicationLogic.h>
+#include <vtkMRMLDisplayableNode.h>
 #include <vtkMRMLFolderDisplayNode.h>
+#include <vtkMRMLMarkupsDisplayNode.h>
 #include <vtkMRMLInteractionNode.h>
 #include <vtkMRMLScene.h>
 #include <vtkMRMLSelectionNode.h>
@@ -242,7 +244,40 @@ void vtkMRMLMarkupsDisplayableManager::ProcessMRMLNodesEvents(vtkObject* caller,
 {
   vtkMRMLMarkupsNode* markupsNode = vtkMRMLMarkupsNode::SafeDownCast(caller);
   vtkMRMLInteractionNode* interactionNode = vtkMRMLInteractionNode::SafeDownCast(caller);
-  if (markupsNode)
+  vtkMRMLMarkupsDisplayNode* markupsDisplayNode = vtkMRMLMarkupsDisplayNode::SafeDownCast(caller);
+  if (markupsDisplayNode && event == vtkMRMLMarkupsDisplayNode::ActiveComponentModifiedEvent)
+  {
+    // The active component (the hovered control point or handle) changed. This is transient view
+    // state that is deliberately not a content modified event (so it is not forwarded through the
+    // markups node as DisplayModifiedEvent); the display node is observed directly and the widgets
+    // are updated here as if the display had been modified, so that the highlight is rendered.
+    bool renderRequested = false;
+    vtkSlicerMarkupsWidget* widget = this->Helper->GetWidget(markupsDisplayNode);
+    if (widget)
+    {
+      widget->UpdateFromMRML(markupsDisplayNode->GetDisplayableNode(), vtkMRMLDisplayableNode::DisplayModifiedEvent, markupsDisplayNode);
+      if (widget->GetNeedToRender())
+      {
+        renderRequested = true;
+        widget->NeedToRenderOff();
+      }
+    }
+    vtkSlicerMarkupsInteractionWidget* interactionWidget = this->Helper->GetInteractionWidget(markupsDisplayNode);
+    if (interactionWidget)
+    {
+      interactionWidget->UpdateFromMRML(markupsDisplayNode->GetDisplayableNode(), vtkMRMLDisplayableNode::DisplayModifiedEvent, markupsDisplayNode);
+      if (interactionWidget->GetNeedToRender())
+      {
+        renderRequested = true;
+        interactionWidget->NeedToRenderOff();
+      }
+    }
+    if (renderRequested)
+    {
+      this->RequestRender();
+    }
+  }
+  else if (markupsNode)
   {
     bool renderRequested = false;
 

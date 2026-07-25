@@ -101,6 +101,13 @@ public:
   void AddObservations(vtkMRMLMarkupsNode* node);
   void RemoveObservations(vtkMRMLMarkupsNode* node);
 
+  /// Observe display node events that are not forwarded through the markups node, such as
+  /// vtkMRMLMarkupsDisplayNode::ActiveComponentModifiedEvent (the active component is transient
+  /// view state, so its change is deliberately not a content modified event, but the widgets still
+  /// must be updated to highlight the active component).
+  void AddDisplayNodeObservations(vtkMRMLMarkupsDisplayNode* node);
+  void RemoveDisplayNodeObservations(vtkMRMLMarkupsDisplayNode* node);
+
 protected:
   vtkMRMLMarkupsDisplayableManagerHelper();
   ~vtkMRMLMarkupsDisplayableManagerHelper() override;
@@ -116,6 +123,7 @@ private:
   bool AddingMarkupsNode;
 
   std::vector<unsigned long> ObservedMarkupNodeEvents;
+  std::vector<unsigned long> ObservedDisplayNodeEvents;
 
   vtkMRMLMarkupsDisplayableManager* DisplayableManager;
 };

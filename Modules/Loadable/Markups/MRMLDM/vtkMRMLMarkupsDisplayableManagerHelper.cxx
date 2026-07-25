@@ -70,6 +70,9 @@ vtkMRMLMarkupsDisplayableManagerHelper::vtkMRMLMarkupsDisplayableManagerHelper()
   this->ObservedMarkupNodeEvents.push_back(vtkMRMLMarkupsNode::LockModifiedEvent);
   this->ObservedMarkupNodeEvents.push_back(vtkMRMLMarkupsNode::CenterOfRotationModifiedEvent);
   this->ObservedMarkupNodeEvents.push_back(vtkMRMLMarkupsNode::FixedNumberOfControlPointsModifiedEvent);
+  // Active component changes are transient view state and are deliberately not content modified
+  // events, so they are not forwarded through the markups node; observe the display node directly.
+  this->ObservedDisplayNodeEvents.push_back(vtkMRMLMarkupsDisplayNode::ActiveComponentModifiedEvent);
 }
 
 //---------------------------------------------------------------------------
@@ -292,6 +295,7 @@ void vtkMRMLMarkupsDisplayableManagerHelper::AddDisplayNode(vtkMRMLMarkupsDispla
   {
     return;
   }
+  this->AddDisplayNodeObservations(markupsDisplayNode);
   this->AddWidget(markupsDisplayNode);
   this->AddInteractionWidget(markupsDisplayNode);
 }
@@ -413,6 +417,8 @@ void vtkMRMLMarkupsDisplayableManagerHelper::RemoveDisplayNode(vtkMRMLMarkupsDis
     return;
   }
 
+  this->RemoveDisplayNodeObservations(markupsDisplayNode);
+
   vtkMRMLMarkupsDisplayableManagerHelper::DisplayNodeToWidgetIt displayNodeIt = this->MarkupsDisplayNodesToWidgets.find(markupsDisplayNode);
   if (displayNodeIt != this->MarkupsDisplayNodesToWidgets.end())
   {
@@ -465,6 +471,33 @@ void vtkMRMLMarkupsDisplayableManagerHelper::AddObservations(vtkMRMLMarkupsNode*
     {
       broker->AddObservation(node, observedMarkupNodeEvent, this->DisplayableManager, callbackCommand);
     }
+  }
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLMarkupsDisplayableManagerHelper::AddDisplayNodeObservations(vtkMRMLMarkupsDisplayNode* node)
+{
+  vtkCallbackCommand* callbackCommand = this->DisplayableManager->GetMRMLNodesCallbackCommand();
+  vtkEventBroker* broker = vtkEventBroker::GetInstance();
+  for (auto observedDisplayNodeEvent : this->ObservedDisplayNodeEvents)
+  {
+    if (!broker->GetObservationExist(node, observedDisplayNodeEvent, this->DisplayableManager, callbackCommand))
+    {
+      broker->AddObservation(node, observedDisplayNodeEvent, this->DisplayableManager, callbackCommand);
+    }
+  }
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLMarkupsDisplayableManagerHelper::RemoveDisplayNodeObservations(vtkMRMLMarkupsDisplayNode* node)
+{
+  vtkCallbackCommand* callbackCommand = this->DisplayableManager->GetMRMLNodesCallbackCommand();
+  vtkEventBroker* broker = vtkEventBroker::GetInstance();
+  for (auto observedDisplayNodeEvent : this->ObservedDisplayNodeEvents)
+  {
+    vtkEventBroker::ObservationVector observations;
+    observations = broker->GetObservations(node, observedDisplayNodeEvent, this->DisplayableManager, callbackCommand);
+    broker->RemoveObservations(observations);
   }
 }
 

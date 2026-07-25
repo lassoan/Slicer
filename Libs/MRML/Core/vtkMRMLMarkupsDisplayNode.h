@@ -314,6 +314,11 @@ public:
     CustomActionEvent6,           /**< this event is invoked in on the display node if the widget performs WidgetEventCustomAction6 action
                             (not mapped to any interaction event by default but it can be specified by modules to specify additional
                             actions for a widget), event data is vtkMRMLInteractionEventData */
+    ActiveComponentModifiedEvent, /**< invoked when the active component (the control point or handle that the mouse pointer hovers
+                            over) changes. The active component is transient view state and not part of the node's saveable content,
+                            therefore this is deliberately not a content modified event: it does not mark the node as changed for
+                            scene undo or sequence recording. Observers that display the active component (for example, the markups
+                            displayable manager, which highlights the hovered component) must observe this event directly. */
   };
 
   /// Set SliceProjection flag that controls if the projection of markups
