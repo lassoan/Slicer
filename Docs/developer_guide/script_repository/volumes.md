@@ -50,6 +50,14 @@ slicer.util.exportNode(volumeNode, imagePath, {"useCompression": 0}, world=True)
 
 `saveNode` method can be used instead of `exportNode` to update the current storage options (filename, compression options, etc.) in the scene.
 
+### Load volume from OME-Zarr (NGFF)
+
+OME-Zarr / NGFF chunked multiscale images are stored as directories (with a `.zarr` name suffix). They can be loaded if the application is built with the `IOOMEZarrNGFF` ITK module (enabled by default in the Slicer superbuild; the reading is performed by ITK's `OMEZarrNGFFImageIO`, which wraps Google TensorStore).
+
+```python
+loadedVolumeNode = slicer.util.loadVolume("c:/path/to/image.ome.zarr")
+```
+
 ### Load volume from .vti file
 
 Slicer does not provide reader for VTK XML image data file format (as they are not commonly used for storing medical images and they cannot store image axis directions) but such files can be read by using this script:
@@ -438,6 +446,51 @@ ijk = [20,40,30]  # volume voxel coordinates
 voxels = slicer.util.arrayFromVolume(volumeNode)  # get voxels as a numpy array
 voxelValue = voxels[ijk[2], ijk[1], ijk[0]]  # note that numpy array index order is kji (not ijk)
 ```
+
+### Display voxel values in physical units (voxel value scaling)
+
+A volume can keep compact "stored" voxel values (for example 16-bit integers as read from file) along with a linear mapping to "physical" values that the user should see (`physical = scale * stored + offset`, following DICOM Rescale Slope/Intercept semantics), and a measurement unit. `GetImageData()` and `slicer.util.arrayFromVolume()` always return physical values, so all existing processing code remains correct; the stored image is available to scaling-aware code via `GetStoredImageData()`. The Data Probe displays the physical value with the unit suffix.
+
+This example loads a "speed image" stored as 16-bit integers, where stored value 250 means 2.5 cm/s:
+
+```python
+import numpy as np
+import vtk
+
+# Stored voxel values: int16, e.g. read from file (here: synthetic data)
+storedValues = np.random.randint(0, 1000, size=(30, 40, 50)).astype(np.int16)
+storedImage = vtk.vtkImageData()
+storedImage.SetDimensions(storedValues.shape[2], storedValues.shape[1], storedValues.shape[0])
+storedImage.AllocateScalars(vtk.VTK_SHORT, 1)
+vtk.util.numpy_support.vtk_to_numpy(storedImage.GetPointData().GetScalars()).reshape(storedValues.shape)[:] = storedValues
+storedImage.GetPointData().GetScalars().Modified()
+
+volumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", "SpeedImage")
+# physical = 0.01 * stored  (stored value 250 -> 2.5 cm/s)
+volumeNode.SetStoredImageData(storedImage, 0.01, 0.0)
+
+# Specify measured quantity and unit as standard coded entries
+quantity = slicer.vtkCodedEntry()
+quantity.SetValueSchemeMeaning("G-A19E", "SRT", "Velocity")
+volumeNode.SetVoxelValueQuantity(quantity)
+units = slicer.vtkCodedEntry()
+units.SetValueSchemeMeaning("cm/s", "UCUM", "centimeter per second")
+volumeNode.SetVoxelValueUnits(units)
+
+volumeNode.CreateDefaultDisplayNodes()
+
+# Generic access returns physical values (float); scaling-aware access returns stored values (int16)
+print(slicer.util.arrayFromVolume(volumeNode).dtype)  # float32, physical values
+print(volumeNode.GetStoredImageData().GetScalarComponentAsDouble(0, 0, 0, 0))  # stored value
+print(volumeNode.GetVoxelValueAsString(0, 0, 0))  # e.g. "2.5 cm/s" (as shown in Data Probe)
+```
+
+Notes:
+
+- If scaling-aware code modifies the stored image, it must call `storedImage.Modified()`; the physical image is then regenerated automatically.
+- If generic (scaling-unaware) code modifies the physical image in place (`slicer.util.arrayFromVolume` + `volumeNode.Modified()`), the physical image is promoted to primary: values remain correct, scaling simply becomes inactive for that volume.
+- A processing module whose operation preserves the meaning of voxel values (e.g. blurring, resampling) can carry the quantity/unit over to its output volume with `outputVolume.CopyVoxelValueMetadata(inputVolume)`.
+- When the volume is written to file, physical values are written; persistence of stored values + scaling in image files is not yet implemented.
 
 ### Modify voxels in a volume
 
