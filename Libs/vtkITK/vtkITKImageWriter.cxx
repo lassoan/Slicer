@@ -182,6 +182,16 @@ void ITKWriteVTKImage(vtkITKImageWriter* self,
       itkImporter->GetOutput()->SetMetaDataDictionary(dictionary);
     }
 
+    if (!self->GetAttributes().empty())
+    {
+      itk::MetaDataDictionary& dictionary = itkImporter->GetOutput()->GetMetaDataDictionary();
+      for (const std::pair<const std::string, std::string>& attribute : self->GetAttributes())
+      {
+        itk::EncapsulateMetaData<std::string>(dictionary, attribute.first, attribute.second);
+      }
+      itkImporter->GetOutput()->SetMetaDataDictionary(dictionary);
+    }
+
     itkImageWriter->SetFileName(fileName);
     itkImageWriter->Update();
 
@@ -753,6 +763,41 @@ void vtkITKImageWriter::ConvertSpatialVectorVoxelsBetweenRasLps(vtkImageData* im
   {
     vtkGenericWarningMacro("Displacements are expected to be stored as double or float. Vector values will not be converted from LPS to RAS.");
   }
+}
+
+//----------------------------------------------------------------------------
+void vtkITKImageWriter::SetAttribute(const std::string& name, const std::string& value)
+{
+  if (name.empty())
+  {
+    return;
+  }
+  if (value.empty())
+  {
+    if (this->Attributes.erase(name) > 0)
+    {
+      this->Modified();
+    }
+    return;
+  }
+  std::map<std::string, std::string>::iterator it = this->Attributes.find(name);
+  if (it != this->Attributes.end() && it->second == value)
+  {
+    return;
+  }
+  this->Attributes[name] = value;
+  this->Modified();
+}
+
+//----------------------------------------------------------------------------
+void vtkITKImageWriter::ClearAttributes()
+{
+  if (this->Attributes.empty())
+  {
+    return;
+  }
+  this->Attributes.clear();
+  this->Modified();
 }
 
 //----------------------------------------------------------------------------

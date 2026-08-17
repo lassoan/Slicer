@@ -23,6 +23,8 @@ Version:   $Revision: 1.6 $
 # include "vtkMRMLDiffusionTensorVolumeNode.h"
 #endif
 #include "vtkMRMLVolumeArchetypeStorageNode.h"
+#include "vtkCodedEntry.h"
+#include "vtkMRMLScalarVolumeNode.h"
 
 // VTK ITK includes
 #include "vtkITKArchetypeImageSeriesScalarReader.h"
@@ -31,8 +33,158 @@ Version:   $Revision: 1.6 $
 #include "vtkITKArchetypeImageSeriesVectorReaderSeries.h"
 #include "vtkITKImageWriter.h"
 
+// ITK includes
+#include <itkMetaDataObject.h>
+
+// VTK includes
+#include <vtkImageData.h>
+#include <vtkNew.h>
+
 // VTKsys includes
 #include <vtksys/SystemTools.hxx>
+
+// STD includes
+#include <iomanip>
+#include <sstream>
+
+namespace
+{
+// File header metadata keys used to persist voxel value scaling
+// (physical = scale * stored + offset) and voxel value quantity/units.
+// Written as key/value pairs by file formats that support them (e.g. NRRD).
+const char* VOXEL_VALUE_SCALE_KEY = "Slicer.VoxelValueScale";
+const char* VOXEL_VALUE_OFFSET_KEY = "Slicer.VoxelValueOffset";
+const char* VOXEL_VALUE_QUANTITY_KEY = "Slicer.VoxelValueQuantity";
+const char* VOXEL_VALUE_UNITS_KEY = "Slicer.VoxelValueUnits";
+
+//----------------------------------------------------------------------------
+// Returns true if the file format identified by the file name extension can
+// persist voxel value scaling metadata (custom header key/value pairs).
+bool SupportsVoxelValueScalingMetadata(const std::string& fileName)
+{
+  std::string extension = vtkMRMLStorageNode::GetLowercaseExtensionFromFileName(fileName);
+  return (extension == ".nrrd" || extension == ".nhdr");
+}
+
+//----------------------------------------------------------------------------
+// Returns the image to write to file: the stored image if voxel value
+// scaling is active and the file format can persist the scaling metadata
+// (compact stored values + metadata), otherwise the regular (physical)
+// image, so that the file always reloads with correct values.
+vtkImageData* GetImageDataToWrite(vtkMRMLVolumeNode* volNode, const std::string& fileName)
+{
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(volNode);
+  if (scalarVolumeNode && scalarVolumeNode->GetVoxelDataProvider() && SupportsVoxelValueScalingMetadata(fileName))
+  {
+    vtkImageData* storedImage = scalarVolumeNode->GetStoredImageData();
+    if (storedImage)
+    {
+      return storedImage;
+    }
+  }
+  return volNode ? volNode->GetImageData() : nullptr;
+}
+
+//----------------------------------------------------------------------------
+void SetVoxelValueMetadataToWriter(vtkITKImageWriter* writer, vtkMRMLVolumeNode* volNode, const std::string& fileName)
+{
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(volNode);
+  if (!scalarVolumeNode)
+  {
+    return;
+  }
+  if (!SupportsVoxelValueScalingMetadata(fileName))
+  {
+    return;
+  }
+  if (scalarVolumeNode->GetVoxelDataProvider() && scalarVolumeNode->GetStoredImageData())
+  {
+    std::ostringstream scale;
+    scale << std::setprecision(17) << scalarVolumeNode->GetVoxelValueScale();
+    writer->SetAttribute(VOXEL_VALUE_SCALE_KEY, scale.str());
+    std::ostringstream offset;
+    offset << std::setprecision(17) << scalarVolumeNode->GetVoxelValueOffset();
+    writer->SetAttribute(VOXEL_VALUE_OFFSET_KEY, offset.str());
+  }
+  if (scalarVolumeNode->GetVoxelValueQuantity())
+  {
+    writer->SetAttribute(VOXEL_VALUE_QUANTITY_KEY, scalarVolumeNode->GetVoxelValueQuantity()->GetAsString());
+  }
+  if (scalarVolumeNode->GetVoxelValueUnits())
+  {
+    writer->SetAttribute(VOXEL_VALUE_UNITS_KEY, scalarVolumeNode->GetVoxelValueUnits()->GetAsString());
+  }
+}
+
+//----------------------------------------------------------------------------
+bool GetMetaDataStringValue(vtkMRMLVolumeNode* volNode, const char* key, std::string& value)
+{
+  const itk::MetaDataDictionary& dictionary = volNode->GetMetaDataDictionary();
+  return itk::ExposeMetaData<std::string>(dictionary, key, value);
+}
+
+//----------------------------------------------------------------------------
+// Activate voxel value scaling on the node if the image file header carried
+// scaling metadata. The image read from file then holds stored values.
+void SetVoxelValueMetadataFromMetaDataDictionary(vtkMRMLVolumeNode* volNode, vtkImageData* imageFromFile)
+{
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(volNode);
+  if (!scalarVolumeNode)
+  {
+    return;
+  }
+  std::string quantityString;
+  if (GetMetaDataStringValue(volNode, VOXEL_VALUE_QUANTITY_KEY, quantityString) && !quantityString.empty())
+  {
+    vtkNew<vtkCodedEntry> quantity;
+    if (quantity->SetFromString(quantityString))
+    {
+      scalarVolumeNode->SetVoxelValueQuantity(quantity.GetPointer());
+    }
+  }
+  std::string unitsString;
+  if (GetMetaDataStringValue(volNode, VOXEL_VALUE_UNITS_KEY, unitsString) && !unitsString.empty())
+  {
+    vtkNew<vtkCodedEntry> units;
+    if (units->SetFromString(unitsString))
+    {
+      scalarVolumeNode->SetVoxelValueUnits(units.GetPointer());
+    }
+  }
+  std::string scaleString;
+  if (!GetMetaDataStringValue(volNode, VOXEL_VALUE_SCALE_KEY, scaleString))
+  {
+    return;
+  }
+  std::string offsetString;
+  double scale = 1.0;
+  double offset = 0.0;
+  try
+  {
+    scale = std::stod(scaleString);
+    if (GetMetaDataStringValue(volNode, VOXEL_VALUE_OFFSET_KEY, offsetString))
+    {
+      offset = std::stod(offsetString);
+    }
+  }
+  catch (const std::exception&)
+  {
+    vtkGenericWarningMacro("Invalid voxel value scaling metadata in image file (scale: '" << scaleString << "', offset: '" << offsetString << "')");
+    return;
+  }
+  if (scale == 0.0)
+  {
+    vtkGenericWarningMacro("Invalid voxel value scale (0) in image file metadata");
+    return;
+  }
+  if (scale == 1.0 && offset == 0.0)
+  {
+    // identity mapping: nothing to activate
+    return;
+  }
+  scalarVolumeNode->SetStoredImageData(imageFromFile, scale, offset);
+}
+} // namespace
 
 // VTK includes
 #include <vtkAddonMathUtilities.h>
@@ -508,6 +660,10 @@ int vtkMRMLVolumeArchetypeStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
   outputImage->ShallowCopy(ici->GetOutput());
   volNode->SetAndObserveImageData(outputImage.GetPointer());
 
+  // If the file header carried voxel value scaling metadata then activate
+  // voxel value scaling: the image read from file holds stored values.
+  SetVoxelValueMetadataFromMetaDataDictionary(volNode, outputImage.GetPointer());
+
   int voxelVectorType = this->ConvertVoxelVectorTypeVTKITKToMRML(reader->GetVoxelVectorType());
   volNode->SetVoxelVectorType(voxelVectorType);
 
@@ -553,7 +709,7 @@ int vtkMRMLVolumeArchetypeStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
     return 0;
   }
 
-  if (volNode->GetImageData() == nullptr)
+  if (!volNode->HasImageData())
   {
     this->SetWriteStateSkippedNoData();
     return 1;
@@ -673,7 +829,10 @@ int vtkMRMLVolumeArchetypeStorageNode::WriteDataInternal(vtkMRMLNode* refNode)
     vtkNew<vtkITKImageWriter> writer;
     writer->SetFileName(fullName.c_str());
 
-    writer->SetInputConnection(volNode->GetImageDataConnection());
+    // For volumes with active voxel value scaling the stored image is written
+    // (compact stored values + scaling metadata in the file header).
+    writer->SetInputData(GetImageDataToWrite(volNode, fullName));
+    SetVoxelValueMetadataToWriter(writer.GetPointer(), volNode, fullName);
     writer->SetUseCompression(this->GetUseCompression());
     if (this->WriteFileFormat)
     {
@@ -795,7 +954,7 @@ std::string vtkMRMLVolumeArchetypeStorageNode::UpdateFileList(vtkMRMLNode* refNo
 
   vtkMRMLVolumeNode* volNode = vtkMRMLScalarVolumeNode::SafeDownCast(refNode);
 
-  if (volNode == nullptr || volNode->GetImageData() == nullptr)
+  if (volNode == nullptr || !volNode->HasImageData())
   {
     vtkErrorToMessageCollectionMacro(
       this->GetUserMessages(), "vtkMRMLVolumeArchetypeStorageNode::UpdateFileList", vtkMRMLTr("vtkMRMLVolumeArchetypeStorageNode", "Cannot write volume, image data is empty"));
@@ -866,7 +1025,10 @@ std::string vtkMRMLVolumeArchetypeStorageNode::UpdateFileList(vtkMRMLNode* refNo
   // set up the writer and write
   vtkNew<vtkITKImageWriter> writer;
   writer->SetFileName(tempName.c_str());
-  writer->SetInputData(volNode->GetImageData());
+  // For volumes with active voxel value scaling the stored image is written
+  // (compact stored values + scaling metadata in the file header).
+  writer->SetInputData(GetImageDataToWrite(volNode, tempName));
+  SetVoxelValueMetadataToWriter(writer.GetPointer(), volNode, tempName);
   writer->SetUseCompression(this->GetUseCompression());
   if (this->WriteFileFormat)
   {

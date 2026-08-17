@@ -23,6 +23,9 @@
 #include "vtkITK.h"
 #include "itkImageIOBase.h"
 
+#include <map>
+#include <string>
+
 class vtkStringArray;
 
 /// \brief Writes image files using ITK.
@@ -91,6 +94,17 @@ public:
   /// Adds measurement frame matrix to the metadata.
   static void WriteMeasurementFrameMatrixToMetaDataDictionary(itk::MetaDataDictionary& dictionary, vtkMatrix4x4* measurementFrameMatrix);
 
+  /// Set a custom string attribute that is written into the output file
+  /// header as metadata, for file formats that support it (for example NRRD
+  /// key/value pairs). Setting an empty value removes the attribute.
+  void SetAttribute(const std::string& name, const std::string& value);
+
+  /// Remove all custom attributes.
+  void ClearAttributes();
+
+  /// Custom attributes that are written into the output file header.
+  const std::map<std::string, std::string>& GetAttributes() const { return this->Attributes; }
+
 protected:
   vtkITKImageWriter();
   ~vtkITKImageWriter() override;
@@ -101,6 +115,7 @@ protected:
   int UseCompression;
   char* ImageIOClassName;
   int VoxelVectorType;
+  std::map<std::string, std::string> Attributes;
 
 private:
   vtkITKImageWriter(const vtkITKImageWriter&) = delete;
