@@ -44,7 +44,6 @@ class vtkMRMLVolumeNode;
 class vtkOrientedImageData;
 class vtkSegment;
 class vtkSegmentation;
-class vtkSegmentationHistory;
 
 // VTK includes
 #include <vtkCommand.h>
@@ -75,6 +74,8 @@ public:
 
   enum Events
   {
+    /// \deprecated No longer invoked: segmentation edits share the scene undo history, observe
+    /// vtkMRMLScene::UndoStackModifiedEvent instead. The value is kept for backward compatibility.
     SegmentationHistoryChangedEvent = vtkCommand::UserEvent + 1,
     PauseRenderEvent,
     ResumeRenderEvent,
@@ -300,10 +301,6 @@ public:
   /// Set segmentation MRML node by its ID
   void SetSegmentationNodeID(const std::string& nodeID) const;
 
-  /// Set the segmentation history
-  /// By default, the logic creates and uses an empty segmentation history at creation.
-  void SetSegmentationHistory(const vtkSmartPointer<vtkSegmentationHistory>& segmentationHistory);
-
   /// Set source volume MRML node.
   /// If source volume has multiple scalar components
   /// then only the first scalar component is used.
@@ -400,7 +397,6 @@ private:
 
   /// Segment editor parameter set node containing all selections and working images
   vtkMRMLSegmentEditorNode* SegmentEditorNode;
-  vtkSmartPointer<vtkSegmentationHistory> SegmentationHistory;
 
   /// These volumes are owned by this widget and a pointer is given to each effect
   /// so that they can access and modify it
@@ -421,7 +417,6 @@ private:
 
   std::string DefaultTerminologyEntry;
 
-  unsigned long SegmentHistoryObs;
   vtkMRMLSegmentationNode* SegmentationNodeObs;
 
   // Warning verbosity level. Default = no warnings.

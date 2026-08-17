@@ -41,11 +41,11 @@ Copyright (c) Laboratory for Percutaneous Surgery (PerkLab)
 #include <vtkMRMLViewNode.h>
 
 // vtkSegmentationCore includes
+#include <vtkMRMLI18N.h>
 #include <vtkOrientedImageData.h>
 #include <vtkOrientedImageDataResample.h>
 #include <vtkSegment.h>
 #include <vtkSegmentation.h>
-#include <vtkSegmentationHistory.h>
 
 // VTK includes
 #include <vtkAlgorithmOutput.h>
@@ -175,7 +175,9 @@ bool vtkSlicerSegmentEditorLogic::CanAddSegments() const
 //-----------------------------------------------------------------------------
 bool vtkSlicerSegmentEditorLogic::CanRedo() const
 {
-  return this->SegmentationHistory && this->SegmentationHistory->IsRestoreNextStateAvailable();
+  // Segmentation edits share the scene undo history.
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  return scene && scene->GetNumberOfRedoLevels() > 0;
 }
 
 //------------------------------------------------------------------------------
@@ -208,15 +210,21 @@ bool vtkSlicerSegmentEditorLogic::CanTriviallyConvertSourceRepresentationToBinar
 //-----------------------------------------------------------------------------
 bool vtkSlicerSegmentEditorLogic::CanUndo() const
 {
-  return this->SegmentationHistory && this->SegmentationHistory->IsRestorePreviousStateAvailable();
+  // Segmentation edits share the scene undo history.
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  return scene && scene->GetNumberOfUndoLevels() > 0;
 }
 
 //-----------------------------------------------------------------------------
 void vtkSlicerSegmentEditorLogic::ClearUndoState() const
 {
-  if (this->SegmentationHistory)
+  // Segmentation edits share the scene undo history, so this clears the whole scene undo history
+  // (there is no separate segmentation history anymore).
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  if (scene)
   {
-    this->SegmentationHistory->RemoveAllStates();
+    scene->ClearUndoStack();
+    scene->ClearRedoStack();
   }
 }
 
@@ -344,11 +352,9 @@ vtkOrientedImageData* vtkSlicerSegmentEditorLogic::GetMaskLabelmap() const
 //-----------------------------------------------------------------------------
 int vtkSlicerSegmentEditorLogic::GetMaximumNumberOfUndoStates() const
 {
-  if (!this->SegmentationHistory)
-  {
-    return 0;
-  }
-  return static_cast<int>(this->SegmentationHistory->GetMaximumNumberOfStates());
+  // Segmentation edits share the scene undo history, so the scene setting is used.
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  return scene ? scene->GetMaximumNumberOfSavedUndoStates() : 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -611,15 +617,12 @@ bool vtkSlicerSegmentEditorLogic::IsSegmentIdValid(const std::string& segmentId)
 //-----------------------------------------------------------------------------
 void vtkSlicerSegmentEditorLogic::Redo() const
 {
-  if (!this->IsSegmentationNodeValid() || !this->SegmentationHistory)
+  // Segmentation edits share the scene undo history.
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  if (scene)
   {
-    return;
+    scene->Redo();
   }
-
-  vtkMRMLSegmentationNode* segmentationNode = this->GetSegmentationNode();
-  MRMLNodeModifyBlocker blocker(segmentationNode);
-  this->SegmentationHistory->RestoreNextState();
-  segmentationNode->InvokeCustomModifiedEvent(vtkMRMLDisplayableNode::DisplayModifiedEvent, segmentationNode->GetDisplayNode());
 }
 
 //-----------------------------------------------------------------------------
@@ -698,11 +701,18 @@ bool vtkSlicerSegmentEditorLogic::ResetModifierLabelmapToDefault() const
 //---------------------------------------------------------------------------
 bool vtkSlicerSegmentEditorLogic::SaveStateForUndo() const
 {
-  if (this->SegmentationHistory && this->SegmentationHistory->GetMaximumNumberOfStates() > 0)
+  // Segmentation edits share the scene undo history. Storing and restoring segmentation states is
+  // memory-efficient because only the modified segments are copied
+  // (\sa vtkMRMLSegmentationNode::CreateNodeStateForUndo).
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  if (!scene || !scene->GetUndoFlag())
   {
-    return this->SegmentationHistory->SaveState();
+    return false;
   }
-  return false;
+  vtkMRMLSegmentationNode* segmentationNode = this->GetSegmentationNode();
+  const char* nodeName = segmentationNode ? segmentationNode->GetName() : nullptr;
+  scene->SaveStateForUndo(vtkMRMLI18N::Format(vtkMRMLTr("vtkSlicerSegmentEditorLogic", "Edit segmentation (%1)"), nodeName ? nodeName : ""));
+  return true;
 }
 
 //---------------------------------------------------------------------------
@@ -740,11 +750,12 @@ void vtkSlicerSegmentEditorLogic::SetDefaultTerminologyEntry(const std::string& 
 //-----------------------------------------------------------------------------
 void vtkSlicerSegmentEditorLogic::SetMaximumNumberOfUndoStates(int maxNumberOfStates) const
 {
-  if (!this->SegmentationHistory)
+  // Segmentation edits share the scene undo history, so the scene setting is used.
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  if (scene)
   {
-    return;
+    scene->SetMaximumNumberOfSavedUndoStates(maxNumberOfStates);
   }
-  this->SegmentationHistory->SetMaximumNumberOfStates(maxNumberOfStates);
 }
 
 //-----------------------------------------------------------------------------
@@ -798,40 +809,6 @@ void vtkSlicerSegmentEditorLogic::SetSegmentationNodeID(const std::string& nodeI
     return;
   }
   this->SetSegmentationNode(vtkMRMLSegmentationNode::SafeDownCast(this->GetMRMLScene()->GetNodeByID(nodeID.c_str())));
-}
-
-//-----------------------------------------------------------------------------
-void vtkSlicerSegmentEditorLogic::SetSegmentationHistory(const vtkSmartPointer<vtkSegmentationHistory>& segmentationHistory)
-{
-  // Segmentation history doesn't inherit from MRML nodes and cannot use the vtkSetAndObserveMRMLNodeMacro
-  // Method connects the segmentation history manually and forwards update to ProcessMRMLNodesEvents.
-  if (segmentationHistory == this->SegmentationHistory)
-  {
-    return;
-  }
-  if (this->SegmentationHistory)
-  {
-    this->SegmentationHistory->RemoveObserver(this->SegmentHistoryObs);
-  }
-
-  this->SegmentationHistory = segmentationHistory;
-  if (!this->SegmentationHistory)
-  {
-    return;
-  }
-
-  // Forward segmentation history modified event
-  vtkNew<vtkCallbackCommand> updateCommand;
-  updateCommand->SetClientData(this);
-  updateCommand->SetCallback(
-    [](vtkObject* caller, unsigned long eid, void* clientData, void* callData)
-    {
-      auto client = static_cast<vtkSlicerSegmentEditorLogic*>(clientData);
-      client->ProcessMRMLNodesEvents(caller, eid, callData);
-    });
-
-  this->SegmentationHistory->AddObserver(vtkCommand::ModifiedEvent, updateCommand);
-  this->ProcessMRMLNodesEvents(this->SegmentationHistory, vtkCommand::ModifiedEvent, nullptr);
 }
 
 //------------------------------------------------------------------------------
@@ -988,14 +965,12 @@ bool vtkSlicerSegmentEditorLogic::TrivialSetSourceRepresentationToBinaryLabelmap
 //-----------------------------------------------------------------------------
 void vtkSlicerSegmentEditorLogic::Undo() const
 {
-  if (!this->GetSegmentationNode() || !this->SegmentationHistory)
+  // Segmentation edits share the scene undo history.
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  if (scene)
   {
-    return;
+    scene->Undo();
   }
-
-  MRMLNodeModifyBlocker blocker(this->GetSegmentationNode());
-  this->SegmentationHistory->RestorePreviousState();
-  this->GetSegmentationNode()->InvokeCustomModifiedEvent(vtkMRMLDisplayableNode::DisplayModifiedEvent, this->GetSegmentationNode()->GetDisplayNode());
 }
 
 //-----------------------------------------------------------------------------
@@ -1276,7 +1251,6 @@ bool vtkSlicerSegmentEditorLogic::UpdateReferenceGeometryImage() const
 //-----------------------------------------------------------------------------
 vtkSlicerSegmentEditorLogic::vtkSlicerSegmentEditorLogic()
   : SegmentEditorNode(nullptr)
-  , SegmentationHistory(nullptr)
   , AlignedSourceVolume(vtkSmartPointer<vtkOrientedImageData>::New())
   , ModifierLabelmap(vtkSmartPointer<vtkOrientedImageData>::New())
   , SelectedSegmentLabelmap(vtkSmartPointer<vtkOrientedImageData>::New())
@@ -1285,11 +1259,9 @@ vtkSlicerSegmentEditorLogic::vtkSlicerSegmentEditorLogic()
   , AlignedSourceVolumeUpdateSourceVolumeNode(nullptr)
   , AlignedSourceVolumeUpdateSourceVolumeNodeTransform(nullptr)
   , AlignedSourceVolumeUpdateSegmentationNodeTransform(nullptr)
-  , SegmentHistoryObs(0)
   , SegmentationNodeObs(nullptr)
   , IsVerbose(false)
 {
-  SetSegmentationHistory(vtkSmartPointer<vtkSegmentationHistory>::New());
 }
 
 //-----------------------------------------------------------------------------
@@ -2118,18 +2090,6 @@ void vtkSlicerSegmentEditorLogic::ProcessMRMLNodesEvents(vtkObject* caller, unsi
     this->UpdateSegmentationNodeObserver(this->GetSegmentationNode());
   }
 
-  if (vtkMRMLSegmentationNode::SafeDownCast(caller))
-  {
-    if (this->SegmentationHistory)
-    {
-      this->SegmentationHistory->SetSegmentation(GetSegmentation());
-    }
-  }
-
-  if (vtkSegmentationHistory::SafeDownCast(caller))
-  {
-    this->InvokeEvent(SegmentationHistoryChangedEvent);
-  }
 }
 
 //-----------------------------------------------------------------------------

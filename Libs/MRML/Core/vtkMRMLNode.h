@@ -293,6 +293,13 @@ public:
   /// Call this method in the subclass implementation.
   virtual void Copy(vtkMRMLNode* node);
 
+  /// \brief Copy basic node properties (name, type display name, default node name prefix,
+  /// HideFromEditors, AddToScene, SingletonTag, UndoEnabled) from another node.
+  /// Does not copy node contents (\sa CopyContent) and node references (\sa CopyReferences).
+  /// It is used by Copy and by methods that copy the node contents separately, for example
+  /// with a more efficient method (\sa CreateNodeStateForUndo).
+  void CopyProperties(vtkMRMLNode* node);
+
   /// \brief Copy node contents from another node of the same type.
   /// Does not copy node ID, Scene, Name, SingletonTag, HideFromEditors, AddToScene, UndoEnabled,
   /// and node references.
@@ -325,6 +332,31 @@ public:
   ///
   /// \sa vtkMRMLScene::AddNode(vtkMRMLNode*)
   void CopyWithScene(vtkMRMLNode* node);
+
+  /// \brief Create an object that stores the node's current state for scene undo/redo.
+  ///
+  /// The default implementation returns a full copy of the node (a new instance with the scene,
+  /// ID, and all contents copied), which is appropriate for most node types. Node types with large
+  /// data can
+  /// override this method to create memory-efficient states: \a previousState is the state that
+  /// was saved for this node in the previous undo state (or nullptr if there is none), so data
+  /// that has not changed since then can be shared between the states instead of being copied
+  /// (for example, vtkMRMLSegmentationNode shares the data of unmodified segments).
+  ///
+  /// The returned state must be an independent snapshot: later modifications of this node must not
+  /// change it. The caller takes ownership of the returned object (the reference count is not
+  /// automatically decremented).
+  /// \sa RestoreNodeStateForUndo, vtkMRMLScene::SaveStateForUndo
+  virtual vtkMRMLNode* CreateNodeStateForUndo(vtkMRMLNode* previousState);
+
+  /// \brief Restore the node from a state that was created by CreateNodeStateForUndo.
+  ///
+  /// The default implementation copies the scene, ID, and all contents from the state. Node types
+  /// that override CreateNodeStateForUndo can override this method as well if their states need special
+  /// restore logic. The state object must not be modified (the same state may be restored
+  /// multiple times as the user moves back and forth in the undo history).
+  /// \sa CreateNodeStateForUndo, vtkMRMLScene::Undo, vtkMRMLScene::Redo
+  virtual void RestoreNodeStateForUndo(vtkMRMLNode* savedState);
 
   /// \brief Reset node attributes to the initial state as defined in the
   /// constructor or the passed default node.
@@ -952,6 +984,14 @@ public:
   //@}
 
 protected:
+  /// \brief Copy the scene and node ID from another node.
+  ///
+  /// The node ID is normally managed by the scene (SetID is private), therefore this method is
+  /// only available to node implementations. It is used when a node state is created for or
+  /// restored from the scene undo history, where the state must carry the same ID as the node it
+  /// was created from (\sa CreateNodeStateForUndo, RestoreNodeStateForUndo).
+  void CopySceneAndID(vtkMRMLNode* source);
+
   /// \brief Class to hold information about a node reference
   class VTK_MRML_EXPORT vtkMRMLNodeReference : public vtkObject
   {

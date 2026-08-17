@@ -352,7 +352,6 @@ void qMRMLSegmentEditorWidgetPrivate::init()
   QObject::connect(this->UndoButton, SIGNAL(clicked()), q, SLOT(undo()));
   QObject::connect(this->RedoButton, SIGNAL(clicked()), q, SLOT(redo()));
 
-  q->qvtkConnect(this->Logic, vtkSlicerSegmentEditorLogic::SegmentationHistoryChangedEvent, q, SLOT(onSegmentationHistoryChanged()));
   q->qvtkConnect(this->Logic, vtkSlicerSegmentEditorLogic::PauseRenderEvent, q, SLOT(pauseRender()));
   q->qvtkConnect(this->Logic, vtkSlicerSegmentEditorLogic::ResumeRenderEvent, q, SLOT(resumeRender()));
 
@@ -1150,6 +1149,10 @@ void qMRMLSegmentEditorWidget::setMRMLScene(vtkMRMLScene* newScene)
   {
     return;
   }
+
+  // Update the undo/redo buttons when the scene undo/redo stacks change
+  // (segmentation edits share the scene undo history).
+  this->qvtkReconnect(this->mrmlScene(), newScene, vtkMRMLScene::UndoStackModifiedEvent, this, SLOT(updateUndoRedoButtonsState()));
 
   // Setting the scene would trigger MRML node update from GUI
   // (selection of first node in combo box)
@@ -1993,6 +1996,8 @@ void qMRMLSegmentEditorWidget::setActiveEffectByName(const QString& effectName)
 void qMRMLSegmentEditorWidget::saveStateForUndo()
 {
   Q_D(qMRMLSegmentEditorWidget);
+  // The state is saved into the scene undo history (segmentation edits share a single undo
+  // history with all other undoable changes in the scene).
   d->Logic->SaveStateForUndo();
 }
 
@@ -2235,10 +2240,10 @@ bool qMRMLSegmentEditorWidget::undoEnabled() const
 void qMRMLSegmentEditorWidget::setUndoEnabled(bool enabled)
 {
   Q_D(qMRMLSegmentEditorWidget);
-  if (enabled)
-  {
-    d->Logic->ClearUndoState();
-  }
+  // This method only controls the visibility of the undo/redo buttons in this widget.
+  // Segmentation edits are saved into the scene undo history, which is not disabled or cleared
+  // here (the same edits can still be undone using the application-wide undo). To exclude a
+  // specific segmentation node from undo/redo, call SetUndoEnabled(false) on that node instead.
   d->UndoRedoGroupBox->setVisible(enabled);
 }
 
@@ -2352,19 +2357,15 @@ void qMRMLSegmentEditorWidget::installKeyboardShortcuts(QWidget* parent /*=nullp
   QObject::connect(toggleActiveEffectShortcut, SIGNAL(activated()), this, SLOT(onSelectEffectShortcut()));
 
   // z, y => undo, redo
+  // (Ctrl+Z / Ctrl+Y are not registered here: segmentation edits share the scene undo history,
+  // which is already covered by the application-wide Edit menu shortcuts.)
   QShortcut* undoShortcut = new QShortcut(QKeySequence(Qt::Key_Z), parent);
   d->KeyboardShortcuts.push_back(undoShortcut);
   QObject::connect(undoShortcut, SIGNAL(activated()), this, SLOT(undo()));
-  QShortcut* undoShortcut2 = new QShortcut(QKeySequence::Undo, parent);
-  d->KeyboardShortcuts.push_back(undoShortcut2);
-  QObject::connect(undoShortcut2, SIGNAL(activated()), this, SLOT(undo()));
 
   QShortcut* redoShortcut = new QShortcut(QKeySequence(Qt::Key_Y), parent);
   d->KeyboardShortcuts.push_back(redoShortcut);
   QObject::connect(redoShortcut, SIGNAL(activated()), this, SLOT(redo()));
-  QShortcut* redoShortcut2 = new QShortcut(QKeySequence::Redo, parent);
-  d->KeyboardShortcuts.push_back(redoShortcut2);
-  QObject::connect(redoShortcut2, SIGNAL(activated()), this, SLOT(redo()));
 
   // Keys qw/*,.<> => select previous, next segment
   Qt::Key prevNexSegmentKeys[] = {

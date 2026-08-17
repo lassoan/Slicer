@@ -149,6 +149,14 @@ void vtkSlicerSegmentationsModuleLogic::RegisterNodes()
   // vtkMRMLSegmentationStorageNode nodes are registered in vtkMRMLScene.
   this->GetMRMLScene()->RegisterNodeClass(vtkSmartPointer<vtkMRMLSegmentEditorNode>::New());
 
+  // Segmentation nodes participate in the scene undo/redo mechanism. Storing states is
+  // memory-efficient because only the data of the modified segments is copied
+  // (\sa vtkMRMLSegmentationNode::CreateNodeStateForUndo). The owned display and storage nodes are
+  // registered as well, so that they are saved and restored together with the segmentation node.
+  this->GetMRMLScene()->AddUndoableNodeClass("vtkMRMLSegmentationNode");
+  this->GetMRMLScene()->AddUndoableNodeClass("vtkMRMLSegmentationDisplayNode");
+  this->GetMRMLScene()->AddUndoableNodeClass("vtkMRMLSegmentationStorageNode");
+
   // Register converter rules
   vtkSegmentationConverterFactory::GetInstance()->RegisterConverterRule(vtkSmartPointer<vtkBinaryLabelmapToClosedSurfaceConversionRule>::New());
   vtkSegmentationConverterFactory::GetInstance()->RegisterConverterRule(vtkSmartPointer<vtkClosedSurfaceToBinaryLabelmapConversionRule>::New());

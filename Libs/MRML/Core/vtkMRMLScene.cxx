@@ -2945,7 +2945,8 @@ void vtkMRMLScene::UpdateCleanUndoState()
       ++copyIt;
     }
   }
-  // Update the copies of the nodes that changed since the last update.
+  // Update the copies of the nodes that changed since the last update. The previous clean copy is
+  // passed to the node so that unchanged data can be shared instead of copied.
   for (const std::string& nodeID : this->CleanUndoStateDirtyNodeIDs)
   {
     vtkMRMLNode* node = this->GetNodeByID(nodeID);
@@ -2954,12 +2955,24 @@ void vtkMRMLScene::UpdateCleanUndoState()
       this->CleanUndoState.erase(nodeID);
       continue;
     }
-    vtkSmartPointer<vtkMRMLNode> nodeCopy = vtkSmartPointer<vtkMRMLNode>::Take(node->CreateNodeInstance());
+    vtkMRMLNode* previousCleanState = nullptr;
+    auto previousCleanStateIt = this->CleanUndoState.find(nodeID);
+    if (previousCleanStateIt != this->CleanUndoState.end())
+    {
+      previousCleanState = previousCleanStateIt->second;
+    }
+    if (!previousCleanState && !this->UndoStack.empty())
+    {
+      // No previous clean copy: use the node's state on the top of the undo stack (if any) as the
+      // baseline, so that unchanged data is shared with the undo history instead of being stored in
+      // a second, independent copy.
+      previousCleanState = vtkMRMLScene::FindNodeStateInCollection(this->UndoStack.back(), nodeID.c_str());
+    }
+    vtkSmartPointer<vtkMRMLNode> nodeCopy = vtkSmartPointer<vtkMRMLNode>::Take(node->CreateNodeStateForUndo(previousCleanState));
     if (!nodeCopy)
     {
       continue;
     }
-    nodeCopy->CopyWithScene(node);
     this->CleanUndoState[nodeID] = nodeCopy;
   }
   this->CleanUndoStateDirtyNodeIDs.clear();
@@ -2994,10 +3007,9 @@ void vtkMRMLScene::PushCleanUndoStateIntoUndoStack(const std::string& undoName)
     {
       // No clean copy is available (for example, undo has just been enabled and no change period
       // has been completed yet); fall back to the current state of the node.
-      vtkMRMLNode* nodeCopy = node->CreateNodeInstance();
+      vtkMRMLNode* nodeCopy = node->CreateNodeStateForUndo(nullptr);
       if (nodeCopy)
       {
-        nodeCopy->CopyWithScene(node);
         newScene->AddItem(nodeCopy);
         nodeCopy->Delete();
       }
@@ -3282,10 +3294,25 @@ void vtkMRMLScene::CopyNodeInUndoStack(vtkMRMLNode* copyNode)
     return;
   }
 
-  vtkMRMLNode* snode = copyNode->CreateNodeInstance();
-  if (snode != nullptr)
+  // The node's state in the previous undo state (if any) is passed to the node so that data that
+  // has not changed since then can be shared between the states instead of being copied.
+  vtkMRMLNode* previousState = nullptr;
+  if (this->UndoStack.size() >= 2)
   {
-    snode->CopyWithScene(copyNode);
+    previousState = vtkMRMLScene::FindNodeStateInCollection(*(++this->UndoStack.rbegin()), copyNode->GetID());
+  }
+  if (!previousState && !this->RedoStack.empty())
+  {
+    // No previous undo state (for example, this is the first state saved during a redo operation):
+    // use the node's state on the top of the redo stack as the baseline, so that unchanged data is
+    // shared with it instead of being copied.
+    previousState = vtkMRMLScene::FindNodeStateInCollection(this->RedoStack.back(), copyNode->GetID());
+  }
+  vtkMRMLNode* snode = copyNode->CreateNodeStateForUndo(previousState);
+  if (!snode)
+  {
+    vtkErrorMacro("CopyNodeInUndoStack: failed to create node state for " << (copyNode->GetID() ? copyNode->GetID() : "(unknown)"));
+    return;
   }
 
   vtkCollection* undoScene = this->UndoStack.back();
@@ -3303,6 +3330,25 @@ void vtkMRMLScene::CopyNodeInUndoStack(vtkMRMLNode* copyNode)
 }
 
 //------------------------------------------------------------------------------
+vtkMRMLNode* vtkMRMLScene::FindNodeStateInCollection(vtkCollection* stateCollection, const char* nodeID)
+{
+  if (!stateCollection || !nodeID)
+  {
+    return nullptr;
+  }
+  int nnodes = stateCollection->GetNumberOfItems();
+  for (int n = 0; n < nnodes; n++)
+  {
+    vtkMRMLNode* node = vtkMRMLNode::SafeDownCast(stateCollection->GetItemAsObject(n));
+    if (node && node->GetID() && strcmp(node->GetID(), nodeID) == 0)
+    {
+      return node;
+    }
+  }
+  return nullptr;
+}
+
+//------------------------------------------------------------------------------
 // Put a replacement node into the redoable copy of the scene so that the node
 // can be replaced by the Undo version
 void vtkMRMLScene::CopyNodeInRedoStack(vtkMRMLNode* copyNode)
@@ -3312,10 +3358,25 @@ void vtkMRMLScene::CopyNodeInRedoStack(vtkMRMLNode* copyNode)
     vtkErrorMacro("CopyNodeInRedoStack: node is null");
     return;
   }
-  vtkMRMLNode* snode = copyNode->CreateNodeInstance();
-  if (snode != nullptr)
+  // The node's state in the previous redo state (if any) is passed to the node so that data that
+  // has not changed since then can be shared between the states instead of being copied.
+  vtkMRMLNode* previousState = nullptr;
+  if (this->RedoStack.size() >= 2)
   {
-    snode->CopyWithScene(copyNode);
+    previousState = vtkMRMLScene::FindNodeStateInCollection(*(++this->RedoStack.rbegin()), copyNode->GetID());
+  }
+  if (!previousState && !this->UndoStack.empty())
+  {
+    // No previous redo state (this is the first undo after some changes): use the node's state on
+    // the top of the undo stack (the state that the undo operation is about to restore) as the
+    // baseline, so that unchanged data is shared with it instead of being copied.
+    previousState = vtkMRMLScene::FindNodeStateInCollection(this->UndoStack.back(), copyNode->GetID());
+  }
+  vtkMRMLNode* snode = copyNode->CreateNodeStateForUndo(previousState);
+  if (!snode)
+  {
+    vtkErrorMacro("CopyNodeInRedoStack: failed to create node state for " << (copyNode->GetID() ? copyNode->GetID() : "(unknown)"));
+    return;
   }
   vtkCollection* undoScene = this->RedoStack.back();
   int nnodes = undoScene->GetNumberOfItems();
@@ -3441,10 +3502,10 @@ void vtkMRMLScene::Undo()
     }
     else if (*iterNode != *curIterNode)
     {
-      // nodes differ, copy from undo to current scene
+      // nodes differ, restore from the saved undo state
       // but before create a copy in redo stack from current
       this->CopyNodeInRedoStack(*curIterNode);
-      (*curIterNode)->CopyWithScene(*iterNode);
+      (*curIterNode)->RestoreNodeStateForUndo(*iterNode);
     }
   }
 
@@ -3462,8 +3523,17 @@ void vtkMRMLScene::Undo()
 
   for (nn = 0; nn < addNodes.size(); nn++)
   {
-    this->AddNode(addNodes[nn]);
-    addNodes[nn]->SetSceneReferences();
+    // Add a fresh node restored from the saved state instead of adding the state object itself:
+    // the state remains available unmodified in the stack (states may share data with each other,
+    // so a state object must never become a live node that is modified in place).
+    vtkSmartPointer<vtkMRMLNode> restoredNode = vtkSmartPointer<vtkMRMLNode>::Take(addNodes[nn]->CreateNodeInstance());
+    if (!restoredNode)
+    {
+      continue;
+    }
+    restoredNode->RestoreNodeStateForUndo(addNodes[nn]);
+    this->AddNode(restoredNode);
+    restoredNode->SetSceneReferences();
   }
   for (nn = 0; nn < removeNodes.size(); nn++)
   {
@@ -3615,10 +3685,10 @@ void vtkMRMLScene::Redo()
     }
     else if (iter->second != curIter->second)
     {
-      // nodes differ, copy from redo to current scene
+      // nodes differ, restore from the saved redo state
       // but before create a copy in undo stack from current
       this->CopyNodeInUndoStack(curIter->second);
-      curIter->second->CopyWithScene(iter->second);
+      curIter->second->RestoreNodeStateForUndo(iter->second);
     }
   }
 
@@ -3641,7 +3711,20 @@ void vtkMRMLScene::Redo()
 
   for (nn = 0; nn < addNodes.size(); nn++)
   {
-    this->AddNode(addNodes[nn]);
+    if (!addNodes[nn])
+    {
+      continue;
+    }
+    // Add a fresh node restored from the saved state instead of adding the state object itself
+    // (see the corresponding comment in Undo).
+    vtkSmartPointer<vtkMRMLNode> restoredNode = vtkSmartPointer<vtkMRMLNode>::Take(addNodes[nn]->CreateNodeInstance());
+    if (!restoredNode)
+    {
+      continue;
+    }
+    restoredNode->RestoreNodeStateForUndo(addNodes[nn]);
+    this->AddNode(restoredNode);
+    restoredNode->SetSceneReferences();
   }
   for (nn = 0; nn < removeNodes.size(); nn++)
   {

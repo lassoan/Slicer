@@ -207,9 +207,13 @@ public:
 
   /// Show/hide the switch to Segmentations module button
   bool switchToSegmentationsButtonVisible() const;
-  /// Undo/redo enabled.
+  /// Returns true if the undo/redo buttons of this widget are shown.
+  /// Note that segmentation edits are saved into the scene undo history regardless of this
+  /// setting. \sa setUndoEnabled
   bool undoEnabled() const;
   /// Get maximum number of saved undo/redo states.
+  /// Segmentation edits share the scene undo history, so this returns the scene setting
+  /// (\sa vtkMRMLScene::GetMaximumNumberOfSavedUndoStates).
   int maximumNumberOfUndoStates() const;
   /// Get whether widget is read-only
   bool readOnly() const;
@@ -349,9 +353,19 @@ public slots:
   void setAddRemoveSegmentButtonsVisible(bool);
   /// Show/hide the switch to Segmentations module button
   void setSwitchToSegmentationsButtonVisible(bool);
-  /// Undo/redo enabled.
+  /// Show/hide the undo/redo buttons of this widget.
+  ///
+  /// Segmentation edits are saved into the scene undo history, which remains active regardless of
+  /// this setting: hiding the buttons does not disable or clear the history (the same edits can
+  /// still be undone using the application-wide undo, for example Edit menu or Ctrl+Z).
+  /// - To exclude a specific segmentation node from undo/redo, clear its per-instance flag with
+  ///   vtkMRMLNode::SetUndoEnabled(false) on that segmentation node.
+  /// - To disable undo/redo for the whole application, use vtkMRMLScene::SetUndoOff() (controlled
+  ///   by the "Enable undo/redo" application setting).
   void setUndoEnabled(bool);
   /// Set maximum number of saved undo/redo states.
+  /// Segmentation edits share the scene undo history, so this sets the scene setting, which
+  /// applies to all undoable changes (\sa vtkMRMLScene::SetMaximumNumberOfSavedUndoStates).
   void setMaximumNumberOfUndoStates(int);
   /// Set whether the widget is read-only
   void setReadOnly(bool aReadOnly);

@@ -143,7 +143,7 @@ void vtkMRMLSegmentationNode::ReadXMLAttributes(const char** atts)
 void vtkMRMLSegmentationNode::CopyContent(vtkMRMLNode* anode, bool deepCopy /*=true*/)
 {
   MRMLNodeModifyBlocker blocker(this);
-  Superclass::CopyContent(anode, deepCopy);
+  this->CopyContentWithoutSegmentation(anode, deepCopy);
 
   vtkMRMLSegmentationNode* node = vtkMRMLSegmentationNode::SafeDownCast(anode);
   if (!node)
@@ -154,16 +154,12 @@ void vtkMRMLSegmentationNode::CopyContent(vtkMRMLNode* anode, bool deepCopy /*=t
   {
     if (node->GetSegmentation())
     {
-      if (this->GetSegmentation())
-      {
-        this->GetSegmentation()->DeepCopy(node->GetSegmentation());
-      }
-      else
+      if (!this->GetSegmentation())
       {
         vtkSmartPointer<vtkSegmentation> newSegmentation = vtkSmartPointer<vtkSegmentation>::Take(node->GetSegmentation()->NewInstance());
-        newSegmentation->DeepCopy(node->GetSegmentation());
         this->SetAndObserveSegmentation(newSegmentation);
       }
+      this->GetSegmentation()->DeepCopy(node->GetSegmentation());
     }
     else
     {
@@ -176,10 +172,91 @@ void vtkMRMLSegmentationNode::CopyContent(vtkMRMLNode* anode, bool deepCopy /*=t
     // shallow-copy
     this->SetAndObserveSegmentation(node->GetSegmentation());
   }
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLSegmentationNode::CopyContentWithoutSegmentation(vtkMRMLNode* anode, bool deepCopy /*=true*/)
+{
+  MRMLNodeModifyBlocker blocker(this);
+  Superclass::CopyContent(anode, deepCopy);
+
+  vtkMRMLSegmentationNode* node = vtkMRMLSegmentationNode::SafeDownCast(anode);
+  if (!node)
+  {
+    return;
+  }
   vtkMRMLCopyBeginMacro(anode);
   vtkMRMLCopyBooleanMacro(SegmentListFilterEnabled);
   vtkMRMLCopyStdStringMacro(SegmentListFilterOptions);
   vtkMRMLCopyEndMacro();
+}
+
+//----------------------------------------------------------------------------
+vtkMRMLNode* vtkMRMLSegmentationNode::CreateNodeStateForUndo(vtkMRMLNode* previousState)
+{
+  vtkMRMLSegmentationNode* previousStateNode = vtkMRMLSegmentationNode::SafeDownCast(previousState);
+  vtkMRMLSegmentationNode* stateNode = vtkMRMLSegmentationNode::SafeDownCast(this->CreateNodeInstance());
+  if (!stateNode)
+  {
+    return this->Superclass::CreateNodeStateForUndo(previousState);
+  }
+  // The state node is a full copy of this node, except that segment representations that are
+  // unchanged compared to the previous saved state are shared between the states instead of being
+  // deep-copied. This makes storing many segmentation states in the scene undo history efficient:
+  // each state only stores the data of the segments that were modified since the previous state.
+  MRMLNodeModifyBlocker blocker(stateNode);
+  stateNode->CopySceneAndID(this);
+  stateNode->CopyProperties(this);
+  stateNode->CopyReferences(this);
+  stateNode->CopyContentWithoutSegmentation(this);
+  if (this->GetSegmentation())
+  {
+    if (!stateNode->GetSegmentation())
+    {
+      vtkSmartPointer<vtkSegmentation> newSegmentation = vtkSmartPointer<vtkSegmentation>::Take(this->GetSegmentation()->NewInstance());
+      stateNode->SetAndObserveSegmentation(newSegmentation);
+    }
+    stateNode->GetSegmentation()->DeepCopyWithBaseline(this->GetSegmentation(), previousStateNode ? previousStateNode->GetSegmentation() : nullptr);
+  }
+  else
+  {
+    stateNode->SetAndObserveSegmentation(nullptr);
+  }
+  return stateNode;
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLSegmentationNode::RestoreNodeStateForUndo(vtkMRMLNode* savedState)
+{
+  vtkMRMLSegmentationNode* stateNode = vtkMRMLSegmentationNode::SafeDownCast(savedState);
+  if (!stateNode)
+  {
+    this->Superclass::RestoreNodeStateForUndo(savedState);
+    return;
+  }
+  MRMLNodeModifyBlocker blocker(this);
+  // The scene and ID must be restored as well: this node may be a fresh instance that a deleted
+  // node is being restored into (\sa vtkMRMLScene::Undo).
+  this->CopySceneAndID(stateNode);
+  this->CopyProperties(stateNode);
+  this->CopyReferences(stateNode);
+  this->CopyContentWithoutSegmentation(stateNode);
+  // Restore the segmentation by updating it in place (existing segment objects are kept, so
+  // observers and display pipelines of the segments do not need to be rebuilt). The saved state is
+  // not modified: its shared representations are deep-copied into this node.
+  if (stateNode->GetSegmentation())
+  {
+    if (!this->GetSegmentation())
+    {
+      vtkSmartPointer<vtkSegmentation> newSegmentation = vtkSmartPointer<vtkSegmentation>::Take(stateNode->GetSegmentation()->NewInstance());
+      this->SetAndObserveSegmentation(newSegmentation);
+    }
+    this->GetSegmentation()->UpdateFromSegmentation(stateNode->GetSegmentation());
+  }
+  else
+  {
+    this->SetAndObserveSegmentation(nullptr);
+  }
 }
 
 //----------------------------------------------------------------------------

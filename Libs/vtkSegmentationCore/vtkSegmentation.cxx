@@ -22,7 +22,6 @@
 #include "vtkSegmentation.h"
 #include "vtkSegmentationConverterRule.h"
 #include "vtkSegmentationConverterFactory.h"
-#include "vtkSegmentationHistory.h"
 
 #include "vtkOrientedImageData.h"
 #include "vtkOrientedImageDataResample.h"
@@ -176,6 +175,108 @@ void vtkSegmentation::DeepCopy(vtkSegmentation* aSegmentation)
   {
     vtkSmartPointer<vtkSegment> segment = vtkSmartPointer<vtkSegment>::New();
     vtkSegmentation::CopySegment(segment, aSegmentation->Segments[*segmentIdIt], nullptr, copiedDataObjects);
+    this->AddSegment(segment, *segmentIdIt);
+  }
+
+  // Continue segment ID autogeneration from the same index as in the source segmentation
+  this->SegmentIdAutogeneratorIndex = aSegmentation->SegmentIdAutogeneratorIndex;
+}
+
+//----------------------------------------------------------------------------
+void vtkSegmentation::UpdateFromSegmentation(vtkSegmentation* aSegmentation)
+{
+  if (!aSegmentation)
+  {
+    return;
+  }
+
+  // Copy properties
+  this->SetSourceRepresentationName(aSegmentation->GetSourceRepresentationName());
+  this->SetUUIDSegmentIDs(aSegmentation->GetUUIDSegmentIDs());
+
+  // Copy conversion parameters
+  this->Converter->DeepCopy(aSegmentation->Converter);
+
+  // Update segments in place: existing segment objects are kept (so that observers and display
+  // pipelines of unchanged segments are preserved), only their content is overwritten. Segments
+  // that are not in the source segmentation are removed and missing segments are added.
+  bool containedRepresentationNamesModified = false;
+  std::set<std::string> segmentIDsToKeep;
+  std::map<vtkDataObject*, vtkDataObject*> copiedDataObjects;
+  for (std::deque<std::string>::iterator segmentIdIt = aSegmentation->SegmentIds.begin(); segmentIdIt != aSegmentation->SegmentIds.end(); ++segmentIdIt)
+  {
+    vtkSegment* sourceSegment = aSegmentation->Segments[*segmentIdIt];
+    segmentIDsToKeep.insert(*segmentIdIt);
+    vtkSmartPointer<vtkSegment> segment = this->GetSegment(*segmentIdIt);
+    if (segment == nullptr)
+    {
+      segment = vtkSmartPointer<vtkSegment>::New();
+      this->AddSegment(segment, *segmentIdIt);
+    }
+    std::vector<std::string> sourceRepresentationNames;
+    sourceSegment->GetContainedRepresentationNames(sourceRepresentationNames);
+    std::vector<std::string> currentRepresentationNames;
+    segment->GetContainedRepresentationNames(currentRepresentationNames);
+    if (sourceRepresentationNames != currentRepresentationNames)
+    {
+      containedRepresentationNamesModified = true;
+    }
+    vtkSegmentation::CopySegment(segment, sourceSegment, nullptr, copiedDataObjects);
+  }
+
+  // Remove segments that are not in the source segmentation
+  std::vector<std::string> segmentIDs;
+  this->GetSegmentIDs(segmentIDs);
+  for (std::vector<std::string>::iterator segmentIdIt = segmentIDs.begin(); segmentIdIt != segmentIDs.end(); ++segmentIdIt)
+  {
+    if (segmentIDsToKeep.find(*segmentIdIt) == segmentIDsToKeep.end())
+    {
+      this->RemoveSegment(*segmentIdIt);
+    }
+  }
+
+  std::vector<std::string> sourceSegmentIds(aSegmentation->SegmentIds.begin(), aSegmentation->SegmentIds.end());
+  this->ReorderSegments(sourceSegmentIds);
+
+  this->SegmentIdAutogeneratorIndex = aSegmentation->SegmentIdAutogeneratorIndex;
+
+  if (containedRepresentationNamesModified)
+  {
+    this->InvokeEvent(vtkSegmentation::ContainedRepresentationNamesModified);
+  }
+}
+
+//----------------------------------------------------------------------------
+void vtkSegmentation::DeepCopyWithBaseline(vtkSegmentation* aSegmentation, vtkSegmentation* baselineSegmentation)
+{
+  if (!aSegmentation)
+  {
+    return;
+  }
+  if (!baselineSegmentation)
+  {
+    this->DeepCopy(aSegmentation);
+    return;
+  }
+
+  this->RemoveAllSegments();
+
+  // Copy properties
+  this->SetSourceRepresentationName(aSegmentation->GetSourceRepresentationName());
+  this->SetUUIDSegmentIDs(aSegmentation->GetUUIDSegmentIDs());
+
+  // Copy conversion parameters
+  this->Converter->DeepCopy(aSegmentation->Converter);
+
+  // Copy segments list. If a representation of a segment is unchanged compared to the baseline
+  // segmentation then the representation is shared (referenced) instead of being deep-copied.
+  // This makes storing many similar states (for example, in the scene undo history) efficient.
+  std::map<vtkDataObject*, vtkDataObject*> copiedDataObjects;
+  for (std::deque<std::string>::iterator segmentIdIt = aSegmentation->SegmentIds.begin(); segmentIdIt != aSegmentation->SegmentIds.end(); ++segmentIdIt)
+  {
+    vtkSegment* baselineSegment = baselineSegmentation->GetSegment(*segmentIdIt);
+    vtkSmartPointer<vtkSegment> segment = vtkSmartPointer<vtkSegment>::New();
+    vtkSegmentation::CopySegment(segment, aSegmentation->Segments[*segmentIdIt], baselineSegment, copiedDataObjects);
     this->AddSegment(segment, *segmentIdIt);
   }
 

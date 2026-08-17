@@ -72,6 +72,23 @@ public:
   /// \sa vtkMRMLNode::CopyContent
   vtkMRMLCopyContentMacro(vtkMRMLSegmentationNode);
 
+  /// Copy node content except the segmentation (segments and conversion parameters).
+  /// It is used by CopyContent and by methods that copy the segmentation separately with a more
+  /// efficient method (\sa CreateNodeStateForUndo, RestoreNodeStateForUndo).
+  void CopyContentWithoutSegmentation(vtkMRMLNode* node, bool deepCopy = true);
+
+  /// Create a memory-efficient state of the node for scene undo/redo: segment representations that
+  /// are unchanged compared to the previous saved state are shared between the states instead of
+  /// being deep-copied, so each state only stores the data of the modified segments.
+  /// \sa vtkMRMLNode::CreateNodeStateForUndo
+  vtkMRMLNode* CreateNodeStateForUndo(vtkMRMLNode* previousState) override;
+
+  /// Restore the node from a state created by CreateNodeStateForUndo. The segmentation is updated
+  /// in place (existing segment objects are kept), so observers and display pipelines of the
+  /// segments do not need to be rebuilt.
+  /// \sa vtkMRMLNode::RestoreNodeStateForUndo
+  void RestoreNodeStateForUndo(vtkMRMLNode* savedState) override;
+
   /// Get unique node XML tag name (like Volume, Model)
   const char* GetNodeTagName() override { return "Segmentation"; };
 

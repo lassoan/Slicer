@@ -1021,6 +1021,10 @@ protected:
   void CopyNodeInUndoStack(vtkMRMLNode* node);
   void CopyNodeInRedoStack(vtkMRMLNode* node);
 
+  /// Find the saved state of the node with the given ID in an undo/redo stack entry.
+  /// Returns nullptr if the node has no state in the entry.
+  static vtkMRMLNode* FindNodeStateInCollection(vtkCollection* stateCollection, const char* nodeID);
+
   /// Add a node to the scene without invoking a vtkMRMLScene::NodeAddedEvent event.
   ///
   /// \warning Use with extreme caution as it might unsynchronize observer.

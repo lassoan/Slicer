@@ -517,7 +517,14 @@ void qMRMLSegmentsModel::updateItemDataFromSegment(QStandardItem* item, QString 
     vtkMRMLSegmentationDisplayNode* displayNode = vtkMRMLSegmentationDisplayNode::SafeDownCast(d->SegmentationNode->GetDisplayNode());
     if (!displayNode)
     {
-      qCritical() << Q_FUNC_INFO << ": Invalid segmentation display node";
+      // During undo/redo and other batch operations the display node reference may be transiently
+      // unresolved while the nodes are being restored. This is not an error: the item is updated
+      // again when the display node reference is restored.
+      vtkMRMLScene* scene = d->SegmentationNode->GetScene();
+      if (!scene || !(scene->IsUndoing() || scene->IsRedoing() || scene->IsBatchProcessing()))
+      {
+        qCritical() << Q_FUNC_INFO << ": Invalid segmentation display node";
+      }
       return;
     }
 

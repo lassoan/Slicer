@@ -147,6 +147,20 @@ public:
   /// Deep copy one segmentation into another
   virtual void DeepCopy(vtkSegmentation* aSegmentation);
 
+  /// Deep copy one segmentation into another, sharing (referencing) segment representations that
+  /// are unchanged compared to \a baselineSegmentation instead of deep-copying them. This makes
+  /// storing many similar states (for example, in the scene undo history) memory-efficient.
+  /// If \a baselineSegmentation is nullptr then this method is equivalent to DeepCopy.
+  virtual void DeepCopyWithBaseline(vtkSegmentation* aSegmentation, vtkSegmentation* baselineSegmentation);
+
+  /// Update this segmentation to match \a aSegmentation, keeping the existing segment objects:
+  /// contents of existing segments are overwritten, missing segments are added, extra segments are
+  /// removed, and segments are reordered to match the source. Because the segment objects are
+  /// preserved, observers and display pipelines of the segments do not need to be rebuilt (unlike
+  /// with DeepCopy, which removes and re-adds all segments). Used for restoring a saved state, for
+  /// example during scene undo/redo.
+  virtual void UpdateFromSegmentation(vtkSegmentation* aSegmentation);
+
   /// Copy conversion parameters from another segmentation
   virtual void CopyConversionParameters(vtkSegmentation* aSegmentation);
 

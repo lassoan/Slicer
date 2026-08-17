@@ -93,19 +93,64 @@ vtkMRMLNode::~vtkMRMLNode()
 void vtkMRMLNode::CopyWithScene(vtkMRMLNode* node)
 {
   MRMLNodeModifyBlocker blocker(this);
-  if (node->GetScene())
-  {
-    this->SetScene(node->GetScene());
-  }
-  if (node->GetID())
-  {
-    this->SetID(node->GetID());
-  }
+  this->CopySceneAndID(node);
   this->Copy(node);
 }
 
 //----------------------------------------------------------------------------
+void vtkMRMLNode::CopySceneAndID(vtkMRMLNode* source)
+{
+  if (source->GetScene())
+  {
+    this->SetScene(source->GetScene());
+  }
+  if (source->GetID())
+  {
+    this->SetID(source->GetID());
+  }
+}
+
+//----------------------------------------------------------------------------
+vtkMRMLNode* vtkMRMLNode::CreateNodeStateForUndo(vtkMRMLNode* vtkNotUsed(previousState))
+{
+  // Default: store a full copy of the node. Node types with large data can override this method
+  // to share unchanged data with the previous state instead of copying it.
+  vtkMRMLNode* stateNode = this->CreateNodeInstance();
+  if (stateNode)
+  {
+    MRMLNodeModifyBlocker blocker(stateNode);
+    stateNode->CopySceneAndID(this);
+    stateNode->Copy(this);
+  }
+  return stateNode;
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLNode::RestoreNodeStateForUndo(vtkMRMLNode* savedState)
+{
+  if (!savedState)
+  {
+    vtkErrorMacro("RestoreNodeStateForUndo failed: invalid saved state");
+    return;
+  }
+  MRMLNodeModifyBlocker blocker(this);
+  // The scene and ID must be restored as well: the node may be a fresh instance that a deleted
+  // node is being restored into (\sa vtkMRMLScene::Undo).
+  this->CopySceneAndID(savedState);
+  this->Copy(savedState);
+}
+
+//----------------------------------------------------------------------------
 void vtkMRMLNode::Copy(vtkMRMLNode* node)
+{
+  MRMLNodeModifyBlocker blocker(this);
+  this->CopyProperties(node);
+  this->CopyContent(node);
+  this->CopyReferences(node);
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLNode::CopyProperties(vtkMRMLNode* node)
 {
   MRMLNodeModifyBlocker blocker(this);
   vtkMRMLCopyBeginMacro(node);
@@ -132,8 +177,6 @@ void vtkMRMLNode::Copy(vtkMRMLNode* node)
   }
   vtkMRMLCopyBooleanMacro(UndoEnabled);
   vtkMRMLCopyEndMacro();
-  this->CopyContent(node);
-  this->CopyReferences(node);
 }
 
 //----------------------------------------------------------------------------
@@ -289,8 +332,8 @@ void vtkMRMLNode::Reset(vtkMRMLNode* defaultNode)
 
   int wasModifying = this->StartModify();
 
-  // Copy
-  this->CopyWithScene(newNode);
+  // Copy. The default node has no scene and no ID, so this node's scene and ID are not changed.
+  this->Copy(newNode);
 
   // Restore
   this->SetSaveWithScene(save);
