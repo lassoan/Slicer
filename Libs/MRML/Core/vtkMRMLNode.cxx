@@ -92,6 +92,7 @@ vtkMRMLNode::~vtkMRMLNode()
 //----------------------------------------------------------------------------
 void vtkMRMLNode::CopyWithScene(vtkMRMLNode* node)
 {
+  vtkWarningMacro("vtkMRMLNode::CopyWithScene method is deprecated, please use SetScene() and Copy() methods instead");
   MRMLNodeModifyBlocker blocker(this);
   this->CopySceneAndID(node);
   this->Copy(node);

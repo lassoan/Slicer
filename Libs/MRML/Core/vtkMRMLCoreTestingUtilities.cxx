@@ -215,7 +215,14 @@ int ExerciseBasicMRMLMethods(vtkMRMLNode* node)
   node->Modified();
   node->InvokePendingModifiedEvent();
   node1->SetName("copywithscene");
-  node->CopyWithScene(node1);
+  {
+    MRMLNodeModifyBlocker blocker(node);
+    if (node1->GetScene())
+    {
+      node->SetScene(node1->GetScene());
+    }
+    node->Copy(node1);
+  }
 
   //  Test UpdateReferences()
   node->UpdateReferences();

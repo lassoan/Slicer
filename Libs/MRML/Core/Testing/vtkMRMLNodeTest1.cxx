@@ -461,7 +461,14 @@ bool TestCopyWithScene(int line,
   vtkNew<vtkMRMLNodeCallback> spy;
   copy->AddObserver(vtkCommand::ModifiedEvent, spy.GetPointer());
 
-  copy->CopyWithScene(source);
+  // Copy everything (including scene) from the source node. The node ID is not copied (it is
+  // managed by the scene and assigned when the node is added). The whole copy must invoke a
+  // single ModifiedEvent, therefore it is wrapped in a MRMLNodeModifyBlocker.
+  {
+    MRMLNodeModifyBlocker blocker(copy.GetPointer());
+    copy->SetScene(source->GetScene());
+    copy->Copy(source);
+  }
   if (!CheckInt(__LINE__, "spy->GetNumberOfModified()", spy->GetNumberOfModified(), 1))
   {
     return false;
@@ -512,6 +519,21 @@ bool TestCopyWithScene()
   res = res && TestCopyWithScene(__LINE__, true, false, "vtkMRMLNodeTestHelper11", "vtkMRMLNodeTestHelper12");
   //  res = res && TestCopyWithScene(__LINE__, 1, 1, "vtkMRMLNodeTestHelper11"      , "vtkMRMLNodeTestHelper12"); // NOT SUPPORTED
   //  res = res && TestCopyWithScene(__LINE__, 1, 1, "vtkMRMLNodeTestHelper11"      , "vtkMRMLNodeTestHelper12"); // NOT SUPPORTED
+
+  // The deprecated CopyWithScene method logs a warning but must still work
+  {
+    vtkNew<vtkMRMLScene> scene;
+    scene->RegisterNodeClass(vtkSmartPointer<vtkMRMLNodeTestHelper1>::New());
+    vtkNew<vtkMRMLNodeTestHelper1> source;
+    source->SetAttribute("What", "TheSource");
+    scene->AddNode(source.GetPointer());
+    vtkNew<vtkMRMLNodeTestHelper1> copy;
+    TESTING_OUTPUT_ASSERT_WARNINGS_BEGIN();
+    copy->CopyWithScene(source.GetPointer());
+    TESTING_OUTPUT_ASSERT_WARNINGS_END();
+    res = res && CheckString(__LINE__, "copy->GetID()", copy->GetID(), source->GetID());
+    res = res && CheckString(__LINE__, "copy->GetAttribute(\"What\")", copy->GetAttribute("What"), "TheSource");
+  }
 
   return res;
 }

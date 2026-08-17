@@ -614,7 +614,18 @@ bool vtkMRMLSceneViewNode::RestoreScene(bool removeNodes)
         else
         {
           vtkMRMLNode* newNode = node->CreateNodeInstance();
-          newNode->CopyWithScene(node);
+          {
+            MRMLNodeModifyBlocker blocker(newNode);
+            if (node->GetScene())
+            {
+              newNode->SetScene(node->GetScene());
+            }
+            if (node->GetID())
+            {
+              newNode->SetID(node->GetID());
+            }
+            newNode->Copy(node);
+          }
 
           addedNodes.push_back(newNode);
           newNode->SetAddToSceneNoModify(1);

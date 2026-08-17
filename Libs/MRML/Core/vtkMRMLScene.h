@@ -200,7 +200,7 @@ public:
   /// "Model_1" if it's the second, etc.
   /// If node is a singleton, and a node of the same class with the
   /// same singleton tag already exists in the scene, \a nodeToAdd is NOT
-  /// added but its properties are copied (c.f. vtkMRMLNode::CopyWithScene())
+  /// added but its properties are copied (c.f. vtkMRMLNode::Copy())
   /// into the already existing singleton node. That node is then returned.
   vtkMRMLNode* AddNode(vtkMRMLNode* nodeToAdd);
 

@@ -1087,7 +1087,12 @@ vtkMRMLVolumeNode* vtkSlicerVolumesLogic::CloneVolumeGeneric(vtkMRMLScene* scene
     vtkErrorWithObjectMacro(volumeNode, "Could not clone volume");
     return nullptr;
   }
-  clonedVolumeNode->CopyWithScene(volumeNode);
+  {
+    // The node ID is not copied: the scene assigns a unique ID when the clone is added.
+    MRMLNodeModifyBlocker blocker(clonedVolumeNode);
+    clonedVolumeNode->SetScene(volumeNode->GetScene());
+    clonedVolumeNode->Copy(volumeNode);
+  }
 
   // remove storage nodes
   clonedVolumeNode->SetAndObserveStorageNodeID(nullptr);
@@ -1107,7 +1112,12 @@ vtkMRMLVolumeNode* vtkSlicerVolumesLogic::CloneVolumeGeneric(vtkMRMLScene* scene
   }
   if (clonedDisplayNode.GetPointer())
   {
-    clonedDisplayNode->CopyWithScene(originalDisplayNode);
+    {
+      // The node ID is not copied: the scene assigns a unique ID when the clone is added.
+      MRMLNodeModifyBlocker blocker(clonedDisplayNode);
+      clonedDisplayNode->SetScene(originalDisplayNode->GetScene());
+      clonedDisplayNode->Copy(originalDisplayNode);
+    }
     scene->AddNode(clonedDisplayNode);
     clonedVolumeNode->SetAndObserveDisplayNodeID(clonedDisplayNode->GetID());
   }

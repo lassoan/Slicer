@@ -226,6 +226,7 @@ class VTK_MRML_EXPORT vtkMRMLNode : public vtkObject
   /// SetID, but that's the only class that is allowed to do so
   friend class vtkMRMLScene;
   friend class vtkMRMLSceneViewNode;
+  friend class vtkMRMLParser;
 
 public:
   vtkTypeMacro(vtkMRMLNode, vtkObject);
@@ -291,6 +292,12 @@ public:
   /// \note
   /// Subclasses should implement this method.
   /// Call this method in the subclass implementation.
+  ///
+  /// \bug When creating a copy of a node that should preserve the source node's ID (by calling
+  /// SetID() before Copy()), the node must be added to the scene with
+  /// vtkMRMLScene::AddNode(vtkMRMLNode*) only **after** the copying is completed. Adding the node
+  /// to the scene **before** copying is **NOT** supported, it will unsynchronize the node internal
+  /// caches. See [#4078](https://github.com/Slicer/Slicer/issues/4078)
   virtual void Copy(vtkMRMLNode* node);
 
   /// \brief Copy basic node properties (name, type display name, default node name prefix,
@@ -320,15 +327,21 @@ public:
   /// \brief Copy everything (including Scene and ID) from another node of
   /// the same type.
   ///
-  /// \note The node is **not** added into the scene of \a node. You must do it
-  /// manually **after** calling CopyWithScene(vtkMRMLNode*) using
-  /// vtkMRMLScene::AddNode(vtkMRMLNode*).
-  /// Only one vtkCommand::ModifiedEvent is invoked, after the copy is fully completed.
+  /// \deprecated Compose the simple copy methods instead, wrapped in a single MRMLNodeModifyBlocker
+  /// so that only one vtkCommand::ModifiedEvent is invoked:
+  /// \code
+  ///   MRMLNodeModifyBlocker blocker(node);
+  ///   node->SetScene(sourceNode->GetScene());
+  ///   node->Copy(sourceNode);
+  /// \endcode
+  /// The node ID is not copied by this recipe: the ID is managed by the scene, which assigns a
+  /// unique ID when the node is added (\sa vtkMRMLScene::AddNode). Node implementations that must
+  /// preserve the source node's ID (for example, when creating undo states) can additionally call
+  /// the protected CopySceneAndID method.
   ///
-  /// \bug Calling vtkMRMLScene::AddNode(vtkMRMLNode*) **before**
-  /// CopyWithScene(vtkMRMLNode*) is **NOT** supported, it will unsynchronize
-  /// the node internal caches.
-  /// See [#4078](https://github.com/Slicer/Slicer/issues/4078)
+  /// \note The node is **not** added into the scene of \a node. You must do it
+  /// manually **after** copying, using vtkMRMLScene::AddNode(vtkMRMLNode*)
+  /// (see the corresponding \bug note in Copy()).
   ///
   /// \sa vtkMRMLScene::AddNode(vtkMRMLNode*)
   void CopyWithScene(vtkMRMLNode* node);

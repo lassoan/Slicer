@@ -166,7 +166,19 @@ void vtkMRMLParser::StartElement(const char* tagName, const char** atts)
     {
       // create a copy of the node of the correct class
       vtkMRMLNode* newTypeLabelMapNode = this->MRMLScene->CreateNodeByClass("vtkMRMLLabelMapVolumeNode");
-      newTypeLabelMapNode->CopyWithScene(node);         // copy all contents, including MRML node ID
+      // copy all contents, including scene and MRML node ID
+      {
+        MRMLNodeModifyBlocker blocker(newTypeLabelMapNode);
+        if (node->GetScene())
+        {
+          newTypeLabelMapNode->SetScene(node->GetScene());
+        }
+        if (node->GetID())
+        {
+          newTypeLabelMapNode->SetID(node->GetID());
+        }
+        newTypeLabelMapNode->Copy(node);
+      }
       newTypeLabelMapNode->RemoveAttribute("LabelMap"); // this attribute is obsolete
       // replace the current node with the new one
       node->Delete();
@@ -184,8 +196,9 @@ void vtkMRMLParser::StartElement(const char* tagName, const char** atts)
     {
       // create a copy of the node of the correct class
       vtkMRMLSubjectHierarchyLegacyNode* legacyShNode = vtkMRMLSubjectHierarchyLegacyNode::New(); // Type is not registered
-      // Set scene and read attributes manually, because CopyWithScene does not work due to vtkMRMLSubjectHierarchy node not
-      // being child class of vtkMRMLHierarchyNode, and copying non-existent node references results in invalid memory access
+      // Set scene and read attributes manually, because copying the node (vtkMRMLNode::Copy) does not work due to
+      // vtkMRMLSubjectHierarchy node not being child class of vtkMRMLHierarchyNode, and copying non-existent node
+      // references results in invalid memory access
       legacyShNode->SetScene(this->GetMRMLScene());
       legacyShNode->ReadXMLAttributes(atts);
       legacyShNode->HideFromEditorsOff(); // disable hide from editors so that the nodes can be added to subject hierarchy
