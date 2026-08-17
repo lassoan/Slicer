@@ -182,7 +182,19 @@ public:
   /// \sa GetImageDataConnection()
   virtual void SetImageDataConnection(vtkAlgorithmOutput* inputPort);
   /// Return the input image data pipeline.
-  vtkGetObjectMacro(ImageDataConnection, vtkAlgorithmOutput);
+  /// Virtual so that subclasses can generate the image data on demand
+  /// (e.g. lazy generation of the physical image when voxel value scaling
+  /// is active on vtkMRMLScalarVolumeNode).
+  virtual vtkAlgorithmOutput* GetImageDataConnection();
+
+  /// Returns true if the volume has voxel data, without triggering any
+  /// deferred computation (unlike GetImageData(), which may generate the
+  /// image on demand). Use this instead of GetImageData()!=nullptr checks.
+  virtual bool HasImageData();
+
+  /// Get the voxel extent of the volume without triggering any deferred
+  /// computation. Returns false if the volume has no voxel data.
+  virtual bool GetImageExtent(int extent[6]);
 
   ///
   /// Make sure image data of a volume node has extents that start at zero.
@@ -273,7 +285,16 @@ protected:
 
   /// Set the image data pipeline to all the display nodes.
   void SetImageDataToDisplayNodes();
-  void SetImageDataToDisplayNode(vtkMRMLVolumeDisplayNode* displayNode);
+  /// Virtual so that subclasses can provide a different pipeline input to
+  /// their display nodes (e.g. stored voxel values when voxel value scaling
+  /// is active).
+  virtual void SetImageDataToDisplayNode(vtkMRMLVolumeDisplayNode* displayNode);
+
+  /// Copy the image data of the source volume node in CopyContent.
+  /// Virtual so that subclasses can copy their internal representation
+  /// (e.g. stored image + voxel value scaling) without materializing
+  /// derived image data on the source.
+  virtual void CopyImageData(vtkMRMLVolumeNode* sourceNode, bool deepCopy);
 
   /// Called when a display node is added/removed/modified. Propagate the polydata
   /// to the new display node.

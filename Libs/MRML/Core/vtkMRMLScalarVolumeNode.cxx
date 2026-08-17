@@ -17,6 +17,8 @@ Version:   $Revision: 1.14 $
 #include "vtkMRMLScalarVolumeDisplayNode.h"
 #include "vtkMRMLScalarVolumeNode.h"
 #include "vtkMRMLScene.h"
+#include "vtkMRMLSelectionNode.h"
+#include "vtkMRMLUnitNode.h"
 #include "vtkMRMLVolumeArchetypeStorageNode.h"
 #include "vtkMRMLVolumeSequenceStorageNode.h"
 #include "vtkMRMLVoxelDataProvider.h"
@@ -26,13 +28,18 @@ Version:   $Revision: 1.14 $
 #include <vtkCommand.h>
 #include <vtkDataArray.h>
 #include <vtkImageShiftScale.h>
+#include <vtkMatrix4x4.h>
 #include <vtkObjectFactory.h>
 #include <vtkImageData.h>
 #include <vtkNew.h>
 #include <vtkPointData.h>
+#include <vtkTrivialProducer.h>
 
 // STD includes
+#include <algorithm>
+#include <cctype>
 #include <sstream>
+#include <vector>
 
 //----------------------------------------------------------------------------
 vtkMRMLNodeNewMacro(vtkMRMLScalarVolumeNode);
@@ -144,8 +151,8 @@ void vtkMRMLScalarVolumeNode::ReadXMLAttributes(const char** atts)
 void vtkMRMLScalarVolumeNode::CopyContent(vtkMRMLNode* anode, bool deepCopy /*=true*/)
 {
   MRMLNodeModifyBlocker blocker(this);
-  // Superclass copies the (physical) image data. Our SetAndObserveImageData
-  // override deactivates any provider on this node when the image changes.
+  // The image data (stored or physical) is copied by the CopyImageData
+  // override, which the superclass calls.
   Superclass::CopyContent(anode, deepCopy);
 
   vtkMRMLScalarVolumeNode* node = vtkMRMLScalarVolumeNode::SafeDownCast(anode);
@@ -153,16 +160,23 @@ void vtkMRMLScalarVolumeNode::CopyContent(vtkMRMLNode* anode, bool deepCopy /*=t
   {
     return;
   }
-
   this->CopyVoxelValueMetadata(node);
+}
 
-  // Copy voxel value scaling state (stored image + mapping)
-  vtkMRMLVoxelDataProvider* sourceProvider = node->GetVoxelDataProvider();
+//----------------------------------------------------------------------------
+void vtkMRMLScalarVolumeNode::CopyImageData(vtkMRMLVolumeNode* sourceNode, bool deepCopy)
+{
+  vtkMRMLScalarVolumeNode* scalarSource = vtkMRMLScalarVolumeNode::SafeDownCast(sourceNode);
+  vtkMRMLVoxelDataProvider* sourceProvider = scalarSource ? scalarSource->GetVoxelDataProvider() : nullptr;
   if (!sourceProvider)
   {
     this->SetVoxelDataProvider(nullptr);
+    Superclass::CopyImageData(sourceNode, deepCopy);
     return;
   }
+  // Copy the packed representation without generating the physical image on
+  // the source (important e.g. when volumes are copied while browsing a
+  // sequence).
   vtkImageData* sourceStored = sourceProvider->GetStoredImageDataIfInMemory();
   if (sourceStored)
   {
@@ -222,14 +236,31 @@ void vtkMRMLScalarVolumeNode::SetVoxelDataProvider(vtkMRMLVoxelDataProvider* pro
     this->VoxelDataProvider->RemoveObserver(this->VoxelDataProviderObserver);
   }
   this->VoxelDataProvider = provider;
+  this->PhysicalImageDataUpToDate = false;
   if (this->VoxelDataProvider)
   {
     this->VoxelDataProvider->AddObserver(vtkCommand::ModifiedEvent, this->VoxelDataProviderObserver);
-    this->UpdatePhysicalImageDataFromProvider();
+    // The provider becomes the authoritative representation: drop any
+    // previously held (physical) image. It is regenerated lazily, only when
+    // scaling-unaware code requests it via GetImageData()/
+    // GetImageDataConnection(). Scaling-aware consumers (display pipeline,
+    // Data Probe, storage) use the stored tier and never trigger generation.
+    this->RemovePhysicalImageDataObservers();
+    bool wasInternal = this->InternalPhysicalImageDataUpdate;
+    this->InternalPhysicalImageDataUpdate = true;
+    this->Superclass::SetAndObserveImageData(nullptr);
+    this->InternalPhysicalImageDataUpdate = wasInternal;
+    this->UpdateStoredImageDataConnection();
+    // Route display nodes to the stored tier (with the new value mapping)
+    this->SetImageDataToDisplayNodes();
+    this->InvokeCustomModifiedEvent(vtkMRMLVolumeNode::ImageDataModifiedEvent);
   }
   else
   {
     this->RemovePhysicalImageDataObservers();
+    this->StoredImageDataProducer = nullptr;
+    // Route display nodes back to the (physical) image data
+    this->SetImageDataToDisplayNodes();
   }
   this->Modified();
 }
@@ -279,6 +310,258 @@ vtkImageData* vtkMRMLScalarVolumeNode::GetStoredImageData()
 }
 
 //----------------------------------------------------------------------------
+vtkAlgorithmOutput* vtkMRMLScalarVolumeNode::GetStoredImageDataConnection()
+{
+  if (!this->VoxelDataProvider)
+  {
+    return this->GetImageDataConnection();
+  }
+  if (!this->StoredImageDataProducer)
+  {
+    this->UpdateStoredImageDataConnection();
+  }
+  return this->StoredImageDataProducer ? this->StoredImageDataProducer->GetOutputPort() : nullptr;
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLScalarVolumeNode::UpdateStoredImageDataConnection()
+{
+  if (!this->VoxelDataProvider)
+  {
+    this->StoredImageDataProducer = nullptr;
+    return;
+  }
+  vtkSmartPointer<vtkImageData> storedImage = this->VoxelDataProvider->GetStoredImageDataIfInMemory();
+  if (!storedImage)
+  {
+    // Non-in-memory backend: materialize the full-resolution stored image.
+    // (Region/level-based streaming for out-of-core backends is future work.)
+    int extent[6] = { 0, -1, 0, -1, 0, -1 };
+    if (!this->VoxelDataProvider->GetExtent(extent))
+    {
+      this->StoredImageDataProducer = nullptr;
+      return;
+    }
+    storedImage = vtkSmartPointer<vtkImageData>::New();
+    if (!this->VoxelDataProvider->GetRegion(storedImage, extent))
+    {
+      this->StoredImageDataProducer = nullptr;
+      return;
+    }
+  }
+  if (!this->StoredImageDataProducer)
+  {
+    this->StoredImageDataProducer = vtkSmartPointer<vtkTrivialProducer>::New();
+  }
+  if (this->StoredImageDataProducer->GetOutputDataObject(0) != storedImage)
+  {
+    this->StoredImageDataProducer->SetOutput(storedImage);
+  }
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLScalarVolumeNode::IsPhysicalImageDataMaterialized()
+{
+  if (!this->VoxelDataProvider)
+  {
+    return this->Superclass::GetImageData() != nullptr;
+  }
+  return (this->PhysicalImageDataUpToDate && this->Superclass::GetImageData() != nullptr);
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLScalarVolumeNode::EnsurePhysicalImageData()
+{
+  if (!this->VoxelDataProvider)
+  {
+    return;
+  }
+  if (this->PhysicalImageDataUpToDate && this->Superclass::GetImageData() != nullptr)
+  {
+    return;
+  }
+  this->UpdatePhysicalImageDataFromProvider();
+}
+
+//----------------------------------------------------------------------------
+vtkImageData* vtkMRMLScalarVolumeNode::GetImageData()
+{
+  if (this->VoxelDataProvider && !this->InternalPhysicalImageDataUpdate)
+  {
+    this->EnsurePhysicalImageData();
+  }
+  return this->Superclass::GetImageData();
+}
+
+//----------------------------------------------------------------------------
+vtkAlgorithmOutput* vtkMRMLScalarVolumeNode::GetImageDataConnection()
+{
+  if (this->VoxelDataProvider && !this->InternalPhysicalImageDataUpdate)
+  {
+    this->EnsurePhysicalImageData();
+  }
+  return this->Superclass::GetImageDataConnection();
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLScalarVolumeNode::HasImageData()
+{
+  if (this->VoxelDataProvider)
+  {
+    int extent[6] = { 0, -1, 0, -1, 0, -1 };
+    return this->VoxelDataProvider->GetExtent(extent);
+  }
+  return this->Superclass::HasImageData();
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLScalarVolumeNode::GetImageExtent(int extent[6])
+{
+  if (this->VoxelDataProvider)
+  {
+    return this->VoxelDataProvider->GetExtent(extent);
+  }
+  return this->Superclass::GetImageExtent(extent);
+}
+
+//----------------------------------------------------------------------------
+double vtkMRMLScalarVolumeNode::GetImageBackgroundScalarComponentAsDouble(int component)
+{
+  if (!this->VoxelDataProvider)
+  {
+    return this->Superclass::GetImageBackgroundScalarComponentAsDouble(component);
+  }
+  if (component >= this->VoxelDataProvider->GetNumberOfScalarComponents())
+  {
+    return 0.0;
+  }
+  int extent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!this->VoxelDataProvider->GetExtent(extent) || extent[0] > extent[1] || extent[2] > extent[3] || extent[4] > extent[5])
+  {
+    return 0.0;
+  }
+  std::vector<double> scalarValues;
+  for (int i = 0; i < 2; ++i)
+  {
+    for (int j = 0; j < 2; ++j)
+    {
+      for (int k = 0; k < 2; ++k)
+      {
+        scalarValues.push_back(this->VoxelDataProvider->GetVoxelValue(extent[i], extent[2 + j], extent[4 + k], component));
+      }
+    }
+  }
+  const int medianElementIndex = 3;
+  std::nth_element(scalarValues.begin(), scalarValues.begin() + medianElementIndex, scalarValues.end());
+  // Return the physical value (this method is part of the generic API)
+  return this->VoxelDataProvider->GetPhysicalValueFromStoredValue(scalarValues[medianElementIndex]);
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLScalarVolumeNode::GetModifiedSinceRead()
+{
+  if (this->VoxelDataProvider)
+  {
+    vtkImageData* storedImage = this->VoxelDataProvider->GetStoredImageDataIfInMemory();
+    return this->vtkMRMLStorableNode::GetModifiedSinceRead() || //
+           (storedImage && storedImage->GetMTime() > this->GetStoredTime());
+  }
+  return this->Superclass::GetModifiedSinceRead();
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLScalarVolumeNode::UpdateScene(vtkMRMLScene* scene)
+{
+  if (this->VoxelDataProvider)
+  {
+    // Skip the superclass image data poke (SetAndObserveImageData(
+    // GetImageData())), which would generate the physical image; refresh the
+    // display node connections instead.
+    this->vtkMRMLDisplayableNode::UpdateScene(scene);
+    this->SetImageDataToDisplayNodes();
+    return;
+  }
+  this->Superclass::UpdateScene(scene);
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLScalarVolumeNode::SetImageDataToDisplayNode(vtkMRMLVolumeDisplayNode* displayNode)
+{
+  vtkMRMLScalarVolumeDisplayNode* scalarDisplayNode = vtkMRMLScalarVolumeDisplayNode::SafeDownCast(displayNode);
+  if (scalarDisplayNode)
+  {
+    if (this->VoxelDataProvider)
+    {
+      // Stored-tier display: the display pipeline consumes stored values and
+      // keeps window/level/threshold in stored units; presentation layers
+      // convert using the value mapping. Rendering output is pixel-identical
+      // because the value mapping and window/level are both affine.
+      scalarDisplayNode->SetVoxelValueScale(this->VoxelDataProvider->GetVoxelValueScale());
+      scalarDisplayNode->SetVoxelValueOffset(this->VoxelDataProvider->GetVoxelValueOffset());
+      scalarDisplayNode->SetInputImageDataConnection(this->GetStoredImageDataConnection());
+      return;
+    }
+    scalarDisplayNode->SetVoxelValueScale(1.0);
+    scalarDisplayNode->SetVoxelValueOffset(0.0);
+  }
+  this->Superclass::SetImageDataToDisplayNode(displayNode);
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLScalarVolumeNode::ApplyNonLinearTransform(vtkAbstractTransform* transform)
+{
+  if (!this->VoxelDataProvider)
+  {
+    Superclass::ApplyNonLinearTransform(transform);
+    return;
+  }
+  if (!this->CanApplyNonLinearTransforms())
+  {
+    return;
+  }
+  double scale = this->VoxelDataProvider->GetVoxelValueScale();
+  double offset = this->VoxelDataProvider->GetVoxelValueOffset();
+
+  vtkNew<vtkImageData> transformedImage;
+  vtkNew<vtkMatrix4x4> transformedIJKToRAS;
+  // GetTransformedImageData resamples the stored image for volumes with
+  // active voxel value scaling.
+  if (!vtkMRMLVolumeNode::GetTransformedImageData(this, transform, transformedImage, transformedIJKToRAS))
+  {
+    vtkErrorMacro("ApplyNonLinearTransform: failed to get transformed image data");
+    return;
+  }
+
+  int wasModified = this->StartModify();
+  // Hardening preserves the packed representation: the resampled image holds
+  // stored values with an unchanged value mapping.
+  this->SetStoredImageData(transformedImage, scale, offset);
+  this->SetIJKToRASMatrix(transformedIJKToRAS);
+  this->EndModify(wasModified);
+}
+
+//----------------------------------------------------------------------------
+vtkMRMLUnitNode* vtkMRMLScalarVolumeNode::GetVoxelValueUnitNode()
+{
+  if (!this->GetScene() || !this->GetVoxelValueQuantity() //
+      || !this->GetVoxelValueQuantity()->GetCodeMeaning() //
+      || strlen(this->GetVoxelValueQuantity()->GetCodeMeaning()) == 0)
+  {
+    return nullptr;
+  }
+  vtkMRMLSelectionNode* selectionNode = vtkMRMLSelectionNode::SafeDownCast(this->GetScene()->GetNodeByID("vtkMRMLSelectionNodeSingleton"));
+  if (!selectionNode)
+  {
+    return nullptr;
+  }
+  // Unit quantities are registered with lowercase names (e.g. "velocity"),
+  // coded entries use title case meanings (e.g. "Velocity").
+  std::string quantity = this->GetVoxelValueQuantity()->GetCodeMeaning();
+  std::transform(quantity.begin(), quantity.end(), quantity.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return selectionNode->GetUnitNode(quantity.c_str());
+}
+
+//----------------------------------------------------------------------------
 bool vtkMRMLScalarVolumeNode::IsVoxelValueScalingActive()
 {
   return (this->VoxelDataProvider && this->VoxelDataProvider->IsVoxelValueScalingActive());
@@ -311,9 +594,19 @@ double vtkMRMLScalarVolumeNode::GetStoredValueFromPhysicalValue(double physicalV
 //----------------------------------------------------------------------------
 std::string vtkMRMLScalarVolumeNode::GetPhysicalValueAsString(double physicalValue, int precision /*=-1*/)
 {
+  // Bridge to the application units: the unit node matching the voxel value
+  // quantity provides the display precision (and a fallback suffix).
+  // Its DisplayCoefficient is not applied: physical voxel values are already
+  // expressed in VoxelValueUnits.
+  vtkMRMLUnitNode* unitNode = this->GetVoxelValueUnitNode();
+  if (precision < 0)
+  {
+    precision = unitNode ? unitNode->GetPrecision() : 6;
+  }
   std::ostringstream value;
-  value.precision(precision < 0 ? 6 : precision);
+  value.precision(precision);
   value << physicalValue;
+  const char* suffix = nullptr;
   if (this->GetVoxelValueUnits() && this->GetVoxelValueUnits()->GetCodeValue() //
       && strlen(this->GetVoxelValueUnits()->GetCodeValue()) > 0)
   {
@@ -321,8 +614,16 @@ std::string vtkMRMLScalarVolumeNode::GetPhysicalValueAsString(double physicalVal
     // "1" is the UCUM code for dimensionless ("no units").
     if (strcmp(this->GetVoxelValueUnits()->GetCodeValue(), "1") != 0)
     {
-      value << " " << this->GetVoxelValueUnits()->GetCodeValue();
+      suffix = this->GetVoxelValueUnits()->GetCodeValue();
     }
+  }
+  else if (unitNode && unitNode->GetSuffix() && strlen(unitNode->GetSuffix()) > 0)
+  {
+    suffix = unitNode->GetSuffix();
+  }
+  if (suffix)
+  {
+    value << " " << suffix;
   }
   return value.str();
 }
@@ -370,9 +671,11 @@ std::string vtkMRMLScalarVolumeNode::GetVoxelValueAsString(int i, int j, int k, 
 //----------------------------------------------------------------------------
 void vtkMRMLScalarVolumeNode::SetAndObserveImageData(vtkImageData* imageData)
 {
+  // Compare against the superclass image (without triggering lazy physical
+  // image generation).
   if (!this->InternalPhysicalImageDataUpdate //
       && this->VoxelDataProvider             //
-      && imageData != this->GetImageData())
+      && imageData != this->Superclass::GetImageData())
   {
     // Generic (scaling-unaware) code replaces the image data: the new image
     // contains plain physical values, therefore voxel value scaling becomes
@@ -461,6 +764,8 @@ void vtkMRMLScalarVolumeNode::UpdatePhysicalImageDataFromProvider()
       this->ObservedPhysicalImageScalars = scalars;
     }
   }
+
+  this->PhysicalImageDataUpToDate = true;
 }
 
 //----------------------------------------------------------------------------
@@ -486,9 +791,22 @@ void vtkMRMLScalarVolumeNode::OnVoxelDataProviderModified(vtkObject* vtkNotUsed(
   {
     return;
   }
-  // Stored voxel data (or the value mapping) changed: regenerate the
-  // physical image.
-  self->UpdatePhysicalImageDataFromProvider();
+  // Stored voxel data (or the value mapping) changed.
+  bool physicalWasMaterialized = self->IsPhysicalImageDataMaterialized();
+  self->PhysicalImageDataUpToDate = false;
+  // The stored image instance may have been replaced: refresh the stored
+  // connection (in-place edits keep the same image and need no refresh).
+  self->UpdateStoredImageDataConnection();
+  if (physicalWasMaterialized)
+  {
+    // Keep already-handed-out physical data consistent; if the physical
+    // image was never generated, stay lazy.
+    self->UpdatePhysicalImageDataFromProvider();
+  }
+  // Refresh display node inputs (the value mapping may have changed)
+  self->SetImageDataToDisplayNodes();
+  // Notify pipelines/views observing this node that the voxel data changed.
+  self->InvokeCustomModifiedEvent(vtkMRMLVolumeNode::ImageDataModifiedEvent);
 }
 
 //----------------------------------------------------------------------------

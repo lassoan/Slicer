@@ -240,6 +240,11 @@ void vtkMRMLScalarVolumeDisplayNode::WriteXML(ostream& of, int nIndent)
     ss << this->Interpolate;
     of << " interpolate=\"" << ss.str() << "\"";
   }
+  if (this->VoxelValueScale != 1.0 || this->VoxelValueOffset != 0.0)
+  {
+    of << " voxelValueScale=\"" << this->VoxelValueScale << "\"";
+    of << " voxelValueOffset=\"" << this->VoxelValueOffset << "\"";
+  }
   {
     std::stringstream ss;
     ss << this->InvertDisplayScalarRange;
@@ -328,6 +333,18 @@ void vtkMRMLScalarVolumeDisplayNode::ReadXMLAttributes(const char** atts)
       ss << attValue;
       ss >> this->Interpolate;
     }
+    else if (!strcmp(attName, "voxelValueScale"))
+    {
+      std::stringstream ss;
+      ss << attValue;
+      ss >> this->VoxelValueScale;
+    }
+    else if (!strcmp(attName, "voxelValueOffset"))
+    {
+      std::stringstream ss;
+      ss << attValue;
+      ss >> this->VoxelValueOffset;
+    }
     else if (!strcmp(attName, "invertDisplayScalarRange"))
     {
       std::stringstream ss;
@@ -399,6 +416,8 @@ void vtkMRMLScalarVolumeDisplayNode::CopyContent(vtkMRMLNode* anode, bool deepCo
     this->SetInvertDisplayScalarRange(node->GetInvertDisplayScalarRange());
     this->SetWindowMappingMethod(node->GetWindowMappingMethod());
     this->SetWindowLevelPresets(node->WindowLevelPresets);
+    this->SetVoxelValueScale(node->GetVoxelValueScale());
+    this->SetVoxelValueOffset(node->GetVoxelValueOffset());
   }
 
   Superclass::CopyContent(anode, deepCopy);

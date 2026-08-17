@@ -16,7 +16,9 @@
 #include "vtkCodedEntry.h"
 #include "vtkMRMLCoreTestingMacros.h"
 #include "vtkMRMLInMemoryVoxelDataProvider.h"
+#include "vtkMRMLScalarVolumeDisplayNode.h"
 #include "vtkMRMLScalarVolumeNode.h"
+#include "vtkMRMLScene.h"
 
 // VTK includes
 #include <vtkImageData.h>
@@ -62,8 +64,23 @@ int vtkMRMLScalarVolumeNodeTest3(int, char*[])
   CHECK_DOUBLE(node->GetVoxelValueScale(), 0.01);
   CHECK_POINTER(node->GetStoredImageData(), stored.GetPointer());
 
-  // GetImageData() returns the physical (float32) image
+  // The physical image is lazy: presence/extent queries and the stored
+  // connection do not generate it
+  CHECK_BOOL(node->IsPhysicalImageDataMaterialized(), false);
+  CHECK_BOOL(node->HasImageData(), true);
+  int lazyExtent[6] = { 0, -1, 0, -1, 0, -1 };
+  CHECK_BOOL(node->GetImageExtent(lazyExtent), true);
+  CHECK_INT(lazyExtent[1], 3);
+  CHECK_NOT_NULL(node->GetStoredImageDataConnection());
+  CHECK_BOOL(node->IsPhysicalImageDataMaterialized(), false);
+  // Physical corner value (median of stored corners, converted) is available
+  // without generating the physical image
+  CHECK_DOUBLE_TOLERANCE(node->GetImageBackgroundScalarComponentAsDouble(0), 2.5, 1e-6);
+  CHECK_BOOL(node->IsPhysicalImageDataMaterialized(), false);
+
+  // GetImageData() generates the physical (float32) image on demand
   vtkImageData* physical = node->GetImageData();
+  CHECK_BOOL(node->IsPhysicalImageDataMaterialized(), true);
   CHECK_NOT_NULL(physical);
   CHECK_POINTER_DIFFERENT(physical, stored.GetPointer());
   CHECK_INT(physical->GetScalarType(), VTK_FLOAT);
@@ -155,6 +172,9 @@ int vtkMRMLScalarVolumeNodeTest3(int, char*[])
 
   vtkNew<vtkMRMLScalarVolumeNode> copied;
   copied->CopyContent(source.GetPointer(), /*deepCopy=*/true);
+  // Copy does not generate the physical image on the source or the target
+  CHECK_BOOL(source->IsPhysicalImageDataMaterialized(), false);
+  CHECK_BOOL(copied->IsPhysicalImageDataMaterialized(), false);
   CHECK_BOOL(copied->IsVoxelValueScalingActive(), true);
   CHECK_DOUBLE(copied->GetVoxelValueScale(), 0.01);
   CHECK_DOUBLE(copied->GetVoxelValueOffset(), -1.0);
@@ -172,6 +192,29 @@ int vtkMRMLScalarVolumeNodeTest3(int, char*[])
   copied->CopyContent(plainSource.GetPointer(), /*deepCopy=*/true);
   CHECK_BOOL(copied->IsVoxelValueScalingActive(), false);
   CHECK_NULL(copied->GetVoxelDataProvider());
+
+  // Display node receives the stored connection and the value mapping
+  {
+    vtkNew<vtkMRMLScene> scene;
+    vtkMRMLScalarVolumeNode* displayedNode = vtkMRMLScalarVolumeNode::SafeDownCast(scene->AddNewNodeByClass("vtkMRMLScalarVolumeNode"));
+    CHECK_NOT_NULL(displayedNode);
+    vtkSmartPointer<vtkImageData> displayedStored = CreateStoredImage(400);
+    displayedNode->SetStoredImageData(displayedStored, 0.01, 0.0);
+    displayedNode->CreateDefaultDisplayNodes();
+    vtkMRMLScalarVolumeDisplayNode* displayNode = vtkMRMLScalarVolumeDisplayNode::SafeDownCast(displayedNode->GetDisplayNode());
+    CHECK_NOT_NULL(displayNode);
+    CHECK_DOUBLE(displayNode->GetVoxelValueScale(), 0.01);
+    CHECK_DOUBLE(displayNode->GetVoxelValueOffset(), 0.0);
+    // Display pipeline input is the stored image; the physical image is not
+    // generated for display
+    CHECK_POINTER(displayNode->GetInputImageData(), displayedStored.GetPointer());
+    CHECK_BOOL(displayedNode->IsPhysicalImageDataMaterialized(), false);
+    // Display scalar range is the stored range
+    double displayRange[2] = { 0.0, 0.0 };
+    displayNode->GetDisplayScalarRange(displayRange);
+    CHECK_DOUBLE(displayRange[0], 400.0);
+    CHECK_DOUBLE(displayRange[1], 400.0);
+  }
 
   return EXIT_SUCCESS;
 }

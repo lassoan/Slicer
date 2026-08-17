@@ -18,8 +18,10 @@
 // MRML includes
 #include "vtkMRMLVolumeNode.h"
 class vtkMRMLScalarVolumeDisplayNode;
+class vtkMRMLUnitNode;
 class vtkMRMLVoxelDataProvider;
 class vtkCodedEntry;
+class vtkTrivialProducer;
 
 // VTK includes
 #include <vtkSmartPointer.h>
@@ -121,10 +123,18 @@ public:
   /// - Replacing the image via SetAndObserveImageData() deactivates scaling
   ///   (the new image is taken as plain physical values, as before).
   ///
-  /// Note: when the volume is written to file by a storage node, physical
-  /// values are written (the materialized image), therefore re-loaded scenes
-  /// are numerically correct with scaling simply inactive. Persisting stored
-  /// values + scaling in image files is not yet implemented.
+  /// The physical image is generated lazily (only when GetImageData()/
+  /// GetImageDataConnection() is called): slice display, volume rendering,
+  /// Data Probe, and file saving consume the stored image directly (with
+  /// window/level/threshold kept in stored units), therefore ordinary
+  /// viewing and saving never allocates the physical (float) image.
+  ///
+  /// When the volume is written to a NRRD file by the archetype storage
+  /// node, the stored image is written along with scaling metadata in the
+  /// file header (key/value pairs), and scaling is restored on load. When
+  /// writing to file formats that cannot store this metadata, physical
+  /// values are written instead, so that the file reloads with correct
+  /// values (with scaling inactive).
 
   /// Set the voxel data provider that supplies stored voxel values and the
   /// stored-to-physical mapping. Setting a provider (re)generates the
@@ -143,6 +153,46 @@ public:
   /// same as GetImageData(). If the provider is not an in-memory provider,
   /// nullptr may be returned (use the provider's GetRegion() instead).
   vtkImageData* GetStoredImageData();
+
+  /// Get a pipeline connection providing the stored image data.
+  /// This is what scaling-aware pipeline consumers (display pipeline, slice
+  /// reslice, volume rendering) connect to, so that viewing a volume never
+  /// requires generating the physical image. Returns the physical connection
+  /// when voxel value scaling is inactive.
+  vtkAlgorithmOutput* GetStoredImageDataConnection();
+
+  /// Returns true if the physical (float) image has been generated.
+  /// The physical image is generated lazily: only when scaling-unaware code
+  /// requests it via GetImageData()/GetImageDataConnection().
+  bool IsPhysicalImageDataMaterialized();
+
+  /// Get the unit node of the scene that matches the voxel value quantity
+  /// (looked up in the selection node by the quantity code meaning,
+  /// e.g. "Velocity" -> "velocity"). Used for formatting (precision, and
+  /// suffix if VoxelValueUnits is not set). Note that the unit node's
+  /// DisplayCoefficient is NOT applied to voxel values: physical voxel
+  /// values are already expressed in VoxelValueUnits.
+  vtkMRMLUnitNode* GetVoxelValueUnitNode();
+
+  //@{
+  /// Reimplemented for lazy physical image generation and stored-tier
+  /// display: geometry and presence queries are answered from the voxel data
+  /// provider without generating the physical image; GetImageData() and
+  /// GetImageDataConnection() generate it on demand.
+  vtkImageData* GetImageData() override;
+  vtkAlgorithmOutput* GetImageDataConnection() override;
+  bool HasImageData() override;
+  bool GetImageExtent(int extent[6]) override;
+  double GetImageBackgroundScalarComponentAsDouble(int component) override;
+  bool GetModifiedSinceRead() override;
+  void UpdateScene(vtkMRMLScene* scene) override;
+
+  /// Reimplemented so that hardening a non-linear transform on a volume with
+  /// active voxel value scaling resamples the stored image and preserves the
+  /// packed representation (the linear value mapping commutes with
+  /// resampling).
+  void ApplyNonLinearTransform(vtkAbstractTransform* transform) override;
+  //@}
 
   /// Returns true if a voxel data provider with a non-identity value mapping
   /// is active on this node.
@@ -188,9 +238,24 @@ protected:
   vtkMRMLScalarVolumeNode(const vtkMRMLScalarVolumeNode&);
   void operator=(const vtkMRMLScalarVolumeNode&);
 
+  /// Reimplemented so that scalar display nodes receive the stored image
+  /// connection and the value mapping (scale/offset) when voxel value
+  /// scaling is active.
+  void SetImageDataToDisplayNode(vtkMRMLVolumeDisplayNode* displayNode) override;
+
+  /// Reimplemented so that copying a packed volume copies the stored image
+  /// and value mapping without generating the physical image on the source.
+  void CopyImageData(vtkMRMLVolumeNode* sourceNode, bool deepCopy) override;
+
+  /// Generate the physical image if it is not up to date.
+  void EnsurePhysicalImageData();
+
   /// Regenerate the physical image data of this node from the voxel data
   /// provider (full resolution).
   void UpdatePhysicalImageDataFromProvider();
+
+  /// Create/update the trivial producer that serves the stored image.
+  void UpdateStoredImageDataConnection();
 
   /// Deactivate voxel value scaling, keeping the current (physical) image.
   void PromotePhysicalImageDataToPrimary();
@@ -209,6 +274,11 @@ protected:
   vtkSmartPointer<vtkMRMLVoxelDataProvider> VoxelDataProvider;
   vtkSmartPointer<vtkCallbackCommand> VoxelDataProviderObserver;
   vtkSmartPointer<vtkCallbackCommand> PhysicalImageDataObserver;
+  /// Serves the stored image to scaling-aware pipeline consumers.
+  vtkSmartPointer<vtkTrivialProducer> StoredImageDataProducer;
+  /// True if the physical image has been generated from the current stored
+  /// data. Only meaningful while a provider is set.
+  bool PhysicalImageDataUpToDate{ false };
   /// Image that PhysicalImageDataObserver is currently added to.
   vtkWeakPointer<vtkImageData> ObservedPhysicalImageData;
   /// Scalar array of the physical image that PhysicalImageDataObserver is

@@ -15,6 +15,7 @@ Version:   $Revision: 1.14 $
 // MRML includes
 #include "vtkMRMLLinearTransformNode.h"
 #include "vtkMRMLScalarVolumeDisplayNode.h"
+#include "vtkMRMLScalarVolumeNode.h"
 #include "vtkMRMLScene.h"
 #include "vtkMRMLSubjectHierarchyNode.h"
 #include "vtkMRMLVolumeNode.h"
@@ -166,6 +167,16 @@ void vtkMRMLVolumeNode::CopyContent(vtkMRMLNode* anode, bool deepCopy /*=true*/)
   {
     return;
   }
+  this->CopyImageData(node, deepCopy);
+
+  // targetScalarVolumeNode->SetAndObserveTransformNodeID is not called, as we want to keep the currently applied transform
+  this->CopyOrientation(node);
+  this->SetVoxelVectorType(node->GetVoxelVectorType());
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLVolumeNode::CopyImageData(vtkMRMLVolumeNode* node, bool deepCopy)
+{
   if (deepCopy)
   {
     vtkSmartPointer<vtkImageData> targetImageData = node->GetImageData();
@@ -181,10 +192,6 @@ void vtkMRMLVolumeNode::CopyContent(vtkMRMLNode* anode, bool deepCopy /*=true*/)
     // shallow-copy
     this->SetAndObserveImageData(node->GetImageData()); // invokes vtkMRMLVolumeNode::ImageDataModifiedEvent, which is not masked by StartModify
   }
-
-  // targetScalarVolumeNode->SetAndObserveTransformNodeID is not called, as we want to keep the currently applied transform
-  this->CopyOrientation(node);
-  this->SetVoxelVectorType(node->GetVoxelVectorType());
 }
 
 //----------------------------------------------------------------------------
@@ -742,6 +749,30 @@ vtkImageData* vtkMRMLVolumeNode::GetImageData()
 }
 
 //---------------------------------------------------------------------------
+vtkAlgorithmOutput* vtkMRMLVolumeNode::GetImageDataConnection()
+{
+  return this->ImageDataConnection;
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLVolumeNode::HasImageData()
+{
+  return this->GetImageData() != nullptr;
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLVolumeNode::GetImageExtent(int extent[6])
+{
+  vtkImageData* imageData = this->GetImageData();
+  if (!imageData)
+  {
+    return false;
+  }
+  imageData->GetExtent(extent);
+  return true;
+}
+
+//---------------------------------------------------------------------------
 void vtkMRMLVolumeNode::SetImageDataConnection(vtkAlgorithmOutput* newImageDataConnection)
 {
   if (newImageDataConnection == this->ImageDataConnection)
@@ -814,7 +845,10 @@ void vtkMRMLVolumeNode::UpdateDisplayNodeImageData(vtkMRMLDisplayNode* dNode)
   vtkMRMLVolumeDisplayNode* vNode = vtkMRMLVolumeDisplayNode::SafeDownCast(dNode);
   if (vNode)
   {
-    vNode->SetInputImageDataConnection(this->ImageDataConnection);
+    // Use the virtual method so that subclasses can provide a different
+    // pipeline input (e.g. stored voxel values when voxel value scaling is
+    // active).
+    this->SetImageDataToDisplayNode(vNode);
   }
 }
 
@@ -905,8 +939,8 @@ void vtkMRMLVolumeNode::GetBounds(double bounds[6])
 void vtkMRMLVolumeNode::GetBoundsInternal(double bounds[6], vtkMatrix4x4* rasToSlice, bool useTransform, bool useVoxelCenter /*=false*/)
 {
   vtkMath::UninitializeBounds(bounds);
-  vtkImageData* volumeImage = this->GetImageData();
-  if (!volumeImage)
+  int imageExtent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!this->GetImageExtent(imageExtent))
   {
     return;
   }
@@ -942,8 +976,9 @@ void vtkMRMLVolumeNode::GetBoundsInternal(double bounds[6], vtkMatrix4x4* rasToS
     transform->Concatenate(rasToSlice);
   }
 
-  int dimensions[3] = { 0 };
-  volumeImage->GetDimensions(dimensions);
+  int dimensions[3] = { imageExtent[1] - imageExtent[0] + 1, //
+                        imageExtent[3] - imageExtent[2] + 1, //
+                        imageExtent[5] - imageExtent[4] + 1 };
   double doubleDimensions[4] = { 0, 0, 0, 1 };
   vtkBoundingBox boundingBox;
 
@@ -1020,7 +1055,7 @@ void vtkMRMLVolumeNode::ApplyTransform(vtkAbstractTransform* transform)
 //-----------------------------------------------------------
 void vtkMRMLVolumeNode::ApplyNonLinearTransform(vtkAbstractTransform* transform)
 {
-  if (this->GetImageData() == nullptr || !this->CanApplyNonLinearTransforms())
+  if (!this->HasImageData() || !this->CanApplyNonLinearTransforms())
   {
     return;
   }
@@ -1048,7 +1083,7 @@ bool vtkMRMLVolumeNode::GetTransformedImageData( //
   vtkImageData* outputImage,                     //
   vtkMatrix4x4* outputIJKToWorld)
 {
-  if (!volumeNode || volumeNode->GetImageData() == nullptr)
+  if (!volumeNode || !volumeNode->HasImageData())
   {
     vtkGenericWarningMacro("GetTransformedImageData: invalid input volume node");
     return false;
@@ -1065,7 +1100,7 @@ bool vtkMRMLVolumeNode::GetTransformedImageData( //
   }
 
   int extent[6];
-  volumeNode->GetImageData()->GetExtent(extent);
+  volumeNode->GetImageExtent(extent);
 
   vtkNew<vtkMatrix4x4> rasToIJK;
 
@@ -1098,7 +1133,19 @@ bool vtkMRMLVolumeNode::GetTransformedImageData( //
     reslice->SetResliceTransform(resampleXform.GetPointer());
   }
 
-  reslice->SetInputConnection(volumeNode->ImageDataConnection);
+  // For scalar volumes with active voxel value scaling this resamples the
+  // stored image (the linear stored-to-physical mapping commutes with
+  // resampling), so that vtkMRMLScalarVolumeNode::ApplyNonLinearTransform
+  // can preserve the packed representation.
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(volumeNode);
+  if (scalarVolumeNode && scalarVolumeNode->GetVoxelDataProvider())
+  {
+    reslice->SetInputConnection(scalarVolumeNode->GetStoredImageDataConnection());
+  }
+  else
+  {
+    reslice->SetInputConnection(volumeNode->GetImageDataConnection());
+  }
 
   // GetResamplingInterpolationMode does not use VTK_RESLICE... constants because it is an implementation
   // detail that currently vtkImageReslice is used for resampling.
@@ -1274,16 +1321,14 @@ bool vtkMRMLVolumeNode::IsCentered()
 //------------------------------------------------------------------------------
 void vtkMRMLVolumeNode::GetCenterPositionRAS(double* centerPositionRAS, bool useParentTransform /*=true*/)
 {
-  vtkImageData* imageData = this->GetImageData();
-  if (!imageData)
+  int extent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!this->GetImageExtent(extent))
   {
     centerPositionRAS[0] = 0.0;
     centerPositionRAS[1] = 0.0;
     centerPositionRAS[2] = 0.0;
     return;
   }
-
-  int* extent = imageData->GetExtent();
   double centerPositionIJK[4] = { double(extent[0] + extent[1]) / 2.0, //
                                   double(extent[2] + extent[3]) / 2.0, //
                                   double(extent[4] + extent[5]) / 2.0, //
