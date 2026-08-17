@@ -39,6 +39,7 @@
 #include <vtkWeakPointer.h>
 
 class QMenu;
+class ctkLinearValueProxy;
 class qMRMLSpinBox;
 
 // -----------------------------------------------------------------------------
@@ -64,6 +65,12 @@ public:
   /// Set the single step to the widgets such as sliders, spinboxes...
   void updateSingleStep(double min, double max);
 
+  /// Update the value proxies from the display node's voxel value scaling
+  /// (physical = VoxelValueScale * value + VoxelValueOffset), so that widgets
+  /// display physical values while window/level/threshold values are kept in
+  /// (stored) input units in the display node.
+  void updateValueProxy();
+
 public slots:
   virtual void setRange(double min, double max);
   virtual void setDecimals(int decimals);
@@ -77,6 +84,12 @@ protected:
   qMRMLSpinBox* MinRangeSpinBox;
   qMRMLSpinBox* MaxRangeSpinBox;
   double DisplayScalarRange[2];
+  /// Displays physical values (scale and offset applied) for value-type
+  /// widgets (level, thresholds, range boundaries).
+  ctkLinearValueProxy* ValueProxy;
+  /// Displays physical values for range-width-type widgets (window):
+  /// only the scale is applied (offsets cancel out in differences).
+  ctkLinearValueProxy* ScaleOnlyValueProxy;
 };
 
 #endif

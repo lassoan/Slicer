@@ -15,6 +15,9 @@
 
 ==============================================================================*/
 
+// CTK includes
+#include <ctkLinearValueProxy.h>
+
 // qMRML includes
 #include "qMRMLSpinBox.h"
 #include "qMRMLVolumeWidget_p.h"
@@ -78,6 +81,15 @@ void qMRMLWindowLevelWidgetPrivate::init()
 
   this->RangeButton->setMenu(this->OptionsMenu);
   this->RangeButton->setPopupMode(QToolButton::InstantPopup);
+
+  // Widgets display physical values (voxel value scaling applied) while
+  // values are kept in (stored) input units.
+  // Window is a range width, therefore only the scale applies to it.
+  this->WindowLevelRangeSlider->setValueProxy(this->ValueProxy);
+  this->LevelSpinBox->setValueProxy(this->ValueProxy);
+  this->MinSpinBox->setValueProxy(this->ValueProxy);
+  this->MaxSpinBox->setValueProxy(this->ValueProxy);
+  this->WindowSpinBox->setValueProxy(this->ScaleOnlyValueProxy);
 }
 
 // --------------------------------------------------------------------------

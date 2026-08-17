@@ -15,6 +15,9 @@
 
 ==============================================================================*/
 
+// CTK includes
+#include <ctkLinearValueProxy.h>
+
 // qMRML includes
 #include "qMRMLSpinBox.h"
 #include "qMRMLVolumeThresholdWidget.h"
@@ -68,6 +71,10 @@ void qMRMLVolumeThresholdWidgetPrivate::init()
 
   this->RangeButton->setMenu(this->OptionsMenu);
   this->RangeButton->setPopupMode(QToolButton::InstantPopup);
+
+  // Widget displays physical values (voxel value scaling applied) while
+  // threshold values are kept in (stored) input units.
+  this->VolumeThresholdRangeWidget->setValueProxy(this->ValueProxy);
 }
 
 // --------------------------------------------------------------------------

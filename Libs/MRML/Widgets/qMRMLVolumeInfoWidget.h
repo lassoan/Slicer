@@ -67,6 +67,12 @@ public slots:
   void setNumberOfScalars(int);
   void setScalarType(int);
   void setWindowLevelFromPreset(QListWidgetItem*);
+  /// Apply the voxel value scale/offset editors to the volume node
+  /// (physical = scale * stored + offset). Setting a non-identity mapping on
+  /// a regular volume declares its current voxel values as stored values.
+  void setVoxelValueScaling();
+  /// Apply the voxel value units editor to the volume node (UCUM code).
+  void setVoxelValueUnits();
 
 protected slots:
   void updateWidgetFromMRML();

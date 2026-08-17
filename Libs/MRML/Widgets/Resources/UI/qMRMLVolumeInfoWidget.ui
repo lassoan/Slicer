@@ -299,6 +299,69 @@
      </property>
     </widget>
    </item>
+   <item row="12" column="0">
+    <widget class="QLabel" name="VoxelValueScaleLabel">
+     <property name="text">
+      <string>Voxel value scale:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="12" column="1">
+    <widget class="QDoubleSpinBox" name="VoxelValueScaleSpinBox">
+     <property name="toolTip">
+      <string>Multiplier applied to stored voxel values to get physical values (physical = scale * stored + offset). Setting a non-identity value on a regular volume declares that its current voxel values are stored values.</string>
+     </property>
+     <property name="decimals">
+      <number>6</number>
+     </property>
+     <property name="minimum">
+      <double>-1000000000.000000000000000</double>
+     </property>
+     <property name="maximum">
+      <double>1000000000.000000000000000</double>
+     </property>
+     <property name="value">
+      <double>1.000000000000000</double>
+     </property>
+    </widget>
+   </item>
+   <item row="13" column="0">
+    <widget class="QLabel" name="VoxelValueOffsetLabel">
+     <property name="text">
+      <string>Voxel value offset:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="13" column="1">
+    <widget class="QDoubleSpinBox" name="VoxelValueOffsetSpinBox">
+     <property name="toolTip">
+      <string>Offset applied to stored voxel values to get physical values (physical = scale * stored + offset).</string>
+     </property>
+     <property name="decimals">
+      <number>6</number>
+     </property>
+     <property name="minimum">
+      <double>-1000000000.000000000000000</double>
+     </property>
+     <property name="maximum">
+      <double>1000000000.000000000000000</double>
+     </property>
+    </widget>
+   </item>
+   <item row="14" column="0">
+    <widget class="QLabel" name="VoxelValueUnitsLabel">
+     <property name="text">
+      <string>Voxel value units:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="14" column="1">
+    <widget class="QLineEdit" name="VoxelValueUnitsLineEdit">
+     <property name="toolTip">
+      <string>Measurement unit of the physical voxel values (e.g. cm/s). Displayed in the Data Probe after the voxel value.</string>
+     </property>
+    </widget>
+   </item>
   </layout>
  </widget>
  <customwidgets>

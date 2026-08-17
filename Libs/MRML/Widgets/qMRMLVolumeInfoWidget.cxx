@@ -29,11 +29,13 @@
 #include "ui_qMRMLVolumeInfoWidget.h"
 
 // MRML includes
+#include <vtkCodedEntry.h>
 #include <vtkMRMLLinearTransformNode.h>
 #include <vtkMRMLScene.h>
 #include <vtkMRMLScalarVolumeNode.h>
 #include <vtkMRMLScalarVolumeDisplayNode.h>
 #include <vtkMRMLStorageNode.h>
+#include <vtkMRMLVoxelDataProvider.h>
 
 // VTK includes
 #include <vtkDataArray.h>
@@ -100,6 +102,9 @@ void qMRMLVolumeInfoWidgetPrivate::init()
   QObject::connect(this->NumberOfScalarsSpinBox, SIGNAL(valueChanged(int)), q, SLOT(setNumberOfScalars(int)));
   QObject::connect(this->ScalarTypeComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(setScalarType(int)));
   QObject::connect(this->WindowLevelPresetsListWidget, SIGNAL(itemDoubleClicked(QListWidgetItem*)), q, SLOT(setWindowLevelFromPreset(QListWidgetItem*)));
+  QObject::connect(this->VoxelValueScaleSpinBox, SIGNAL(editingFinished()), q, SLOT(setVoxelValueScaling()));
+  QObject::connect(this->VoxelValueOffsetSpinBox, SIGNAL(editingFinished()), q, SLOT(setVoxelValueScaling()));
+  QObject::connect(this->VoxelValueUnitsLineEdit, SIGNAL(editingFinished()), q, SLOT(setVoxelValueUnits()));
 
   // Window level presets are read-only
   q->setDataTypeEditable(false);
@@ -201,9 +206,17 @@ void qMRMLVolumeInfoWidget::updateWidgetFromMRML()
     d->FileNameLineEdit->setText("");
 
     d->VolumeTagLabel->setText("");
+
+    d->VoxelValueScaleSpinBox->setValue(1.0);
+    d->VoxelValueOffsetSpinBox->setValue(0.0);
+    d->VoxelValueUnitsLineEdit->setText("");
     return;
   }
-  vtkImageData* image = d->VolumeNode->GetImageData();
+  // For volumes with active voxel value scaling display the stored image
+  // properties (type, range) without generating the physical image.
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(d->VolumeNode);
+  vtkImageData* image = (scalarVolumeNode && scalarVolumeNode->GetVoxelDataProvider()) ? scalarVolumeNode->GetStoredImageData() //
+                                                                                       : d->VolumeNode->GetImageData();
   double dimensions[3] = { 0., 0., 0. };
   int* dims = image ? image->GetDimensions() : nullptr;
   if (dims)
@@ -275,6 +288,89 @@ void qMRMLVolumeInfoWidget::updateWidgetFromMRML()
     qWarning() << __FUNCTION__ << "Invalid volume node tag '" << volumeType << "'!";
   }
   d->VolumeTagLabel->setText(volumeType);
+
+  // Voxel value scaling and units
+  bool scalingEditable = (scalarVolumeNode != nullptr);
+  d->VoxelValueScaleSpinBox->setEnabled(scalingEditable);
+  d->VoxelValueOffsetSpinBox->setEnabled(scalingEditable);
+  d->VoxelValueUnitsLineEdit->setEnabled(scalingEditable);
+  bool wasBlockingScale = d->VoxelValueScaleSpinBox->blockSignals(true);
+  d->VoxelValueScaleSpinBox->setValue(scalarVolumeNode ? scalarVolumeNode->GetVoxelValueScale() : 1.0);
+  d->VoxelValueScaleSpinBox->blockSignals(wasBlockingScale);
+  bool wasBlockingOffset = d->VoxelValueOffsetSpinBox->blockSignals(true);
+  d->VoxelValueOffsetSpinBox->setValue(scalarVolumeNode ? scalarVolumeNode->GetVoxelValueOffset() : 0.0);
+  d->VoxelValueOffsetSpinBox->blockSignals(wasBlockingOffset);
+  QString unitsText;
+  if (scalarVolumeNode && scalarVolumeNode->GetVoxelValueUnits() && scalarVolumeNode->GetVoxelValueUnits()->GetCodeValue())
+  {
+    unitsText = QString::fromStdString(scalarVolumeNode->GetVoxelValueUnits()->GetCodeValue());
+  }
+  d->VoxelValueUnitsLineEdit->setText(unitsText);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVolumeInfoWidget::setVoxelValueScaling()
+{
+  Q_D(qMRMLVolumeInfoWidget);
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(d->VolumeNode);
+  if (!scalarVolumeNode)
+  {
+    return;
+  }
+  double scale = d->VoxelValueScaleSpinBox->value();
+  double offset = d->VoxelValueOffsetSpinBox->value();
+  if (scale == 0.0)
+  {
+    // invalid, restore current values
+    this->updateWidgetFromMRML();
+    return;
+  }
+  if (scale == scalarVolumeNode->GetVoxelValueScale() && offset == scalarVolumeNode->GetVoxelValueOffset())
+  {
+    return;
+  }
+  if (scalarVolumeNode->GetVoxelDataProvider())
+  {
+    // Update the mapping of the existing provider (the physical image and
+    // display pipelines are updated automatically)
+    scalarVolumeNode->GetVoxelDataProvider()->SetVoxelValueScale(scale);
+    scalarVolumeNode->GetVoxelDataProvider()->SetVoxelValueOffset(offset);
+  }
+  else
+  {
+    // Declare that the current voxel values are stored values:
+    // activate voxel value scaling with the current image as stored image
+    scalarVolumeNode->SetStoredImageData(scalarVolumeNode->GetImageData(), scale, offset);
+  }
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVolumeInfoWidget::setVoxelValueUnits()
+{
+  Q_D(qMRMLVolumeInfoWidget);
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(d->VolumeNode);
+  if (!scalarVolumeNode)
+  {
+    return;
+  }
+  QString unitsText = d->VoxelValueUnitsLineEdit->text().trimmed();
+  QString currentUnitsText;
+  if (scalarVolumeNode->GetVoxelValueUnits() && scalarVolumeNode->GetVoxelValueUnits()->GetCodeValue())
+  {
+    currentUnitsText = QString::fromStdString(scalarVolumeNode->GetVoxelValueUnits()->GetCodeValue());
+  }
+  if (unitsText == currentUnitsText)
+  {
+    return;
+  }
+  if (unitsText.isEmpty())
+  {
+    scalarVolumeNode->SetVoxelValueUnits(nullptr);
+    return;
+  }
+  vtkNew<vtkCodedEntry> units;
+  units->SetValueSchemeMeaning(unitsText.toStdString(), "UCUM", unitsText.toStdString());
+  scalarVolumeNode->SetVoxelValueUnits(units.GetPointer());
 }
 
 //------------------------------------------------------------------------------

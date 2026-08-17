@@ -24,6 +24,7 @@
 #include <QWidgetAction>
 
 // CTK includes
+#include <ctkLinearValueProxy.h>
 #include <ctkUtils.h>
 
 // qMRML includes
@@ -49,6 +50,8 @@ qMRMLVolumeWidgetPrivate::qMRMLVolumeWidgetPrivate(qMRMLVolumeWidget& object)
   this->MaxRangeSpinBox = nullptr;
   this->DisplayScalarRange[0] = 0;
   this->DisplayScalarRange[1] = 0;
+  this->ValueProxy = nullptr;
+  this->ScaleOnlyValueProxy = nullptr;
 }
 
 // --------------------------------------------------------------------------
@@ -68,6 +71,9 @@ void qMRMLVolumeWidgetPrivate::init()
   this->setParent(q);
   // disable as there is not MRML Node associated with the widget
   q->setEnabled(this->VolumeDisplayNode != nullptr);
+
+  this->ValueProxy = new ctkLinearValueProxy(this);
+  this->ScaleOnlyValueProxy = new ctkLinearValueProxy(this);
 
   QWidget* rangeWidget = new QWidget(q);
   QHBoxLayout* rangeLayout = new QHBoxLayout;
@@ -90,6 +96,9 @@ void qMRMLVolumeWidgetPrivate::init()
   connect(this->MaxRangeSpinBox, SIGNAL(editingFinished()), this, SLOT(updateRangeFromSpinBox()));
   rangeLayout->addWidget(this->MaxRangeSpinBox);
 
+  this->MinRangeSpinBox->setValueProxy(this->ValueProxy);
+  this->MaxRangeSpinBox->setValueProxy(this->ValueProxy);
+
   QWidgetAction* rangeAction = new QWidgetAction(this);
   rangeAction->setDefaultWidget(rangeWidget);
 
@@ -104,9 +113,28 @@ bool qMRMLVolumeWidgetPrivate::blockSignals(bool block)
 }
 
 // --------------------------------------------------------------------------
+void qMRMLVolumeWidgetPrivate::updateValueProxy()
+{
+  double scale = this->VolumeDisplayNode ? this->VolumeDisplayNode->GetVoxelValueScale() : 1.0;
+  double offset = this->VolumeDisplayNode ? this->VolumeDisplayNode->GetVoxelValueOffset() : 0.0;
+  if (scale == 0.0)
+  {
+    scale = 1.0;
+    offset = 0.0;
+  }
+  this->ValueProxy->setCoefficient(scale);
+  this->ValueProxy->setOffset(offset);
+  this->ScaleOnlyValueProxy->setCoefficient(scale);
+  this->ScaleOnlyValueProxy->setOffset(0.0);
+}
+
+// --------------------------------------------------------------------------
 void qMRMLVolumeWidgetPrivate::updateSingleStep(double min, double max)
 {
-  double interval = max - min;
+  // Decimals and single step apply to displayed (physical) values, therefore
+  // the interval is computed in display space.
+  double displayScale = this->ValueProxy ? this->ValueProxy->coefficient() : 1.0;
+  double interval = (max - min) * fabs(displayScale);
   int order = ctk::orderOfMagnitude(interval);
   double minRangeSliderMinimumStep = 0.0;
   double maxRangeSliderMinimumStep = 0.0;
@@ -252,6 +280,9 @@ void qMRMLVolumeWidget::updateWidgetFromMRMLDisplayNode()
 {
   Q_D(qMRMLVolumeWidget);
   this->setEnabled(d->VolumeDisplayNode != nullptr && d->VolumeNode != nullptr);
+  // Widgets display physical values while node values are kept in (stored)
+  // input units.
+  d->updateValueProxy();
   if (d->VolumeDisplayNode && d->VolumeDisplayNode->GetInputImageData())
   {
     d->VolumeDisplayNode->GetDisplayScalarRange(d->DisplayScalarRange);

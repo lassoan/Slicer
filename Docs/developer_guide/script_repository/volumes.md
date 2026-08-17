@@ -487,10 +487,12 @@ print(volumeNode.GetVoxelValueAsString(0, 0, 0))  # e.g. "2.5 cm/s" (as shown in
 
 Notes:
 
-- If scaling-aware code modifies the stored image, it must call `storedImage.Modified()`; the physical image is then regenerated automatically.
-- If generic (scaling-unaware) code modifies the physical image in place (`slicer.util.arrayFromVolume` + `volumeNode.Modified()`), the physical image is promoted to primary: values remain correct, scaling simply becomes inactive for that volume.
-- A processing module whose operation preserves the meaning of voxel values (e.g. blurring, resampling) can carry the quantity/unit over to its output volume with `outputVolume.CopyVoxelValueMetadata(inputVolume)`.
-- When the volume is written to file, physical values are written; persistence of stored values + scaling in image files is not yet implemented.
+- The physical (float) image is generated lazily: slice views, volume rendering, the Data Probe, window/level widgets, and file saving all work directly from the stored image, so simply viewing and saving a volume never allocates the float copy. Window/level and threshold values are kept in stored units in the display node, while the corresponding widgets display physical values.
+- If scaling-aware code modifies the stored image, it must call `storedImage.Modified()`; the physical image and the views are then updated automatically.
+- If generic (scaling-unaware) code modifies the physical image in place (`slicer.util.arrayFromVolume` + `slicer.util.arrayFromVolumeModified`), the physical image is promoted to primary: values remain correct, scaling simply becomes inactive for that volume.
+- A processing module whose operation preserves the meaning of voxel values (e.g. blurring, resampling) can carry the quantity/unit over to its output volume with `outputVolume.CopyVoxelValueMetadata(inputVolume)`. Hardening a non-linear transform preserves the stored representation automatically.
+- Saving to NRRD writes the compact stored values together with the scaling metadata as header key/value pairs (`Slicer.VoxelValueScale`, `Slicer.VoxelValueOffset`, `Slicer.VoxelValueQuantity`, `Slicer.VoxelValueUnits`), and scaling is restored when the file is loaded. Saving to file formats that cannot store this metadata writes physical values instead.
+- The scale, offset, and units can also be viewed and edited on the Volume Information section of the Volumes module.
 
 ### Modify voxels in a volume
 
