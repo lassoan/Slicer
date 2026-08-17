@@ -55,6 +55,7 @@ create_test_sourcelist(Tests ${KIT}CxxTests.cxx
   vtkMRMLScalarVolumeDisplayNodeTest1.cxx
   vtkMRMLScalarVolumeNodeTest1.cxx
   vtkMRMLScalarVolumeNodeTest2.cxx
+  vtkMRMLScalarVolumeNodeTest3.cxx
   vtkMRMLSceneAddSingletonTest.cxx
   vtkMRMLSceneBatchProcessTest.cxx
   vtkMRMLSceneIDTest.cxx
@@ -173,6 +174,7 @@ simple_test( vtkMRMLROINodeTest1 )
 simple_test( vtkMRMLScalarVolumeDisplayNodeTest1 )
 simple_test( vtkMRMLScalarVolumeNodeTest1 )
 simple_test( vtkMRMLScalarVolumeNodeTest2 )
+simple_test( vtkMRMLScalarVolumeNodeTest3 )
 simple_test( vtkMRMLSceneAddSingletonTest )
 simple_test( vtkMRMLSceneBatchProcessTest )
 simple_test( vtkMRMLSceneImportIDConflictTest )

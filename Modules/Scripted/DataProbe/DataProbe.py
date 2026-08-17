@@ -180,6 +180,18 @@ class DataProbeInfoWidget:
         numberOfComponents = imageData.GetNumberOfScalarComponents()
         if numberOfComponents > 4:
             return _("{numberOfComponents} components").format(numberOfComponents=numberOfComponents)
+
+        # If the volume specifies voxel value units (e.g. a parametric map in cm/s)
+        # then let the volume node generate the value string, which appends the
+        # unit suffix and applies stored-to-physical value scaling if active.
+        if (
+            volumeNode.IsA("vtkMRMLScalarVolumeNode")
+            and volumeNode.GetVoxelValueUnits()
+            and volumeNode.GetVoxelValueUnits().GetCodeValue() not in (None, "", "1")
+        ):
+            components = [volumeNode.GetVoxelValueAsString(ijk[0], ijk[1], ijk[2], c) for c in range(numberOfComponents)]
+            return ", ".join(components)
+
         for c in range(numberOfComponents):
             component = imageData.GetScalarComponentAsDouble(ijk[0], ijk[1], ijk[2], c)
             if component.is_integer():

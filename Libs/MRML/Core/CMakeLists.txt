@@ -240,6 +240,7 @@ set(MRMLCore_SRCS
   vtkMRMLProceduralColorStorageNode.cxx
   vtkMRMLROIListNode.cxx
   vtkMRMLROINode.cxx
+  vtkMRMLInMemoryVoxelDataProvider.cxx
   vtkMRMLScalarVolumeDisplayNode.cxx
   vtkMRMLScalarVolumeNode.cxx
   vtkMRMLScene.cxx
@@ -292,6 +293,7 @@ set(MRMLCore_SRCS
   vtkMRMLVolumeNode.cxx
   vtkMRMLVolumeSequenceStorageNode.cxx
   vtkMRMLVolumeSequenceStorageNode.h
+  vtkMRMLVoxelDataProvider.cxx
   vtkMRMLdGEMRICProceduralColorNode.cxx
   vtkObservation.cxx
   vtkObserverManager.cxx
@@ -333,6 +335,7 @@ set_source_files_properties(
   vtkMRMLTransformNode.cxx
   vtkMRMLVolumeDisplayNode.cxx
   vtkMRMLVolumeNode.cxx
+  vtkMRMLVoxelDataProvider.cxx
   ABSTRACT
   )
 
