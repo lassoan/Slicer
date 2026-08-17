@@ -37,12 +37,15 @@ const char* UNITS[NUMBER_OF_UNITS][2] = { { "length", "m" }, { "length", "km" },
 vtkMRMLScene* CreatePopulatedScene();
 bool TestScenesUnitNodeID(vtkMRMLScene* scene);
 bool TestUnitNodeAttribute(vtkMRMLScene* scene);
+int TestValueConversion();
 
 //---------------------------------------------------------------------------
 int vtkMRMLUnitNodeTest1(int, char*[])
 {
   vtkNew<vtkMRMLUnitNode> node1;
   EXERCISE_ALL_BASIC_MRML_METHODS(node1.GetPointer());
+
+  CHECK_EXIT_SUCCESS(TestValueConversion());
 
   bool res = true;
   vtkMRMLScene* scene = CreatePopulatedScene();
@@ -51,6 +54,30 @@ int vtkMRMLUnitNodeTest1(int, char*[])
 
   scene->Delete();
   return res ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+//---------------------------------------------------------------------------
+int TestValueConversion()
+{
+  TESTING_OUTPUT_INIT();
+  TESTING_OUTPUT_RESET();
+
+  vtkNew<vtkMRMLUnitNode> unit;
+  unit->SetDisplayCoefficient(0.01);
+  unit->SetDisplayOffset(2.0);
+
+  CHECK_DOUBLE_TOLERANCE(unit->GetDisplayValueFromValue(300.0), 5.0, 1e-9);
+  // GetValueFromDisplayValue must be the inverse of GetDisplayValueFromValue
+  CHECK_DOUBLE_TOLERANCE(unit->GetValueFromDisplayValue(5.0), 300.0, 1e-9);
+  CHECK_DOUBLE_TOLERANCE(unit->GetValueFromDisplayValue(unit->GetDisplayValueFromValue(123.4)), 123.4, 1e-9);
+
+  // Invalid (zero) display coefficient: must warn and return 0
+  unit->SetDisplayCoefficient(0.0);
+  TESTING_OUTPUT_ASSERT_WARNINGS_BEGIN();
+  CHECK_DOUBLE(unit->GetValueFromDisplayValue(5.0), 0.0);
+  TESTING_OUTPUT_ASSERT_WARNINGS_END();
+
+  return EXIT_SUCCESS;
 }
 
 //---------------------------------------------------------------------------

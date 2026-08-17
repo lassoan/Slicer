@@ -182,7 +182,7 @@ double vtkMRMLUnitNode::GetDisplayValueFromValue(double value)
 //----------------------------------------------------------------------------
 double vtkMRMLUnitNode::GetValueFromDisplayValue(double value)
 {
-  if (this->DisplayCoefficient)
+  if (this->DisplayCoefficient == 0.)
   {
     vtkWarningMacro("Invalid display coefficient");
     return 0.;
