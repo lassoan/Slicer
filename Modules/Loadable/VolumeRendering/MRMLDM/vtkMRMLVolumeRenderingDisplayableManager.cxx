@@ -39,6 +39,7 @@
 #include "vtkMRMLVolumeNode.h"
 #include "vtkMRMLVolumePropertyNode.h"
 #include "vtkMRMLShaderPropertyNode.h"
+#include "vtkMRMLVoxelDataProvider.h"
 #include "vtkEventBroker.h"
 
 // VTK includes
@@ -91,6 +92,35 @@
 #include <vtkAutoInit.h>
 VTK_MODULE_INIT(vtkRenderingContextOpenGL2);
 VTK_MODULE_INIT(vtkRenderingVolumeOpenGL2);
+
+namespace
+{
+//---------------------------------------------------------------------------
+// Volume rendering consumes stored voxel values when voxel value scaling is
+// active on the volume node: the transfer functions are defined in stored
+// units (they are initialized from window/level, which is kept in stored
+// units), and this way rendering never generates the physical (float) image.
+vtkAlgorithmOutput* GetRenderedImageDataConnection(vtkMRMLVolumeNode* volumeNode)
+{
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(volumeNode);
+  if (scalarVolumeNode && scalarVolumeNode->GetVoxelDataProvider())
+  {
+    return scalarVolumeNode->GetStoredImageDataConnection();
+  }
+  return volumeNode ? volumeNode->GetImageDataConnection() : nullptr;
+}
+
+//---------------------------------------------------------------------------
+vtkImageData* GetRenderedImageData(vtkMRMLVolumeNode* volumeNode)
+{
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(volumeNode);
+  if (scalarVolumeNode && scalarVolumeNode->GetVoxelDataProvider())
+  {
+    return scalarVolumeNode->GetStoredImageData();
+  }
+  return volumeNode ? volumeNode->GetImageData() : nullptr;
+}
+} // namespace
 
 //---------------------------------------------------------------------------
 vtkStandardNewMacro(vtkMRMLVolumeRenderingDisplayableManager);
@@ -664,9 +694,9 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::AddDisplayNode(vtkMR
     pipelineCpu->DisplayNode = displayNode;
     // Set volume to the mapper
     // Reconnection is expensive operation, therefore only do it if needed
-    if (pipelineCpu->VolumeScaling->GetInputConnection(0, 0) != volumeNode->GetImageDataConnection())
+    if (pipelineCpu->VolumeScaling->GetInputConnection(0, 0) != GetRenderedImageDataConnection(volumeNode))
     {
-      pipelineCpu->VolumeScaling->SetInputConnection(0, volumeNode->GetImageDataConnection());
+      pipelineCpu->VolumeScaling->SetInputConnection(0, GetRenderedImageDataConnection(volumeNode));
     }
     // Add volume actor to renderer and local cache
     this->External->GetRenderer()->AddVolume(pipelineCpu->VolumeActor);
@@ -679,9 +709,9 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::AddDisplayNode(vtkMR
     pipelineGpu->DisplayNode = displayNode;
     // Set volume to the mapper
     // Reconnection is expensive operation, therefore only do it if needed
-    if (pipelineGpu->RayCastMapperGPU->GetInputConnection(0, 0) != volumeNode->GetImageDataConnection())
+    if (pipelineGpu->RayCastMapperGPU->GetInputConnection(0, 0) != GetRenderedImageDataConnection(volumeNode))
     {
-      pipelineGpu->RayCastMapperGPU->SetInputConnection(0, volumeNode->GetImageDataConnection());
+      pipelineGpu->RayCastMapperGPU->SetInputConnection(0, GetRenderedImageDataConnection(volumeNode));
     }
     // Add volume actor to renderer and local cache
     this->External->GetRenderer()->AddVolume(pipelineGpu->VolumeActor);
@@ -952,12 +982,12 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
   // Get the image connection - either from the original volume or from the resampled volume
   vtkAlgorithmOutput* imageConnection = nullptr;
 
-  if (volumeNode->GetImageData() && hasNonLinearTransform)
+  if (volumeNode->HasImageData() && hasNonLinearTransform)
   {
     // Volume is under a non-linear transform - we need to resample it
 
     // Check if we already have an up-to-date resampled image
-    vtkMTimeType volumeMTime = volumeNode->GetImageData()->GetMTime();
+    vtkMTimeType volumeMTime = GetRenderedImageData(volumeNode) ? GetRenderedImageData(volumeNode)->GetMTime() : 0;
     vtkMTimeType transformMTime = transformNode->GetTransformToWorldMTime();
     if (pipeline->TransformedImageDataMTime != volumeMTime //
         || pipeline->TransformMTime != transformMTime      //
@@ -993,7 +1023,7 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
   else
   {
     // Linear transform or no transform - use original volume
-    imageConnection = volumeNode->GetImageDataConnection();
+    imageConnection = GetRenderedImageDataConnection(volumeNode);
     this->GetVolumeTransformMatrixToWorld(volumeNode, pipeline->IJKToWorldMatrix);
 
     // Clear the transformed image data to free memory
@@ -1041,7 +1071,7 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
       pipeline->StencilFilter->SetBackgroundValue(backgroundValue);
 
       // Use the appropriate image data for the stencil filter
-      vtkImageData* imageDataForClipping = pipeline->UseTransformedImageData ? pipeline->TransformedImageData.GetPointer() : volumeNode->GetImageData();
+      vtkImageData* imageDataForClipping = pipeline->UseTransformedImageData ? pipeline->TransformedImageData.GetPointer() : GetRenderedImageData(volumeNode);
       pipeline->ImplicitFunctionToImageStencilFilter->SetInformationInput(imageDataForClipping);
 
       double softEdgeVoxels = displayNode->GetClippingSoftEdgeVoxels();
@@ -1102,7 +1132,7 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
     }
   }
 
-  vtkImageData* imageData = pipeline->UseTransformedImageData ? pipeline->TransformedImageData.GetPointer() : volumeNode->GetImageData();
+  vtkImageData* imageData = pipeline->UseTransformedImageData ? pipeline->TransformedImageData.GetPointer() : GetRenderedImageData(volumeNode);
   int numberOfChannels = (imageData == nullptr ? 1 : imageData->GetNumberOfScalarComponents());
   if (numberOfChannels == 3)
   {

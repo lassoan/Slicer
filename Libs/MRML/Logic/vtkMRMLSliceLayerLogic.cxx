@@ -18,6 +18,7 @@
 // MRML includes
 #include "vtkMRMLLabelMapVolumeNode.h"
 #include "vtkMRMLLabelMapVolumeDisplayNode.h"
+#include "vtkMRMLScalarVolumeNode.h"
 #include "vtkMRMLVectorVolumeDisplayNode.h"
 #include "vtkMRMLDiffusionWeightedVolumeDisplayNode.h"
 #include "vtkMRMLDiffusionTensorVolumeDisplayNode.h"
@@ -506,7 +507,7 @@ void vtkMRMLSliceLayerLogic::UpdateTransforms()
     this->UVWToIJKTransform->Concatenate(uvwToIJK.GetPointer());
   }
 
-  if (this->VolumeNode && this->VolumeNode->GetImageData())
+  if (this->VolumeNode && this->VolumeNode->HasImageData())
   {
     // Apply the transform, if it exists
     vtkMRMLTransformNode* transformNode = this->VolumeNode->GetParentTransformNode();
@@ -636,13 +637,23 @@ void vtkMRMLSliceLayerLogic::UpdateImageDisplay()
     return;
   }
 
-  vtkImageData* imageData = this->VolumeNode->GetImageData();
-  if (imageData != nullptr &&                         //
-      (imageData->GetScalarType() == VTK_LONG_LONG || //
-       imageData->GetScalarType() == VTK_UNSIGNED_LONG_LONG))
+  // For scalar volumes with active voxel value scaling, the slice pipeline
+  // consumes stored voxel values: the display node applies window/level in
+  // stored units, therefore the rendered output is identical while the
+  // physical (float) image is never generated for viewing.
+  vtkMRMLScalarVolumeNode* scalarVolumeNodeWithProvider = vtkMRMLScalarVolumeNode::SafeDownCast(volumeNode);
+  if (scalarVolumeNodeWithProvider && !scalarVolumeNodeWithProvider->GetVoxelDataProvider())
+  {
+    scalarVolumeNodeWithProvider = nullptr;
+  }
+  vtkImageData* displayInputImage = scalarVolumeNodeWithProvider ? scalarVolumeNodeWithProvider->GetStoredImageData() //
+                                                                 : this->VolumeNode->GetImageData();
+  if (displayInputImage != nullptr &&                         //
+      (displayInputImage->GetScalarType() == VTK_LONG_LONG || //
+       displayInputImage->GetScalarType() == VTK_UNSIGNED_LONG_LONG))
   {
     vtkErrorMacro("Reslicing can only be done on types representable as double.  Node " << this->VolumeNode->GetName() << " has image data of type "
-                                                                                        << imageData->GetScalarTypeAsString());
+                                                                                        << displayInputImage->GetScalarTypeAsString());
     return;
   }
 
@@ -652,7 +663,7 @@ void vtkMRMLSliceLayerLogic::UpdateImageDisplay()
   vtkMTimeType oldLabel = this->LabelOutline->GetMTime();
   vtkMTimeType oldLabelUVW = this->LabelOutlineUVW->GetMTime();
 
-  if ((this->VolumeNode->GetImageData() && labelMapVolumeDisplayNode) || //
+  if ((labelMapVolumeDisplayNode && displayInputImage) || //
       (scalarVolumeDisplayNode && scalarVolumeDisplayNode->GetInterpolate() == 0))
   {
     this->Reslice->SetInterpolationModeToNearestNeighbor();
@@ -742,8 +753,8 @@ void vtkMRMLSliceLayerLogic::UpdateImageDisplay()
     //      {
     //      volumeNode->GetImageData()->Print(std::cout);
     //      }
-    this->Reslice->SetInputData(volumeNode->GetImageData());
-    this->ResliceUVW->SetInputData(volumeNode->GetImageData());
+    this->Reslice->SetInputData(displayInputImage);
+    this->ResliceUVW->SetInputData(displayInputImage);
     // use the label outline if we have a label map volume, this is the label
     // layer (turned on in slice logic when the label layer is instantiated)
     // and the slice node is set to use it.
@@ -774,7 +785,7 @@ void vtkMRMLSliceLayerLogic::UpdateImageDisplay()
 
   if (volumeDisplayNode)
   {
-    if (volumeNode != nullptr && volumeNode->GetImageData() != nullptr)
+    if (volumeNode != nullptr && displayInputImage != nullptr)
     {
       volumeDisplayNode->SetInputImageDataConnection(this->GetSliceImageDataConnection());
       volumeDisplayNode->SetBackgroundImageStencilDataConnection(this->Reslice->GetOutputPort(1));
@@ -782,7 +793,7 @@ void vtkMRMLSliceLayerLogic::UpdateImageDisplay()
   }
   if (volumeDisplayNodeUVW)
   {
-    if (volumeNode != nullptr && volumeNode->GetImageData() != nullptr)
+    if (volumeNode != nullptr && displayInputImage != nullptr)
     {
       // int wasModifying = volumeDisplayNode->StartModify();
       volumeDisplayNodeUVW->SetInputImageDataConnection(this->GetSliceImageDataConnectionUVW());

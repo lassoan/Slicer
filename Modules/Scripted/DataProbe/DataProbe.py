@@ -131,15 +131,21 @@ class DataProbeInfoWidget:
         # these strings in a generic way
         if not volumeNode:
             return _("No volume")
-        imageData = volumeNode.GetImageData()
-        if not imageData:
+        # Presence and bounds are queried without volumeNode.GetImageData() so that
+        # probing a volume with active voxel value scaling does not force
+        # generation of the physical (float) image.
+        if not volumeNode.HasImageData():
             return _("No Image")
-        dims = imageData.GetDimensions()
+        extent = [0, -1, 0, -1, 0, -1]
+        if not volumeNode.GetImageExtent(extent):
+            return _("No Image")
         for ele in range(3):
-            if ijk[ele] < 0 or ijk[ele] >= dims[ele]:
+            if ijk[ele] < extent[2 * ele] or ijk[ele] > extent[2 * ele + 1]:
                 return _("Out of Frame")
         pixel = ""
+        imageData = None  # fetched lazily; not needed on the voxel value scaling path
         if volumeNode.IsA("vtkMRMLLabelMapVolumeNode"):
+            imageData = volumeNode.GetImageData()
             labelIndex = int(imageData.GetScalarComponentAsDouble(ijk[0], ijk[1], ijk[2], 0))
             labelValue = _("Unknown")
             displayNode = volumeNode.GetDisplayNode()
@@ -150,6 +156,7 @@ class DataProbeInfoWidget:
             return "%s (%d)" % (labelValue, labelIndex)
 
         if volumeNode.IsA("vtkMRMLDiffusionTensorVolumeNode"):
+            imageData = volumeNode.GetImageData()
             point_idx = imageData.FindPoint(ijk[0], ijk[1], ijk[2])
             if point_idx == -1:
                 return _("Out of bounds")
@@ -177,21 +184,25 @@ class DataProbeInfoWidget:
                 return scalarVolumeDisplayNode.GetScalarInvariantAsString()
 
         # default - non label scalar volume
+
+        # If the volume has active voxel value scaling or specifies voxel value
+        # units (e.g. a parametric map in cm/s) then let the volume node generate
+        # the value string: it probes the stored image (never generating the
+        # physical image), applies the value scaling, and appends the unit suffix.
+        if volumeNode.IsA("vtkMRMLScalarVolumeNode"):
+            provider = volumeNode.GetVoxelDataProvider()
+            hasUnits = volumeNode.GetVoxelValueUnits() and volumeNode.GetVoxelValueUnits().GetCodeValue() not in (None, "", "1")
+            if provider or hasUnits:
+                numberOfComponents = provider.GetNumberOfScalarComponents() if provider else volumeNode.GetImageData().GetNumberOfScalarComponents()
+                if numberOfComponents > 4:
+                    return _("{numberOfComponents} components").format(numberOfComponents=numberOfComponents)
+                components = [volumeNode.GetVoxelValueAsString(ijk[0], ijk[1], ijk[2], c) for c in range(numberOfComponents)]
+                return ", ".join(components)
+
+        imageData = volumeNode.GetImageData()
         numberOfComponents = imageData.GetNumberOfScalarComponents()
         if numberOfComponents > 4:
             return _("{numberOfComponents} components").format(numberOfComponents=numberOfComponents)
-
-        # If the volume specifies voxel value units (e.g. a parametric map in cm/s)
-        # then let the volume node generate the value string, which appends the
-        # unit suffix and applies stored-to-physical value scaling if active.
-        if (
-            volumeNode.IsA("vtkMRMLScalarVolumeNode")
-            and volumeNode.GetVoxelValueUnits()
-            and volumeNode.GetVoxelValueUnits().GetCodeValue() not in (None, "", "1")
-        ):
-            components = [volumeNode.GetVoxelValueAsString(ijk[0], ijk[1], ijk[2], c) for c in range(numberOfComponents)]
-            return ", ".join(components)
-
         for c in range(numberOfComponents):
             component = imageData.GetScalarComponentAsDouble(ijk[0], ijk[1], ijk[2], c)
             if component.is_integer():

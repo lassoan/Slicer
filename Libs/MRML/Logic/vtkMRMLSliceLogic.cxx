@@ -907,13 +907,12 @@ void vtkMRMLSliceLogic::GetWindowLevelAndRange(int layer, double& window, double
 {
   vtkMRMLScalarVolumeNode* volumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(this->GetNthLayerVolumeNode(layer));
   vtkMRMLScalarVolumeDisplayNode* volumeDisplayNode = volumeNode ? volumeNode->GetScalarVolumeDisplayNode() : nullptr;
-  vtkImageData* imageData = (volumeDisplayNode && volumeNode) ? volumeNode->GetImageData() : nullptr;
-  if (imageData)
+  if (volumeDisplayNode && volumeNode && volumeNode->HasImageData())
   {
     window = volumeDisplayNode->GetWindow();
     level = volumeDisplayNode->GetLevel();
     double range[2] = { 0.0, 255.0 };
-    imageData->GetScalarRange(range);
+    volumeDisplayNode->GetDisplayScalarRange(range);
     rangeLow = range[0];
     rangeHigh = range[1];
     autoWindowLevel = (volumeDisplayNode->GetAutoWindowLevel() != 0);
@@ -1680,8 +1679,7 @@ void vtkMRMLSliceLogic::GetVolumeRASBox(vtkMRMLVolumeNode* volumeNode, double ra
   rasCenter[1] = rasDimensions[1] = 0.0;
   rasCenter[2] = rasDimensions[2] = 0.0;
 
-  vtkImageData* volumeImage;
-  if (!volumeNode || !(volumeImage = volumeNode->GetImageData()))
+  if (!volumeNode || !volumeNode->HasImageData())
   {
     return;
   }
@@ -1862,7 +1860,7 @@ void vtkMRMLSliceLogic::FitSliceToVolumes(vtkCollection* volumeNodes, int width,
   for (iterator->InitTraversal(); !iterator->IsDoneWithTraversal(); iterator->GoToNextItem())
   {
     vtkMRMLVolumeNode* volumeNode = vtkMRMLVolumeNode::SafeDownCast(iterator->GetCurrentObject());
-    if (!volumeNode || !volumeNode->GetImageData())
+    if (!volumeNode || !volumeNode->HasImageData())
     {
       continue;
     }
@@ -2048,8 +2046,8 @@ void vtkMRMLSliceLogic::FitFOVToBackground(double fov)
 {
   // get backgroundNode  and imagedata
   vtkMRMLScalarVolumeNode* backgroundNode = vtkMRMLScalarVolumeNode::SafeDownCast(this->GetMRMLScene()->GetNodeByID(this->SliceCompositeNode->GetBackgroundVolumeID()));
-  vtkImageData* backgroundImage = backgroundNode ? backgroundNode->GetImageData() : nullptr;
-  if (!backgroundImage)
+  int backgroundExtent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!backgroundNode || !backgroundNode->GetImageExtent(backgroundExtent))
   {
     return;
   }
@@ -2064,7 +2062,9 @@ void vtkMRMLSliceLogic::FitFOVToBackground(double fov)
   vtkNew<vtkMatrix4x4> ijkToRAS;
 
   // what are the actual dimensions of the imagedata?
-  backgroundImage->GetDimensions(dimensions);
+  dimensions[0] = backgroundExtent[1] - backgroundExtent[0] + 1;
+  dimensions[1] = backgroundExtent[3] - backgroundExtent[2] + 1;
+  dimensions[2] = backgroundExtent[5] - backgroundExtent[4] + 1;
   doubleDimensions[0] = static_cast<double>(dimensions[0]);
   doubleDimensions[1] = static_cast<double>(dimensions[1]);
   doubleDimensions[2] = static_cast<double>(dimensions[2]);
@@ -2482,8 +2482,8 @@ int vtkMRMLSliceLogic::GetSliceIndexFromOffset(double sliceOffset, vtkMRMLVolume
   {
     return SLICE_INDEX_NO_VOLUME;
   }
-  vtkImageData* volumeImage = nullptr;
-  if (!(volumeImage = volumeNode->GetImageData()))
+  int volumeImageExtent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!volumeNode->GetImageExtent(volumeImageExtent))
   {
     return SLICE_INDEX_NO_VOLUME;
   }
@@ -2565,7 +2565,7 @@ int vtkMRMLSliceLogic::GetSliceIndexFromOffset(double sliceOffset, vtkMRMLVolume
   int sliceIndex = vtkMath::Round(normalizedSliceShift) + 1; // +0.5 because the slice plane is displayed in the center of the slice
 
   // Check if slice index is within the volume
-  int sliceCount = volumeImage->GetDimensions()[axisIndex];
+  int sliceCount = volumeImageExtent[2 * axisIndex + 1] - volumeImageExtent[2 * axisIndex] + 1;
   if (sliceIndex < 1 || sliceIndex > sliceCount)
   {
     sliceIndex = SLICE_INDEX_OUT_OF_VOLUME;
@@ -2766,7 +2766,7 @@ bool vtkMRMLSliceLogic::IsEventInsideVolume(bool background, double worldPos[3])
     return false;
   }
   vtkMRMLVolumeNode* volumeNode = layerLogic->GetVolumeNode();
-  if (!volumeNode || !volumeNode->GetImageData())
+  if (!volumeNode || !volumeNode->HasImageData())
   {
     return false;
   }
@@ -2786,7 +2786,7 @@ bool vtkMRMLSliceLogic::IsEventInsideVolume(bool background, double worldPos[3])
   inputVolumeIJKToWorldTransform->GetInverse()->TransformPoint(worldPos, ijkPos);
 
   int volumeExtent[6] = { 0 };
-  volumeNode->GetImageData()->GetExtent(volumeExtent);
+  volumeNode->GetImageExtent(volumeExtent);
   for (int axis = 0; axis < 3; axis++)
   {
     // In VTK, the voxel coordinate refers to the center of the voxel and so the image bounds
