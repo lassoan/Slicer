@@ -93,6 +93,10 @@ if(NOT DEFINED ITK_DIR AND NOT Slicer_USE_SYSTEM_${proj})
     GIT_TAG "${Slicer_${proj}_GIT_TAG}"
     SOURCE_DIR ${EP_SOURCE_DIR}
     BINARY_DIR ${EP_BINARY_DIR}
+    # The Slicer ITK fork does not ship the IOOMEZarrNGFF remote module manifest;
+    # copy it into the source tree so that Module_IOOMEZarrNGFF can be enabled.
+    PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      ${CMAKE_CURRENT_LIST_DIR}/ITKIOOMEZarrNGFF.remote.cmake ${EP_SOURCE_DIR}/Modules/Remote/IOOMEZarrNGFF.remote.cmake
     CMAKE_CACHE_ARGS
       -DCMAKE_CXX_COMPILER:FILEPATH=${CMAKE_CXX_COMPILER}
       -DCMAKE_CXX_FLAGS:STRING=${ep_common_cxx_flags}
@@ -113,6 +117,7 @@ if(NOT DEFINED ITK_DIR AND NOT Slicer_USE_SYSTEM_${proj})
       -DModule_MGHIO:BOOL=ON
       -DModule_ITKIOMINC:BOOL=ON
       -DModule_IOScanco:BOOL=ON
+      -DModule_IOOMEZarrNGFF:BOOL=ON
       -DModule_MorphologicalContourInterpolation:BOOL=ON
       -DModule_GrowCut:BOOL=ON
       -DModule_SimpleITKFilters:BOOL=${Slicer_USE_SimpleITK}

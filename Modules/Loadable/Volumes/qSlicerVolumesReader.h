@@ -44,6 +44,11 @@ public:
   QStringList extensions() const override;
   qSlicerIOOptions* options() const override;
 
+  /// Returns true if the reader can load this file.
+  /// Reimplemented to also accept OME-Zarr/NGFF images, which are stored as
+  /// directories (with a .zarr name suffix) rather than files.
+  bool canLoadFile(const QString& file) const override;
+
   /// Returns a positive number (>0) if the reader can load this file.
   /// In case the file uses a generic file extension (such as .nrrd) then the confidence value is adjusted based on
   /// the file content: if the file contains a dwmri nrrd file then confidence is increased to 0.7

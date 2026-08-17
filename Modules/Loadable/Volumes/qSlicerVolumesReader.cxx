@@ -104,14 +104,37 @@ qSlicerIO::IOFileType qSlicerVolumesReader::fileType() const
 QStringList qSlicerVolumesReader::extensions() const
 {
   // pic files are bio-rad images (see itkBioRadImageIO)
+  // zarr files are OME-Zarr/NGFF images (see itkOMEZarrNGFFImageIO; available if ITK is built with Module_IOOMEZarrNGFF)
   return QStringList() //
-         << tr("Volume") + " (*.hdr *.nhdr *.nrrd *.mhd *.mha *.mnc *.nii *.nii.gz *.mgh *.mgz *.mgh.gz *.img *.img.gz *.pic)" << tr("Dicom") + " (*.dcm *.ima)"
+         << tr("Volume") + " (*.hdr *.nhdr *.nrrd *.mhd *.mha *.mnc *.nii *.nii.gz *.mgh *.mgz *.mgh.gz *.img *.img.gz *.pic *.zarr *.zr2 *.zr3)" << tr("Dicom") + " (*.dcm *.ima)"
          << tr("Image") + " (*.png *.tif *.tiff *.jpg *.jpeg)" << tr("All Files") + " (*)";
+}
+
+//----------------------------------------------------------------------------
+bool qSlicerVolumesReader::canLoadFile(const QString& fileName) const
+{
+  QFileInfo fileInfo(fileName);
+  if (fileInfo.isDir())
+  {
+    // OME-Zarr/NGFF images are stored as directories (readable if ITK is
+    // built with Module_IOOMEZarrNGFF). The generic implementation only
+    // accepts files, therefore directories are handled here.
+    return fileName.endsWith(".zarr", Qt::CaseInsensitive);
+  }
+  return Superclass::canLoadFile(fileName);
 }
 
 //----------------------------------------------------------------------------
 double qSlicerVolumesReader::canLoadFileConfidence(const QString& fileName) const
 {
+  QFileInfo fileInfo(fileName);
+  if (fileInfo.isDir())
+  {
+    // 0.55 is what a 4-character extension match would produce
+    // (0.5 + 0.01 * extension length); any other reader returns 0 for
+    // directories.
+    return this->canLoadFile(fileName) ? 0.55 : 0.0;
+  }
   double confidence = Superclass::canLoadFileConfidence(fileName);
   // Confidence for .nrrd and .nhdr file is 0.55 (5 characters in the file extension matched)
   if (confidence > 0)
