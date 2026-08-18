@@ -37,6 +37,49 @@
 #include <vtkPythonUtil.h>
 #include <vtkVersion.h>
 
+namespace
+{
+
+//-----------------------------------------------------------------------------
+/// VTK PythonQt wrapper factory that supports the lazily-loading "vtk" module.
+///
+/// A VTK class is only registered with vtkPythonUtil when the vtkmodules
+/// submodule that provides it is imported, and the "vtk" Python module is a
+/// lazily-loading shim (see GenerateLazyVtkModule.py) that defers those
+/// imports until a class is first accessed from Python code. A VTK object can
+/// therefore cross the PythonQt boundary (for example, a scripted module
+/// calling sliceView.renderWindow(), declared as returning vtkRenderWindow*)
+/// before the module that provides its class has been imported. Plain
+/// ctkVTKPythonQtWrapperFactory would then wrap the object as the nearest
+/// registered base class (vtkWindow, from the always-loaded vtkCommonCore) and
+/// vtkPythonUtil would cache that incomplete wrapper for the lifetime of the
+/// object. This factory first makes sure the declared class is registered:
+/// looking the class name up on the lazy "vtk" shim imports exactly the
+/// vtkmodules submodule that provides it. Class names that are already
+/// registered (including all wrapped MRML/Slicer classes, registered when the
+/// slicer package loads its kits) only cost a hash lookup, and unknown names
+/// are ignored.
+class qSlicerVTKPythonQtWrapperFactory : public ctkVTKPythonQtWrapperFactory
+{
+public:
+  PyObject* wrap(const QByteArray& classname, void* ptr) override
+  {
+    if (classname.startsWith("vtk") && !vtkPythonUtil::FindClassTypeObject(classname.constData()))
+    {
+      if (PyObject* vtkModule = PyImport_ImportModule("vtk"))
+      {
+        PyObject* vtkClass = PyObject_GetAttrString(vtkModule, classname.constData());
+        Py_XDECREF(vtkClass);
+        Py_DECREF(vtkModule);
+      }
+      PyErr_Clear();
+    }
+    return ctkVTKPythonQtWrapperFactory::wrap(classname, ptr);
+  }
+};
+
+} // namespace
+
 //-----------------------------------------------------------------------------
 qSlicerCorePythonManager::qSlicerCorePythonManager(QObject* _parent)
   : Superclass(_parent)
@@ -95,7 +138,7 @@ QStringList qSlicerCorePythonManager::pythonPaths()
 void qSlicerCorePythonManager::preInitialization()
 {
   Superclass::preInitialization();
-  this->Factory = new ctkVTKPythonQtWrapperFactory;
+  this->Factory = new qSlicerVTKPythonQtWrapperFactory;
   this->addWrapperFactory(this->Factory);
   qSlicerCoreApplication* app = qSlicerCoreApplication::application();
   if (app)
