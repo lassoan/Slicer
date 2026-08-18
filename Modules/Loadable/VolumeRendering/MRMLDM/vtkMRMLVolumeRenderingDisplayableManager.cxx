@@ -197,6 +197,7 @@ public:
       // For variable-resolution rendering of multi-resolution volumes
       this->VariableResolutionImageData = vtkSmartPointer<vtkImageData>::New();
       this->VariableResolutionTrivialProducer = vtkSmartPointer<vtkTrivialProducer>::New();
+      this->ReferenceSpacingFilter = vtkSmartPointer<vtkImageChangeInformation>::New();
     }
     virtual ~Pipeline() = default;
 
@@ -269,6 +270,12 @@ public:
     int DisplayedResolutionLevel{ -1 };
     /// Extent (in DisplayedResolutionLevel IJK) of the mapper input region
     int DisplayedRegionExtent[6]{ 0, -1, 0, -1, 0, -1 };
+    /// Applies the volume grid's per-axis anisotropy to the image spacing
+    /// (metadata only, no pixel copy) when the volume node's own image is
+    /// rendered. The GPU raycast shader weights lighting gradients by the
+    /// image spacing only - anisotropy carried in the actor matrix would be
+    /// ignored, biasing shading normals toward the coarse grid axes.
+    vtkSmartPointer<vtkImageChangeInformation> ReferenceSpacingFilter;
     //@}
     /// Modification time of the original volume when the transform was applied.
     /// This is used to detect if the volume needs to be resampled again.
@@ -347,9 +354,10 @@ public:
   // visible in the camera frustum, at the resolution level matching the
   // camera zoom. Returns true if the pipeline uses a variable-resolution
   // region as mapper input. The region image carries the level grid scale
-  // (relative to the volume node's reference level) in its spacing, so the
-  // actor keeps using the volume node's IJK to world matrix.
-  bool UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode, Pipeline* pipeline);
+  // (relative to the volume node's reference level) times the node grid
+  // anisotropy ratios in its spacing; the actor uses the volume node's IJK
+  // to world matrix rescaled to uniform column length.
+  bool UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode, Pipeline* pipeline, const double anisotropy[3]);
   // Select the resolution level and region (in that level's IJK) to render.
   // Returns false if variable resolution is not applicable.
   bool SelectResolutionLevelAndRegion(vtkMRMLVolumeRenderingDisplayNode* displayNode, vtkMRMLScalarVolumeNode* volumeNode, int& level, int extent[6]);
@@ -1351,7 +1359,9 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
 }
 
 //---------------------------------------------------------------------------
-bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode, Pipeline* pipeline)
+bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode,
+                                                                                         Pipeline* pipeline,
+                                                                                         const double anisotropy[3])
 {
   vtkMRMLScalarVolumeNode* volumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(displayNode->GetDisplayableNode());
   vtkMRMLVoxelDataProvider* provider = volumeNode ? volumeNode->GetVoxelDataProvider() : nullptr;
@@ -1427,17 +1437,19 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
   }
 
   // The region image is on the displayed level's grid. Express the level's
-  // grid scale relative to the reference (node grid) in the image spacing -
-  // NOT in the actor matrix: the mapper derives its sample distance and the
-  // scalar opacity correction from the input image spacing, so carrying the
-  // scale in the spacing keeps the accumulated opacity (brightness)
-  // independent of the displayed resolution level. The actor matrix stays
-  // the volume node's IJK (reference level) to world matrix.
+  // grid scale relative to the reference (node grid), times the node grid
+  // anisotropy ratios, in the image spacing - NOT in the actor matrix: the
+  // mapper derives its sample distance, the scalar opacity correction and
+  // the lighting gradient weights from the input image spacing. Carrying
+  // the scale in the spacing keeps the accumulated opacity (brightness)
+  // independent of the displayed resolution level, and carrying the
+  // anisotropy keeps the shading normals correct. The actor matrix is the
+  // volume node's IJK to world matrix rescaled to uniform column length.
   double displayedScale[3] = { 1.0, 1.0, 1.0 };
   provider->GetLevelScale(pipeline->DisplayedResolutionLevel, displayedScale);
-  pipeline->VariableResolutionImageData->SetSpacing(displayedScale[0] / referenceScale[0], //
-                                                    displayedScale[1] / referenceScale[1],
-                                                    displayedScale[2] / referenceScale[2]);
+  pipeline->VariableResolutionImageData->SetSpacing(anisotropy[0] * displayedScale[0] / referenceScale[0], //
+                                                    anisotropy[1] * displayedScale[1] / referenceScale[1],
+                                                    anisotropy[2] * displayedScale[2] / referenceScale[2]);
   return true;
 }
 
@@ -1535,16 +1547,70 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
     imageConnection = GetRenderedImageDataConnection(volumeNode);
     this->GetVolumeTransformMatrixToWorld(volumeNode, pipeline->IJKToWorldMatrix);
 
-    // Variable-resolution rendering of multi-resolution provider volumes:
-    // render only the region visible in the camera frustum, at the resolution
-    // level that matches the camera zoom. The region image carries the level
-    // grid scale in its spacing, so the actor matrix needs no adjustment.
-    if (this->UpdateVariableResolutionInput(displayNode, pipeline))
+    // Shading correctness for provider volumes: the GPU raycast shader
+    // weights lighting gradients by the image spacing only, so any per-axis
+    // anisotropy carried in the actor matrix is ignored, which biases the
+    // shading normals toward the coarse grid axes (bright specular flash
+    // when the view is exactly axis-aligned, dark from the fine-spacing
+    // axis). Move the per-axis anisotropy ratios into the image spacing and
+    // keep only a UNIFORM scale in the actor matrix (uniform scale cancels
+    // when the shader normalizes the gradient). The uniform matrix scale is
+    // the largest node spacing, so the reference-level in-plane spacing
+    // stays ~1 and the opacity accumulation behavior is unchanged.
+    // The clipping stencil pipeline computes its stencil on the raw node
+    // grid, so the adjustment is skipped when it is active (as is variable
+    // resolution).
+    vtkMRMLScalarVolumeNode* providerVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(volumeNode);
+    vtkMRMLVoxelDataProvider* provider = providerVolumeNode ? providerVolumeNode->GetVoxelDataProvider() : nullptr;
+    bool stencilClippingActive = displayNode->GetClipping() && !displayNode->IsFastClippingAvailable();
+    if (provider && !stencilClippingActive)
     {
-      imageConnection = pipeline->VariableResolutionTrivialProducer->GetOutputPort();
+      double nodeSpacing[3] = { 1.0, 1.0, 1.0 };
+      providerVolumeNode->GetSpacing(nodeSpacing);
+      double uniformScale = std::max(std::max(fabs(nodeSpacing[0]), fabs(nodeSpacing[1])), fabs(nodeSpacing[2]));
+      if (uniformScale > 0.0)
+      {
+        // Rescale the actor matrix columns to a uniform length and put the
+        // per-axis remainder (the anisotropy ratios) into the image spacing.
+        double anisotropy[3] = { 1.0, 1.0, 1.0 };
+        for (int axis = 0; axis < 3; axis++)
+        {
+          anisotropy[axis] = fabs(nodeSpacing[axis]) / uniformScale;
+          if (anisotropy[axis] <= 0.0)
+          {
+            anisotropy[axis] = 1.0;
+          }
+          for (int row = 0; row < 3; row++)
+          {
+            pipeline->IJKToWorldMatrix->SetElement(row, axis, pipeline->IJKToWorldMatrix->GetElement(row, axis) / anisotropy[axis]);
+          }
+        }
+        pipeline->IJKToWorldMatrix->Modified();
+
+        // Variable-resolution rendering of multi-resolution provider
+        // volumes: render only the region visible in the camera frustum, at
+        // the resolution level that matches the camera zoom. The region
+        // image carries the displayed level's grid scale and the anisotropy
+        // ratios in its spacing.
+        if (this->UpdateVariableResolutionInput(displayNode, pipeline, anisotropy))
+        {
+          imageConnection = pipeline->VariableResolutionTrivialProducer->GetOutputPort();
+        }
+        else
+        {
+          pipeline->VariableResolutionImageData->Initialize(); // free memory
+          // Render the volume node's own image with the anisotropy ratios
+          // applied to its spacing (metadata only, no pixel copy).
+          pipeline->ReferenceSpacingFilter->SetInputConnection(imageConnection);
+          pipeline->ReferenceSpacingFilter->SetOutputSpacing(anisotropy);
+          imageConnection = pipeline->ReferenceSpacingFilter->GetOutputPort();
+        }
+      }
     }
     else
     {
+      pipeline->UseVariableResolution = false;
+      pipeline->DisplayedResolutionLevel = -1;
       pipeline->VariableResolutionImageData->Initialize(); // free memory
     }
 
