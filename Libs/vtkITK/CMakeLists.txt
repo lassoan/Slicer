@@ -47,6 +47,13 @@ set(${PROJECT_NAME}_ITK_COMPONENTS
   ITKThresholding
   ITKVTK
   )
+# Optional OME-Zarr/NGFF support (resolution level selection in the readers)
+find_package(ITK 5.0 REQUIRED)
+if("IOOMEZarrNGFF" IN_LIST ITK_MODULES_ENABLED)
+  list(APPEND ${PROJECT_NAME}_ITK_COMPONENTS IOOMEZarrNGFF)
+  add_definitions(-DVTKITK_HAS_OMEZARRNGFF_SUPPORT)
+endif()
+
 find_package(ITK 5.0 COMPONENTS ${${PROJECT_NAME}_ITK_COMPONENTS} REQUIRED)
 if(ITK_VERSION VERSION_GREATER_EQUAL "5.3")
   foreach(factory_uc IN ITEMS "IMAGEIO" "MESHIO" "TRANSFORMIO")

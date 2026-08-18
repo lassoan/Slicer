@@ -111,6 +111,14 @@ public:
   vtkSetMacro(FileNameSliceCount, int);
   vtkGetMacro(FileNameSliceCount, int);
 
+  ///
+  /// Resolution level (dataset index) to read from multi-resolution files
+  /// (currently supported for OME-Zarr/NGFF images read by
+  /// itk::OMEZarrNGFFImageIO). 0 (default) is the highest resolution.
+  /// Ignored by file formats that do not support multiple resolutions.
+  vtkSetMacro(DatasetIndex, int);
+  vtkGetMacro(DatasetIndex, int);
+
   /// Determine if the file can be read using ITK
   virtual int CanReadFile(const char* filename);
 
@@ -785,6 +793,12 @@ protected:
   int FileNameSliceOffset;
   int FileNameSliceSpacing;
   int FileNameSliceCount;
+  int DatasetIndex{ 0 };
+
+  /// Create an image IO configured with the requested dataset (resolution)
+  /// index for file formats that support it. Returns nullptr if the default
+  /// factory-created IO should be used.
+  itk::ImageIOBase::Pointer CreateImageIOWithDatasetIndex(const char* fileName);
 
   vtkMatrix4x4* RasToIjkMatrix;
   vtkMatrix4x4* MeasurementFrameMatrix;

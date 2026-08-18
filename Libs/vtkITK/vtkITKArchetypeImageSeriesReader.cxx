@@ -30,8 +30,12 @@
 #include <vtkStreamingDemandDrivenPipeline.h>
 
 // ITK includes
+#include <itkImageIOFactory.h>
 #include <itkNiftiImageIO.h>
 #include <itkNrrdImageIO.h>
+#ifdef VTKITK_HAS_OMEZARRNGFF_SUPPORT
+# include <itkOMEZarrNGFFImageIO.h>
+#endif
 #include <itkMetaDataDictionary.h>
 #include <itkMetaDataObjectBase.h>
 #include <itkMetaDataObject.h>
@@ -179,6 +183,27 @@ void vtkITKArchetypeImageSeriesReader::PrintSelf(ostream& os, vtkIndent indent)
 }
 
 //----------------------------------------------------------------------------
+itk::ImageIOBase::Pointer vtkITKArchetypeImageSeriesReader::CreateImageIOWithDatasetIndex(const char* fileName)
+{
+  if (this->DatasetIndex == 0)
+  {
+    // Default resolution: use the default (factory-selected) image IO.
+    return nullptr;
+  }
+#ifdef VTKITK_HAS_OMEZARRNGFF_SUPPORT
+  itk::ImageIOBase::Pointer imageIO = itk::ImageIOFactory::CreateImageIO(fileName, itk::IOFileModeEnum::ReadMode);
+  itk::OMEZarrNGFFImageIO* zarrImageIO = dynamic_cast<itk::OMEZarrNGFFImageIO*>(imageIO.GetPointer());
+  if (zarrImageIO)
+  {
+    zarrImageIO->SetDatasetIndex(this->DatasetIndex);
+    return imageIO;
+  }
+#endif
+  vtkWarningMacro("DatasetIndex " << this->DatasetIndex << " is requested but resolution selection is not supported for file: " << (fileName ? fileName : "(none)"));
+  return nullptr;
+}
+
+//----------------------------------------------------------------------------
 int vtkITKArchetypeImageSeriesReader::CanReadFile(const char* filename)
 {
   if (!filename)
@@ -267,6 +292,11 @@ itk::ImageIOBase::Pointer vtkITKArchetypeImageSeriesReader::GetImageIO(const cha
         imageReader->SetImageIO(dicomIO);
       }
 #endif
+      itk::ImageIOBase::Pointer datasetIndexIO = this->CreateImageIOWithDatasetIndex(this->FileNames[0].c_str());
+      if (datasetIndexIO)
+      {
+        imageReader->SetImageIO(datasetIndexIO);
+      }
       imageReader->UpdateOutputInformation();
       imageIO = imageReader->GetImageIO();
       if (imageIO.GetPointer() == nullptr)
@@ -331,6 +361,14 @@ int vtkITKArchetypeImageSeriesReader::RequestInformation(vtkInformation* vtkNotU
   std::vector<std::string> candidateSeries;
   int extent[6];
   std::string fileNameCollapsed = itksys::SystemTools::CollapseFullPath(this->Archetype);
+
+  // Directory-based datasets (e.g. OME-Zarr images) are always a single
+  // dataset: scanning for a numbered file series is meaningless and can be
+  // very slow (the directory may contain thousands of chunk files).
+  if (this->Archetype && itksys::SystemTools::FileIsDirectory(this->Archetype))
+  {
+    this->SingleFile = 1;
+  }
 
   if (this->SingleFile)
   {

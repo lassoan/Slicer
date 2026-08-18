@@ -126,6 +126,14 @@ int vtkITKArchetypeImageSeriesScalarReader::RequestData(vtkInformation* vtkNotUs
     pcl->SetClientData(this);                                                                                                                                      \
     reader##typeN->AddObserver(itk::ProgressEvent(), pcl);                                                                                                         \
     reader##typeN->SetFileNames(this->FileNames);                                                                                                                  \
+    if (!this->ArchetypeIsDICOM)                                                                                                                                   \
+    {                                                                                                                                                              \
+      imageIO = this->CreateImageIOWithDatasetIndex(this->FileNames[0].c_str());                                                                                   \
+      if (imageIO)                                                                                                                                                 \
+      {                                                                                                                                                            \
+        reader##typeN->SetImageIO(imageIO);                                                                                                                        \
+      }                                                                                                                                                            \
+    }                                                                                                                                                              \
     reader##typeN->ReleaseDataFlagOn();                                                                                                                            \
     if (this->UseNativeCoordinateOrientation)                                                                                                                      \
     {                                                                                                                                                              \
