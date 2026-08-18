@@ -46,6 +46,34 @@
 #include <vtkTrivialProducer.h>
 #include <vtkWeakPointer.h>
 
+namespace
+{
+
+//------------------------------------------------------------------------------
+/// If the volume's voxel data is supplied by a multi-resolution provider then
+/// the volume node's own grid is a coarser preview (reference) level, but the
+/// widget should describe the actual data set: full-resolution (level 0)
+/// dimensions and spacing. Returns the grid scale of the node's reference
+/// level relative to full resolution (for example {8.0, 8.0, 1.0}), or false
+/// if the volume has no provider or the node grid is already full resolution.
+bool referenceLevelScale(vtkMRMLVolumeNode* volumeNode, double scale[3])
+{
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(volumeNode);
+  vtkMRMLVoxelDataProvider* provider = scalarVolumeNode ? scalarVolumeNode->GetVoxelDataProvider() : nullptr;
+  if (!provider)
+  {
+    return false;
+  }
+  int referenceLevel = provider->GetReferenceResolutionLevel();
+  if (referenceLevel == 0 || !provider->GetLevelScale(referenceLevel, scale))
+  {
+    return false;
+  }
+  return true;
+}
+
+} // namespace
+
 //------------------------------------------------------------------------------
 class qMRMLVolumeInfoWidgetPrivate : public Ui_qMRMLVolumeInfoWidget
 {
@@ -225,9 +253,24 @@ void qMRMLVolumeInfoWidget::updateWidgetFromMRML()
     dimensions[1] = dims[1];
     dimensions[2] = dims[2];
   }
+  double spacing[3] = { 1., 1., 1. };
+  d->VolumeNode->GetSpacing(spacing);
+  // For multi-resolution provider volumes the node grid is a coarser preview
+  // level; report the actual data set: full-resolution dimensions and spacing.
+  double levelScale[3] = { 1., 1., 1. };
+  if (referenceLevelScale(d->VolumeNode, levelScale))
+  {
+    int fullResolutionExtent[6] = { 0, -1, 0, -1, 0, -1 };
+    if (scalarVolumeNode->GetVoxelDataProvider()->GetExtent(fullResolutionExtent, 0))
+    {
+      for (int i = 0; i < 3; i++)
+      {
+        dimensions[i] = fullResolutionExtent[2 * i + 1] - fullResolutionExtent[2 * i] + 1;
+        spacing[i] /= levelScale[i];
+      }
+    }
+  }
   d->ImageDimensionsWidget->setCoordinates(dimensions);
-
-  double* spacing = d->VolumeNode->GetSpacing();
   d->ImageSpacingWidget->setCoordinates(spacing);
 
   double* origin = d->VolumeNode->GetOrigin();
@@ -404,6 +447,15 @@ void qMRMLVolumeInfoWidget::setImageSpacing(double* spacing)
   {
     return;
   }
+  // The widget displays full-resolution spacing; the node grid may be a
+  // coarser preview level of a multi-resolution provider.
+  double levelScale[3] = { 1., 1., 1. };
+  if (referenceLevelScale(d->VolumeNode, levelScale))
+  {
+    double nodeSpacing[3] = { spacing[0] * levelScale[0], spacing[1] * levelScale[1], spacing[2] * levelScale[2] };
+    d->VolumeNode->SetSpacing(nodeSpacing);
+    return;
+  }
   d->VolumeNode->SetSpacing(spacing);
 }
 
@@ -448,9 +500,16 @@ void qMRMLVolumeInfoWidget::setScanOrder(int index)
     return;
   }
   QString scanOrder = d->ScanOrderComboBox->itemData(index).toString();
+  // Query the node grid dimensions without materializing the physical image
+  // of a volume with active voxel value scaling.
+  int extent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!d->VolumeNode->GetImageExtent(extent))
+  {
+    return;
+  }
+  int dimensions[3] = { extent[1] - extent[0] + 1, extent[3] - extent[2] + 1, extent[5] - extent[4] + 1 };
   vtkNew<vtkMatrix4x4> IJKToRAS;
-  if (vtkMRMLVolumeNode::ComputeIJKToRASFromScanOrder(
-        scanOrder.toUtf8(), d->VolumeNode->GetSpacing(), d->VolumeNode->GetImageData()->GetDimensions(), this->isCentered(), IJKToRAS.GetPointer()))
+  if (vtkMRMLVolumeNode::ComputeIJKToRASFromScanOrder(scanOrder.toUtf8(), d->VolumeNode->GetSpacing(), dimensions, this->isCentered(), IJKToRAS.GetPointer()))
   {
     if (!this->isCentered())
     {
