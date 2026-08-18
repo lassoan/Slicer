@@ -33,6 +33,7 @@
 #include <vtksys/SystemInformation.hxx>
 
 // STD includes
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -116,9 +117,24 @@ vtkMRMLOMEZarrVoxelDataProvider::~vtkMRMLOMEZarrVoxelDataProvider()
     this->WorkerShouldStop = true;
   }
   this->Condition.notify_all();
-  if (this->Worker.joinable())
+  for (std::thread& worker : this->Workers)
   {
-    this->Worker.join();
+    if (worker.joinable())
+    {
+      worker.join();
+    }
+  }
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLOMEZarrVoxelDataProvider::SetNumberOfWorkerThreads(int numberOfThreads)
+{
+  this->NumberOfWorkerThreads = std::max(1, std::min(16, numberOfThreads));
+  if (!this->Workers.empty())
+  {
+    // Grow the running pool on demand; shrinking takes effect for providers
+    // that have not started their workers yet
+    this->EnsureWorkers();
   }
 }
 
@@ -732,7 +748,7 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
     {
       return false;
     }
-    // Already being served by the executing or the queued request
+    // Already being served by an executing or queued request
     auto requestCovers = [&](const RegionRequest& request)
     {
       if (request.Level != resolutionLevel)
@@ -752,10 +768,19 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
       }
       return true;
     };
-    if ((this->RequestInProgress && requestCovers(this->InProgressRequest)) //
-        || (this->HasPendingRequest && requestCovers(this->PendingRequest)))
+    for (const std::shared_ptr<ActiveRequest>& active : this->ActiveRequests)
     {
-      return true;
+      if (requestCovers(active->Request))
+      {
+        return true;
+      }
+    }
+    for (const RegionRequest& queued : this->PendingRequests)
+    {
+      if (requestCovers(queued))
+      {
+        return true;
+      }
     }
   }
   // Small levels are fetched and cached whole (reusable by all views);
@@ -766,20 +791,26 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
   {
     return false;
   }
-  this->EnsureWorker();
+  this->EnsureWorkers();
   {
     std::lock_guard<std::mutex> lock(this->Mutex);
-    // Only the most recent request is kept: older pending requests are
-    // superseded (e.g. during continued zooming/panning).
-    this->PendingRequest.Level = resolutionLevel;
-    this->PendingRequest.WholeLevel = wholeLevel;
+    RegionRequest request;
+    request.Level = resolutionLevel;
+    request.WholeLevel = wholeLevel;
     for (int i = 0; i < 6; ++i)
     {
-      this->PendingRequest.Extent[i] = extent[i];
+      request.Extent[i] = extent[i];
     }
-    this->HasPendingRequest = true;
+    this->PendingRequests.push_back(request);
+    // Bound the queue: the oldest requests are superseded (their requesters
+    // re-request on every update while unserved)
+    const size_t maximumQueuedRequests = 16;
+    while (this->PendingRequests.size() > maximumQueuedRequests)
+    {
+      this->PendingRequests.pop_front();
+    }
   }
-  this->Condition.notify_all();
+  this->Condition.notify_one();
   return true;
 }
 
@@ -787,31 +818,51 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
 bool vtkMRMLOMEZarrVoxelDataProvider::HasPendingRegionRequests()
 {
   std::lock_guard<std::mutex> lock(this->Mutex);
-  return (this->HasPendingRequest || this->RequestInProgress || !this->CompletedLevels.empty());
+  return (!this->PendingRequests.empty() || !this->ActiveRequests.empty() || !this->CompletedLevels.empty());
 }
+
+//----------------------------------------------------------------------------
+namespace
+{
+double vtkMRMLOMEZarrActiveRequestProgress(int tilesCompleted,
+                                           int tilesTotal,
+                                           double bytes,
+                                           const std::chrono::steady_clock::time_point& startTime,
+                                           double throughputBytesPerSecond)
+{
+  if (tilesTotal > 0)
+  {
+    // Real progress: completed tiles of the tiled region read
+    return std::min(0.98, static_cast<double>(tilesCompleted) / tilesTotal);
+  }
+  // Estimate from the request size and the observed retrieval throughput
+  double elapsedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
+  if (throughputBytesPerSecond <= 0.0 || bytes <= 0.0)
+  {
+    // Unknown speed: fill gradually over ~10 seconds
+    return std::min(0.9, elapsedSeconds / 10.0);
+  }
+  double expectedSeconds = bytes / throughputBytesPerSecond;
+  return std::max(0.02, std::min(0.95, elapsedSeconds / expectedSeconds));
+}
+} // namespace
 
 //----------------------------------------------------------------------------
 double vtkMRMLOMEZarrVoxelDataProvider::GetPendingRegionRequestProgress()
 {
   std::lock_guard<std::mutex> lock(this->Mutex);
-  if (!this->RequestInProgress)
+  double progress = -1.0;
+  for (const std::shared_ptr<ActiveRequest>& active : this->ActiveRequests)
   {
-    return this->HasPendingRequest ? 0.0 : -1.0;
+    double activeProgress =
+      vtkMRMLOMEZarrActiveRequestProgress(active->TilesCompleted, active->TilesTotal, active->Bytes, active->StartTime, this->ThroughputBytesPerSecond);
+    progress = std::max(progress, activeProgress);
   }
-  if (this->TilesTotal > 0)
+  if (progress < 0.0 && !this->PendingRequests.empty())
   {
-    // Real progress: completed tiles of the tiled region read
-    return std::min(0.98, static_cast<double>(this->TilesCompleted) / this->TilesTotal);
+    progress = 0.0;
   }
-  // Estimate from the request size and the observed retrieval throughput
-  double elapsedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - this->RequestStartTime).count();
-  if (this->ThroughputBytesPerSecond <= 0.0 || this->RequestInProgressBytes <= 0.0)
-  {
-    // Unknown speed: fill gradually over ~10 seconds
-    return std::min(0.9, elapsedSeconds / 10.0);
-  }
-  double expectedSeconds = this->RequestInProgressBytes / this->ThroughputBytesPerSecond;
-  return std::max(0.02, std::min(0.95, elapsedSeconds / expectedSeconds));
+  return progress;
 }
 
 //----------------------------------------------------------------------------
@@ -837,17 +888,19 @@ double vtkMRMLOMEZarrVoxelDataProvider::GetRegionRequestProgress(const int exten
     }
     return true;
   };
-  if (this->RequestInProgress && requestCovers(this->InProgressRequest))
+  for (const std::shared_ptr<ActiveRequest>& active : this->ActiveRequests)
   {
-    if (this->TilesTotal > 0)
+    if (requestCovers(active->Request))
     {
-      return std::min(0.98, static_cast<double>(this->TilesCompleted) / this->TilesTotal);
+      return vtkMRMLOMEZarrActiveRequestProgress(active->TilesCompleted, active->TilesTotal, active->Bytes, active->StartTime, this->ThroughputBytesPerSecond);
     }
-    return 0.02;
   }
-  if (this->HasPendingRequest && requestCovers(this->PendingRequest))
+  for (const RegionRequest& queued : this->PendingRequests)
   {
-    return 0.0;
+    if (requestCovers(queued))
+    {
+      return 0.0;
+    }
   }
   return -1.0;
 }
@@ -858,48 +911,54 @@ void vtkMRMLOMEZarrVoxelDataProvider::ProcessPendingRegionRequests()
   std::vector<int> completed;
   {
     std::lock_guard<std::mutex> lock(this->Mutex);
-    // Progressive (tile-by-tile) display: copy the tiles that the worker
-    // completed since the last call from its private image into the
-    // published placeholder image that views are displaying. The copy is
+    // Progressive (tile-by-tile) display: copy the tiles that the workers
+    // completed since the last call from their private images into the
+    // published placeholder images that views are displaying. The copy is
     // done on the main thread so that it cannot race with rendering.
-    if (!this->CompletedTileExtents.empty() && this->InProgressPublishedImage && this->InProgressPrivateImage)
+    for (auto activeIt = this->ActiveRequests.begin(); activeIt != this->ActiveRequests.end();)
     {
-      long long bytesPerVoxel = this->InProgressPrivateImage->GetScalarSize() * this->InProgressPrivateImage->GetNumberOfScalarComponents();
-      const int* privateExtent = this->InProgressPrivateImage->GetExtent();
-      long long rowBytes = static_cast<long long>(privateExtent[1] - privateExtent[0] + 1) * bytesPerVoxel;
-      for (const std::array<int, 6>& tileExtent : this->CompletedTileExtents)
+      ActiveRequest* active = activeIt->get();
+      if (!active->CompletedTileExtents.empty() && active->PublishedImage && active->PrivateImage)
       {
-        for (int k = tileExtent[4]; k <= tileExtent[5]; ++k)
+        long long bytesPerVoxel = active->PrivateImage->GetScalarSize() * active->PrivateImage->GetNumberOfScalarComponents();
+        const int* privateExtent = active->PrivateImage->GetExtent();
+        long long rowBytes = static_cast<long long>(privateExtent[1] - privateExtent[0] + 1) * bytesPerVoxel;
+        for (const std::array<int, 6>& tileExtent : active->CompletedTileExtents)
         {
-          for (int j = tileExtent[2]; j <= tileExtent[3]; ++j)
+          for (int k = tileExtent[4]; k <= tileExtent[5]; ++k)
           {
-            memcpy(this->InProgressPublishedImage->GetScalarPointer(privateExtent[0], j, k), //
-                   this->InProgressPrivateImage->GetScalarPointer(privateExtent[0], j, k),
-                   rowBytes);
+            for (int j = tileExtent[2]; j <= tileExtent[3]; ++j)
+            {
+              memcpy(active->PublishedImage->GetScalarPointer(privateExtent[0], j, k), //
+                     active->PrivateImage->GetScalarPointer(privateExtent[0], j, k),
+                     rowBytes);
+            }
+          }
+          this->CompletedLevels.push_back(active->Request.Level);
+        }
+        active->CompletedTileExtents.clear();
+        active->PublishedImage->GetPointData()->GetScalars()->Modified();
+      }
+      // Once the worker finished successfully and all tiles were copied,
+      // the region is complete
+      if (active->Finished && active->Succeeded && active->CompletedTileExtents.empty())
+      {
+        if (active->PublishedImage)
+        {
+          for (CachedRegion& cachedRegion : this->RegionCache)
+          {
+            if (cachedRegion.Image == active->PublishedImage)
+            {
+              cachedRegion.Complete = true;
+            }
           }
         }
-        this->CompletedLevels.push_back(this->InProgressRequest.Level);
+        activeIt = this->ActiveRequests.erase(activeIt);
       }
-      this->CompletedTileExtents.clear();
-      this->InProgressPublishedImage->GetPointData()->GetScalars()->Modified();
-    }
-    // Once the worker finished successfully and all tiles were copied,
-    // the region is complete
-    if (this->ProgressiveCompleted && this->CompletedTileExtents.empty())
-    {
-      if (this->InProgressPublishedImage)
+      else
       {
-        for (CachedRegion& cachedRegion : this->RegionCache)
-        {
-          if (cachedRegion.Image == this->InProgressPublishedImage)
-          {
-            cachedRegion.Complete = true;
-          }
-        }
+        ++activeIt;
       }
-      this->InProgressPublishedImage = nullptr;
-      this->InProgressPrivateImage = nullptr;
-      this->ProgressiveCompleted = false;
     }
     completed.swap(this->CompletedLevels);
   }
@@ -910,14 +969,13 @@ void vtkMRMLOMEZarrVoxelDataProvider::ProcessPendingRegionRequests()
 }
 
 //----------------------------------------------------------------------------
-void vtkMRMLOMEZarrVoxelDataProvider::EnsureWorker()
+void vtkMRMLOMEZarrVoxelDataProvider::EnsureWorkers()
 {
-  if (this->Worker.joinable())
-  {
-    return;
-  }
   this->WorkerShouldStop = false;
-  this->Worker = std::thread(&vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop, this);
+  while (this->Workers.size() < static_cast<size_t>(this->NumberOfWorkerThreads))
+  {
+    this->Workers.emplace_back(&vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop, this);
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -991,52 +1049,74 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
 {
   for (;;)
   {
-    RegionRequest request;
+    std::shared_ptr<ActiveRequest> active;
     {
       std::unique_lock<std::mutex> lock(this->Mutex);
-      this->Condition.wait(lock, [this] { return this->WorkerShouldStop || this->HasPendingRequest; });
+      this->Condition.wait(lock, [this] { return this->WorkerShouldStop || !this->PendingRequests.empty(); });
       if (this->WorkerShouldStop)
       {
         return;
       }
-      request = this->PendingRequest;
-      this->HasPendingRequest = false;
+      RegionRequest request = this->PendingRequests.front();
+      this->PendingRequests.pop_front();
       bool alreadyAvailable = (this->LevelImages.find(request.Level) != this->LevelImages.end()) //
-                              || (!request.WholeLevel && this->FindCoveringCachedRegion(request.Extent, request.Level) != nullptr);
-      if (alreadyAvailable)
+                              || (!request.WholeLevel && this->FindCoveringCachedRegion(request.Extent, request.Level, /*requireComplete=*/true) != nullptr);
+      bool alreadyBeingServed = false;
+      for (const std::shared_ptr<ActiveRequest>& other : this->ActiveRequests)
       {
-        // Became available meanwhile: report as completed
-        this->CompletedLevels.push_back(request.Level);
+        if (other->Request.Level == request.Level && other->Request.WholeLevel == request.WholeLevel)
+        {
+          bool sameExtent = true;
+          for (int i = 0; i < 6 && sameExtent; ++i)
+          {
+            sameExtent = (other->Request.Extent[i] == request.Extent[i]);
+          }
+          if (sameExtent || request.WholeLevel)
+          {
+            alreadyBeingServed = true;
+            break;
+          }
+        }
+      }
+      if (alreadyAvailable || alreadyBeingServed)
+      {
+        if (alreadyAvailable)
+        {
+          // Became available meanwhile: report as completed
+          this->CompletedLevels.push_back(request.Level);
+        }
         continue;
       }
-      // Bookkeeping for the loading progress estimate
-      this->RequestInProgress = true;
-      this->InProgressRequest = request;
-      this->RequestStartTime = std::chrono::steady_clock::now();
+      active = std::make_shared<ActiveRequest>();
+      active->Request = request;
+      active->StartTime = std::chrono::steady_clock::now();
       if (request.WholeLevel)
       {
-        this->RequestInProgressBytes = static_cast<double>(this->GetLevelMemoryBytes(request.Level));
+        active->Bytes = static_cast<double>(this->GetLevelMemoryBytes(request.Level));
       }
       else
       {
         double numberOfVoxels = static_cast<double>(request.Extent[1] - request.Extent[0] + 1)   //
                                 * static_cast<double>(request.Extent[3] - request.Extent[2] + 1) //
                                 * static_cast<double>(request.Extent[5] - request.Extent[4] + 1);
-        this->RequestInProgressBytes = numberOfVoxels * vtkDataArray::GetDataTypeSize(this->ScalarType) * this->NumberOfComponents;
+        active->Bytes = numberOfVoxels * vtkDataArray::GetDataTypeSize(this->ScalarType) * this->NumberOfComponents;
       }
+      this->ActiveRequests.push_back(active);
     }
+    const RegionRequest request = active->Request;
     // Load outside the lock (this is the expensive part)
-    auto finishRequest = [this](bool success)
+    auto finishRequest = [this, &active](bool success)
     {
       // The caller must hold Mutex. Update the observed throughput (EMA)
       // that the progress estimate of future requests is computed from.
-      double elapsedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - this->RequestStartTime).count();
-      if (success && elapsedSeconds > 0.05 && this->RequestInProgressBytes > 0.0)
+      double elapsedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - active->StartTime).count();
+      if (success && elapsedSeconds > 0.05 && active->Bytes > 0.0)
       {
-        double bytesPerSecond = this->RequestInProgressBytes / elapsedSeconds;
+        double bytesPerSecond = active->Bytes / elapsedSeconds;
         this->ThroughputBytesPerSecond = (this->ThroughputBytesPerSecond > 0.0) ? (0.5 * this->ThroughputBytesPerSecond + 0.5 * bytesPerSecond) : bytesPerSecond;
       }
-      this->RequestInProgress = false;
+      active->Finished = true;
+      active->Succeeded = success;
     };
     // The region (or the whole level) is read in multiple smaller tiles:
     // TensorStore fetches only the chunks intersecting each tile, progress is
@@ -1079,10 +1159,8 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         if (placeholder)
         {
           std::lock_guard<std::mutex> lock(this->Mutex);
-          this->InProgressPublishedImage = placeholder;
-          this->InProgressPrivateImage = image;
-          this->CompletedTileExtents.clear();
-          this->ProgressiveCompleted = false;
+          active->PublishedImage = placeholder;
+          active->PrivateImage = image;
           progressive = true;
         }
       }
@@ -1102,9 +1180,14 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       int numberOfTiles = (axisDim + unitsPerTile - 1) / unitsPerTile;
       {
         std::lock_guard<std::mutex> lock(this->Mutex);
-        this->TilesTotal = numberOfTiles;
-        this->TilesCompleted = 0;
+        active->TilesTotal = numberOfTiles;
+        active->TilesCompleted = 0;
       }
+      // Note: a started read always runs to completion (except at shutdown).
+      // Several views request regions of the same provider; only the
+      // guarantee that every started read completes (and its result is
+      // cached, triggering the unserved views to re-request) makes the
+      // request handling converge.
       for (int tileIndex = 0; tileIndex < numberOfTiles && success; ++tileIndex)
       {
         {
@@ -1112,26 +1195,6 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
           if (this->WorkerShouldStop)
           {
             return;
-          }
-          if (this->HasPendingRequest)
-          {
-            bool samePendingRequest = (this->PendingRequest.Level == request.Level && this->PendingRequest.WholeLevel == request.WholeLevel);
-            for (int i = 0; i < 6 && samePendingRequest; ++i)
-            {
-              samePendingRequest = (this->PendingRequest.Extent[i] == request.Extent[i]);
-            }
-            if (samePendingRequest)
-            {
-              // Duplicate of what is being read: absorb it
-              this->HasPendingRequest = false;
-            }
-            // Note: a different pending request must NOT abandon the current
-            // read. Several views request regions of the same provider and
-            // supersede each other in the single-slot request queue; only the
-            // guarantee that every started read completes (and its result is
-            // cached, triggering the unserved views to re-request) makes this
-            // converge. Abandoning superseded reads would need per-requester
-            // queues to avoid a livelock.
           }
         }
         int tileExtent[6];
@@ -1180,7 +1243,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         if (success)
         {
           std::lock_guard<std::mutex> lock(this->Mutex);
-          this->TilesCompleted = tileIndex + 1;
+          active->TilesCompleted = tileIndex + 1;
           if (progressive)
           {
             // Publish this tile: the main thread copies it into the
@@ -1190,7 +1253,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
             {
               completedTile[i] = tileExtent[i];
             }
-            this->CompletedTileExtents.push_back(completedTile);
+            active->CompletedTileExtents.push_back(completedTile);
           }
         }
       }
@@ -1198,25 +1261,21 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
     }
     {
       std::lock_guard<std::mutex> lock(this->Mutex);
-      this->TilesTotal = 0;
-      this->TilesCompleted = 0;
       if (progressive)
       {
-        if (success && !abandoned)
-        {
-          // The published placeholder already holds (or will hold, after the
-          // main thread copied the last tiles) the real data; the main
-          // thread marks it complete.
-          this->ProgressiveCompleted = true;
-        }
-        else
+        finishRequest(success && !abandoned);
+        if (!active->Succeeded)
         {
           // Discard the partial read; the placeholder region stays cached
           // (incomplete), so views keep showing it and re-request the data.
-          this->CompletedTileExtents.clear();
-          this->InProgressPublishedImage = nullptr;
-          this->InProgressPrivateImage = nullptr;
+          active->CompletedTileExtents.clear();
+          active->PublishedImage = nullptr;
+          active->PrivateImage = nullptr;
+          this->ActiveRequests.erase(std::remove(this->ActiveRequests.begin(), this->ActiveRequests.end(), active), this->ActiveRequests.end());
         }
+        // Successful progressive requests stay in ActiveRequests until the
+        // main thread copied the remaining tiles and marked the published
+        // region complete (in ProcessPendingRegionRequests).
       }
       else if (success && !abandoned)
       {
@@ -1239,6 +1298,11 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         }
         this->CompletedLevels.push_back(request.Level);
       }
+      if (!progressive)
+      {
+        finishRequest(success && !abandoned);
+        this->ActiveRequests.erase(std::remove(this->ActiveRequests.begin(), this->ActiveRequests.end(), active), this->ActiveRequests.end());
+      }
       // Keep only the most recently used regions
       while (this->RegionCache.size() > MaximumCachedRegions)
       {
@@ -1252,7 +1316,6 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         }
         this->RegionCache.erase(this->RegionCache.begin() + oldestIndex);
       }
-      finishRequest(success && !abandoned);
     }
   }
 }

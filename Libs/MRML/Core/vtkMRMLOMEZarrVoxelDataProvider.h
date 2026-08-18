@@ -20,6 +20,8 @@
 #include <array>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
+#include <memory>
 #include <map>
 #include <mutex>
 #include <string>
@@ -88,6 +90,16 @@ public:
   //@}
 
   //@{
+  /// Number of worker threads that serve background region requests
+  /// concurrently (several views can stream different regions at the same
+  /// time). Default: 4. The pool grows on demand up to this count; reducing
+  /// the count takes effect for providers that have not started their
+  /// workers yet.
+  void SetNumberOfWorkerThreads(int numberOfThreads);
+  int GetNumberOfWorkerThreads() { return this->NumberOfWorkerThreads; }
+  //@}
+
+  //@{
   /// vtkMRMLVoxelDataProvider interface
   int GetNumberOfResolutionLevels() override;
   bool GetLevelScale(int resolutionLevel, double scale[3]) override;
@@ -138,7 +150,7 @@ protected:
 
   vtkSmartPointer<vtkImageData> GetCachedLevelImage(int level);
 
-  void EnsureWorker();
+  void EnsureWorkers();
   void WorkerLoop();
 
   std::string FileName;
@@ -188,46 +200,43 @@ protected:
   /// Number of recently used regions kept per provider
   static constexpr size_t MaximumCachedRegions = 4;
 
-  std::mutex Mutex; // guards LevelImages, LevelAccessOrder, RegionCache, PendingRequest, HasPendingRequest, CompletedLevels, WorkerShouldStop
+  /// A background request being executed by a worker thread. The region is
+  /// read in multiple smaller tiles: the tile counters provide real
+  /// progress, and for progressive (tile-by-tile) display the worker reads
+  /// tiles into the private image while the main thread
+  /// (ProcessPendingRegionRequests) copies completed tiles into the
+  /// published (displayed) placeholder image.
+  struct ActiveRequest
+  {
+    RegionRequest Request;
+    int TilesTotal{ 0 };
+    int TilesCompleted{ 0 };
+    double Bytes{ 0.0 };
+    std::chrono::steady_clock::time_point StartTime;
+    vtkSmartPointer<vtkImageData> PublishedImage;
+    vtkSmartPointer<vtkImageData> PrivateImage;
+    std::vector<std::array<int, 6>> CompletedTileExtents;
+    /// Worker finished (success or failure); for progressive requests the
+    /// main thread then copies the remaining tiles and finalizes.
+    bool Finished{ false };
+    bool Succeeded{ false };
+  };
+
+  std::mutex Mutex; // guards LevelImages, LevelAccessOrder, RegionCache, PendingRequests, ActiveRequests, CompletedLevels, WorkerShouldStop
   std::map<int, vtkSmartPointer<vtkImageData>> LevelImages;
   /// Monotonic access stamps for LRU eviction (kept in sync with LevelImages)
   std::map<int, long long> LevelAccessOrder;
   long long AccessCounter{ 0 };
   std::vector<CachedRegion> RegionCache;
-  std::thread Worker;
+  int NumberOfWorkerThreads{ 4 };
+  std::vector<std::thread> Workers;
   std::condition_variable Condition;
   bool WorkerShouldStop{ false };
-  RegionRequest PendingRequest;
-  bool HasPendingRequest{ false };
+  std::deque<RegionRequest> PendingRequests;
+  std::vector<std::shared_ptr<ActiveRequest>> ActiveRequests;
   std::vector<int> CompletedLevels;
-
-  //@{
-  /// Progressive (tile-by-tile) display of the request being executed:
-  /// the worker reads tiles into a private image, and the main thread
-  /// (ProcessPendingRegionRequests) copies completed tiles into the
-  /// published (displayed) placeholder image.
-  RegionRequest InProgressRequest;
-  vtkSmartPointer<vtkImageData> InProgressPublishedImage;
-  vtkSmartPointer<vtkImageData> InProgressPrivateImage;
-  std::vector<std::array<int, 6>> CompletedTileExtents;
-  /// Set by the worker when the streamed request finished successfully;
-  /// the main thread then marks the published region complete after the
-  /// last tiles have been copied.
-  bool ProgressiveCompleted{ false };
-  //@}
-
-  //@{
-  /// Progress of the request the worker is executing. The region is read in
-  /// multiple smaller tiles, so the tile counters provide real progress (and
-  /// allow abandoning a superseded request between tiles).
-  bool RequestInProgress{ false };
-  int TilesTotal{ 0 };
-  int TilesCompleted{ 0 };
-  double RequestInProgressBytes{ 0.0 };
-  std::chrono::steady_clock::time_point RequestStartTime;
   /// Exponential moving average of the observed retrieval throughput
   double ThroughputBytesPerSecond{ 0.0 };
-  //@}
 };
 
 #endif
