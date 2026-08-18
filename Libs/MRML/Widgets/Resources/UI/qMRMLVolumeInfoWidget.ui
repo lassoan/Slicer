@@ -362,6 +362,20 @@
      </property>
     </widget>
    </item>
+   <item row="15" column="0">
+    <widget class="QLabel" name="ResolutionLevelLabel">
+     <property name="text">
+      <string>Loaded resolution:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="15" column="1">
+    <widget class="QComboBox" name="ResolutionLevelComboBox">
+     <property name="toolTip">
+      <string>Resolution level of a multi-resolution image that is loaded into memory. Modules that are not aware of multiple resolution levels (for example Segment Editor effects) work on the image at this resolution. Finer levels are retrieved on demand by slice views regardless of this setting. Selecting a level reloads the volume from file.</string>
+     </property>
+    </widget>
+   </item>
   </layout>
  </widget>
  <customwidgets>

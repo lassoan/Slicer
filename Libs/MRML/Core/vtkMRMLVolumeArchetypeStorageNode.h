@@ -86,6 +86,18 @@ public:
   vtkBooleanMacro(ForceRightHandedIJKCoordinateSystem, bool);
   //@}
 
+  //@{
+  /// Resolution level to load from a multi-resolution image (e.g. OME-Zarr).
+  /// Level 0 is full resolution, each further level is coarser.
+  /// -1 (default) picks a fast preview level automatically: the finest level
+  /// that fits the preview voxel budget. The value is clamped to the valid
+  /// level range of the image when reading.
+  /// Only used for images that have multiple resolution levels; finer levels
+  /// remain available on demand via the volume's voxel data provider.
+  vtkGetMacro(PreferredResolutionLevel, int);
+  vtkSetMacro(PreferredResolutionLevel, int);
+  //@}
+
   /// Convert voxel vector type enum from vtkITK type to MRML type
   static int ConvertVoxelVectorTypeVTKITKToMRML(int vtkitkType);
   /// Convert voxel vector type enum from MRML type to vtkITK type
@@ -129,6 +141,7 @@ protected:
   int SingleFile;
   int UseOrientationFromFile;
   bool ForceRightHandedIJKCoordinateSystem;
+  int PreferredResolutionLevel{ -1 };
 };
 
 #endif

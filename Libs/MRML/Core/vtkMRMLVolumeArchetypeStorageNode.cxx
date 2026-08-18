@@ -232,6 +232,10 @@ void vtkMRMLVolumeArchetypeStorageNode::WriteXML(ostream& of, int nIndent)
     of << " centerImage=\"" << ss.str() << "\"";
   }
   of << " forceRightHandedIJKCoordinateSystem=\"" << (this->ForceRightHandedIJKCoordinateSystem ? "true" : "false") << "\"";
+  if (this->PreferredResolutionLevel >= 0)
+  {
+    of << " preferredResolutionLevel=\"" << this->PreferredResolutionLevel << "\"";
+  }
   {
     std::stringstream ss;
     ss << this->UseOrientationFromFile;
@@ -275,6 +279,14 @@ void vtkMRMLVolumeArchetypeStorageNode::ReadXMLAttributes(const char** atts)
     {
       this->SetForceRightHandedIJKCoordinateSystem(strcmp(attValue, "true") == 0);
     }
+    if (!strcmp(attName, "preferredResolutionLevel"))
+    {
+      int preferredResolutionLevel = -1;
+      std::stringstream ss;
+      ss << attValue;
+      ss >> preferredResolutionLevel;
+      this->SetPreferredResolutionLevel(preferredResolutionLevel);
+    }
   }
 
   // SingleFile attribute used to be read from the scene, but often
@@ -300,6 +312,7 @@ void vtkMRMLVolumeArchetypeStorageNode::Copy(vtkMRMLNode* anode)
   this->SetSingleFile(node->SingleFile);
   this->SetUseOrientationFromFile(node->UseOrientationFromFile);
   this->SetForceRightHandedIJKCoordinateSystem(node->ForceRightHandedIJKCoordinateSystem);
+  this->SetPreferredResolutionLevel(node->PreferredResolutionLevel);
 
   this->EndModify(disabledModify);
 }
@@ -312,6 +325,7 @@ void vtkMRMLVolumeArchetypeStorageNode::PrintSelf(ostream& os, vtkIndent indent)
   os << indent << "SingleFile:   " << this->SingleFile << "\n";
   os << indent << "UseOrientationFromFile:   " << this->UseOrientationFromFile << "\n";
   os << indent << "ForceRightHandedIJKCoordinateSystem:   " << (this->ForceRightHandedIJKCoordinateSystem ? "true" : "false") << "\n";
+  os << indent << "PreferredResolutionLevel:   " << this->PreferredResolutionLevel << "\n";
 }
 
 //----------------------------------------------------------------------------
@@ -552,8 +566,21 @@ int vtkMRMLVolumeArchetypeStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     vtkNew<vtkMRMLOMEZarrVoxelDataProvider> provider;
     if (provider->SetFileName(fullName) && provider->GetNumberOfResolutionLevels() > 1)
     {
-      // Preview budget: ~128 M voxels (256 MB for 16-bit voxels)
-      int referenceLevel = provider->PickReferenceResolutionLevel(128LL * 1024LL * 1024LL);
+      int referenceLevel = this->PreferredResolutionLevel;
+      if (referenceLevel < 0)
+      {
+        // Preview budget: ~128 M voxels (256 MB for 16-bit voxels)
+        referenceLevel = provider->PickReferenceResolutionLevel(128LL * 1024LL * 1024LL);
+      }
+      else
+      {
+        referenceLevel = std::min(referenceLevel, provider->GetNumberOfResolutionLevels() - 1);
+        if (!provider->IsLevelLoadable(referenceLevel))
+        {
+          vtkWarningMacro("ReadDataInternal: requested resolution level " << referenceLevel << " of '" << fullName
+                                                                          << "' is larger than the memory budget, loading it may exhaust system memory");
+        }
+      }
       provider->SetReferenceResolutionLevel(referenceLevel);
       reader->SetDatasetIndex(referenceLevel);
       zarrProvider = provider.GetPointer();

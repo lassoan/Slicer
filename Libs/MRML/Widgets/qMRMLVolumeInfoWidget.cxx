@@ -19,6 +19,7 @@
 ==============================================================================*/
 
 // Qt includes
+#include <QApplication>
 #include <QDebug>
 
 // CTK includes
@@ -35,6 +36,7 @@
 #include <vtkMRMLScalarVolumeNode.h>
 #include <vtkMRMLScalarVolumeDisplayNode.h>
 #include <vtkMRMLStorageNode.h>
+#include <vtkMRMLVolumeArchetypeStorageNode.h>
 #include <vtkMRMLVoxelDataProvider.h>
 
 // VTK includes
@@ -133,6 +135,9 @@ void qMRMLVolumeInfoWidgetPrivate::init()
   QObject::connect(this->VoxelValueScaleSpinBox, SIGNAL(editingFinished()), q, SLOT(setVoxelValueScaling()));
   QObject::connect(this->VoxelValueOffsetSpinBox, SIGNAL(editingFinished()), q, SLOT(setVoxelValueScaling()));
   QObject::connect(this->VoxelValueUnitsLineEdit, SIGNAL(editingFinished()), q, SLOT(setVoxelValueUnits()));
+  // activated (not currentIndexChanged) so that only user interaction
+  // triggers reloading the volume at another resolution level
+  QObject::connect(this->ResolutionLevelComboBox, SIGNAL(activated(int)), q, SLOT(setResolutionLevel(int)));
 
   // Window level presets are read-only
   q->setDataTypeEditable(false);
@@ -272,6 +277,37 @@ void qMRMLVolumeInfoWidget::updateWidgetFromMRML()
   }
   d->ImageDimensionsWidget->setCoordinates(dimensions);
   d->ImageSpacingWidget->setCoordinates(spacing);
+
+  // Resolution level selector: only shown for multi-resolution provider volumes
+  vtkMRMLVoxelDataProvider* provider = scalarVolumeNode ? scalarVolumeNode->GetVoxelDataProvider() : nullptr;
+  bool multiResolution = (provider && provider->GetNumberOfResolutionLevels() > 1);
+  d->ResolutionLevelLabel->setVisible(multiResolution);
+  d->ResolutionLevelComboBox->setVisible(multiResolution);
+  if (multiResolution)
+  {
+    bool wasBlocking = d->ResolutionLevelComboBox->blockSignals(true);
+    d->ResolutionLevelComboBox->clear();
+    for (int level = 0; level < provider->GetNumberOfResolutionLevels(); level++)
+    {
+      int levelExtent[6] = { 0, -1, 0, -1, 0, -1 };
+      QString itemText = QString::number(level);
+      if (provider->GetExtent(levelExtent, level))
+      {
+        int levelDimensions[3] = { levelExtent[1] - levelExtent[0] + 1, levelExtent[3] - levelExtent[2] + 1, levelExtent[5] - levelExtent[4] + 1 };
+        double levelGigaBytes = double(vtkDataArray::GetDataTypeSize(provider->GetScalarType())) * provider->GetNumberOfScalarComponents() //
+                                * levelDimensions[0] * levelDimensions[1] * levelDimensions[2] / (1024.0 * 1024.0 * 1024.0);
+        itemText = QString("%1: %2 x %3 x %4 (%5 GB)")
+                     .arg(level)
+                     .arg(levelDimensions[0])
+                     .arg(levelDimensions[1])
+                     .arg(levelDimensions[2])
+                     .arg(levelGigaBytes < 0.01 ? QString("<0.01") : QString::number(levelGigaBytes, 'f', 2));
+      }
+      d->ResolutionLevelComboBox->addItem(itemText, level);
+    }
+    d->ResolutionLevelComboBox->setCurrentIndex(d->ResolutionLevelComboBox->findData(provider->GetReferenceResolutionLevel()));
+    d->ResolutionLevelComboBox->blockSignals(wasBlocking);
+  }
 
   double* origin = d->VolumeNode->GetOrigin();
   d->ImageOriginWidget->setCoordinates(origin);
@@ -414,6 +450,39 @@ void qMRMLVolumeInfoWidget::setVoxelValueUnits()
   vtkNew<vtkCodedEntry> units;
   units->SetValueSchemeMeaning(unitsText.toStdString(), "UCUM", unitsText.toStdString());
   scalarVolumeNode->SetVoxelValueUnits(units.GetPointer());
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVolumeInfoWidget::setResolutionLevel(int index)
+{
+  Q_D(qMRMLVolumeInfoWidget);
+  vtkMRMLScalarVolumeNode* scalarVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(d->VolumeNode);
+  vtkMRMLVoxelDataProvider* provider = scalarVolumeNode ? scalarVolumeNode->GetVoxelDataProvider() : nullptr;
+  if (!provider)
+  {
+    return;
+  }
+  int level = d->ResolutionLevelComboBox->itemData(index).toInt();
+  if (level == provider->GetReferenceResolutionLevel())
+  {
+    return;
+  }
+  vtkMRMLVolumeArchetypeStorageNode* storageNode = vtkMRMLVolumeArchetypeStorageNode::SafeDownCast(scalarVolumeNode->GetStorageNode());
+  if (!storageNode)
+  {
+    qWarning() << Q_FUNC_INFO << "cannot change resolution level: volume has no archetype storage node";
+    this->updateWidgetFromMRML();
+    return;
+  }
+  storageNode->SetPreferredResolutionLevel(level);
+  QApplication::setOverrideCursor(Qt::WaitCursor);
+  bool success = storageNode->ReadData(scalarVolumeNode);
+  QApplication::restoreOverrideCursor();
+  if (!success)
+  {
+    qWarning() << Q_FUNC_INFO << "failed to reload volume at resolution level" << level;
+  }
+  this->updateWidgetFromMRML();
 }
 
 //------------------------------------------------------------------------------

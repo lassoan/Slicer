@@ -73,6 +73,9 @@ public slots:
   void setVoxelValueScaling();
   /// Apply the voxel value units editor to the volume node (UCUM code).
   void setVoxelValueUnits();
+  /// Reload a multi-resolution volume from file at the selected resolution
+  /// level (activated only by user interaction with the combobox).
+  void setResolutionLevel(int index);
 
 protected slots:
   void updateWidgetFromMRML();
