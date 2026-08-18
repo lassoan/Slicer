@@ -1423,6 +1423,10 @@ class DICOMFileReader:
         return ["DICOM (*.dcm)", "DICOM (*)"]
 
     def canLoadFileConfidence(self, filePath):
+        if not os.path.isfile(filePath):
+            # Readers may be probed with directory paths as well (datasets
+            # that are stored as a directory, such as OME-Zarr images).
+            return 0.0
         import pydicom
 
         if pydicom.misc.is_dicom(filePath):

@@ -151,6 +151,18 @@ void qSlicerDataDialogPrivate::addFiles()
 //-----------------------------------------------------------------------------
 void qSlicerDataDialogPrivate::addDirectory(const QDir& directory)
 {
+  //
+  // If a reader can load the directory itself as a single dataset (for
+  // example an OME-Zarr image, which is stored as a directory) then add the
+  // directory as a single entry instead of expanding its contents.
+  //
+  qSlicerCoreIOManager* coreIOManager = qSlicerCoreApplication::application()->coreIOManager();
+  if (!coreIOManager->fileDescriptions(directory.absolutePath()).isEmpty())
+  {
+    this->addFile(QFileInfo(directory.absolutePath()));
+    return;
+  }
+
   bool recursive = true;
   QDir::Filters filters = QDir::AllDirs | QDir::Files | QDir::Readable | QDir::NoDotAndDotDot;
   QFileInfoList fileInfoList = directory.entryInfoList(filters);
@@ -159,7 +171,6 @@ void qSlicerDataDialogPrivate::addDirectory(const QDir& directory)
   // check to see if any readers recognize the directory contents
   // and provide an archetype.
   //
-  qSlicerCoreIOManager* coreIOManager = qSlicerCoreApplication::application()->coreIOManager();
   QString readerDescription;
   qSlicerIO::IOProperties ioProperties;
   QFileInfo archetypeEntry;
@@ -189,7 +200,10 @@ void qSlicerDataDialogPrivate::addDirectory(const QDir& directory)
 //-----------------------------------------------------------------------------
 void qSlicerDataDialogPrivate::addFile(const QFileInfo& file, const QString& readerDescription, qSlicerIO::IOProperties* ioProperties)
 {
-  if (!file.isFile() || !file.exists() || !file.isReadable())
+  // Directories are accepted as well: some datasets are stored as a
+  // directory (for example OME-Zarr images) and are loaded as a single unit
+  // by a reader that recognizes the directory.
+  if ((!file.isFile() && !file.isDir()) || !file.exists() || !file.isReadable())
   {
     return;
   }
@@ -201,7 +215,7 @@ void qSlicerDataDialogPrivate::addFile(const QFileInfo& file, const QString& rea
   //
   // check for archive, and optionally open it
   //
-  if (this->checkAndHandleArchive(file))
+  if (file.isFile() && this->checkAndHandleArchive(file))
   {
     return; // file was an archive
   }
