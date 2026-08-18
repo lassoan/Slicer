@@ -633,6 +633,11 @@ void vtkMRMLSliceLayerLogic::OnVoxelDataProviderModified(vtkObject* vtkNotUsed(c
   // A background region request completed: re-evaluate level/region, which
   // now finds the requested level available and swaps it in.
   self->UpdateImageDisplay();
+  // Invoke ModifiedEvent so that the owning slice logic (which observes the
+  // layer logics) updates its pipeline and a render is scheduled: swapping
+  // the reslice input only changes VTK pipeline MTimes, which by itself
+  // does not trigger a repaint of the slice view.
+  self->Modified();
 }
 
 //----------------------------------------------------------------------------
