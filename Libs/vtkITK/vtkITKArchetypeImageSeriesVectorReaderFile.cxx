@@ -60,6 +60,13 @@ void vtkITKExecuteDataFromFileVector(vtkITKArchetypeImageSeriesVectorReaderFile*
   typedef itk::ImageFileReader<image2> ReaderType;
   typename ReaderType::Pointer reader2 = ReaderType::New();
   reader2->SetFileName(self->GetFileName(0));
+  // Honor the requested resolution level for multi-resolution files
+  // (otherwise the full-resolution dataset would be read).
+  itk::ImageIOBase::Pointer datasetIndexIO = self->CreateImageIOWithDatasetIndex(self->GetFileName(0));
+  if (datasetIndexIO)
+  {
+    reader2->SetImageIO(datasetIndexIO);
+  }
   if (self->GetUseNativeCoordinateOrientation())
   {
     filter = reader2;

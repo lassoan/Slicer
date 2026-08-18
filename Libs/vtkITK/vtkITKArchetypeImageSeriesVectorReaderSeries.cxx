@@ -74,6 +74,15 @@ void vtkITKExecuteDataFromSeriesVector(vtkITKArchetypeImageSeriesVectorReaderSer
   reader->SetFileNames(self->GetFileNames());
   reader->ReleaseDataFlagOn();
   reader->GetOutput()->SetVectorLength(3);
+  {
+    // Honor the requested resolution level for multi-resolution files
+    // (otherwise the full-resolution dataset would be read).
+    itk::ImageIOBase::Pointer datasetIndexIO = self->CreateImageIOWithDatasetIndex(self->GetFileName(0));
+    if (datasetIndexIO)
+    {
+      reader->SetImageIO(datasetIndexIO);
+    }
+  }
 #ifdef VTKITK_BUILD_DICOM_SUPPORT
   typedef itk::ImageIOBase ImageIOType;
   ImageIOType::Pointer imageIO;

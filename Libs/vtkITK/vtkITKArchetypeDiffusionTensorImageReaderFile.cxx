@@ -54,6 +54,15 @@ void vtkITKExecuteDataFromFileDiffusionTensor3D(vtkITKArchetypeDiffusionTensorIm
   typedef itk::ImageFileReader<ImageType> ReaderType;
   typename ReaderType::Pointer reader = ReaderType::New();
   reader->SetFileName(self->GetFileName(0));
+  {
+    // Honor the requested resolution level for multi-resolution files
+    // (otherwise the full-resolution dataset would be read).
+    itk::ImageIOBase::Pointer datasetIndexIO = self->CreateImageIOWithDatasetIndex(self->GetFileName(0));
+    if (datasetIndexIO)
+    {
+      reader->SetImageIO(datasetIndexIO);
+    }
+  }
   if (self->GetUseNativeCoordinateOrientation())
   {
     filter = reader;

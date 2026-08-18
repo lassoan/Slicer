@@ -185,21 +185,26 @@ void vtkITKArchetypeImageSeriesReader::PrintSelf(ostream& os, vtkIndent indent)
 //----------------------------------------------------------------------------
 itk::ImageIOBase::Pointer vtkITKArchetypeImageSeriesReader::CreateImageIOWithDatasetIndex(const char* fileName)
 {
-  if (this->DatasetIndex == 0)
-  {
-    // Default resolution: use the default (factory-selected) image IO.
-    return nullptr;
-  }
 #ifdef VTKITK_HAS_OMEZARRNGFF_SUPPORT
-  itk::ImageIOBase::Pointer imageIO = itk::ImageIOFactory::CreateImageIO(fileName, itk::IOFileModeEnum::ReadMode);
-  itk::OMEZarrNGFFImageIO* zarrImageIO = dynamic_cast<itk::OMEZarrNGFFImageIO*>(imageIO.GetPointer());
-  if (zarrImageIO)
+  // OME-Zarr images are stored as directories with zarr v2 metadata at the
+  // top level. The IO is constructed directly (instead of relying on
+  // itk::ImageIOFactory) because factory selection calls each IO's
+  // CanReadFile, and OMEZarrNGFFImageIO::CanReadFile is not reliable when
+  // the same store is opened repeatedly in one process; a failed factory
+  // selection would silently fall back to the default IO configuration and
+  // read the wrong (full) resolution level.
+  if (fileName && itksys::SystemTools::FileIsDirectory(fileName) //
+      && itksys::SystemTools::FileExists((std::string(fileName) + "/.zattrs").c_str()))
   {
+    itk::OMEZarrNGFFImageIO::Pointer zarrImageIO = itk::OMEZarrNGFFImageIO::New();
     zarrImageIO->SetDatasetIndex(this->DatasetIndex);
-    return imageIO;
+    return zarrImageIO.GetPointer();
   }
 #endif
-  vtkWarningMacro("DatasetIndex " << this->DatasetIndex << " is requested but resolution selection is not supported for file: " << (fileName ? fileName : "(none)"));
+  if (this->DatasetIndex != 0)
+  {
+    vtkWarningMacro("DatasetIndex " << this->DatasetIndex << " is requested but resolution selection is not supported for file: " << (fileName ? fileName : "(none)"));
+  }
   return nullptr;
 }
 

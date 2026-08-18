@@ -172,6 +172,14 @@ int vtkITKArchetypeImageSeriesScalarReader::RequestData(vtkInformation* vtkNotUs
     {                                                                                                                                                               \
       reader2##typeN->SetImageIO(imageIO);                                                                                                                          \
     }                                                                                                                                                               \
+    else                                                                                                                                                            \
+    {                                                                                                                                                               \
+      imageIO = this->CreateImageIOWithDatasetIndex(this->FileNames[0].c_str());                                                                                    \
+      if (imageIO)                                                                                                                                                  \
+      {                                                                                                                                                             \
+        reader2##typeN->SetImageIO(imageIO);                                                                                                                        \
+      }                                                                                                                                                             \
+    }                                                                                                                                                               \
     if (this->UseNativeCoordinateOrientation)                                                                                                                       \
     {                                                                                                                                                               \
       filter = reader2##typeN;                                                                                                                                      \
