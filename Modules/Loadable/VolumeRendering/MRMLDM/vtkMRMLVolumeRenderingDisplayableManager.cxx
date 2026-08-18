@@ -45,7 +45,10 @@
 // VTK includes
 #include "vtkAddonMathUtilities.h"
 #include <vtkCallbackCommand.h>
+#include <vtkCamera.h>
 #include <vtkClipVolume.h>
+#include <vtkDataArray.h>
+#include <vtkMath.h>
 #include <vtkDoubleArray.h>
 #include <vtkFixedPointVolumeRayCastMapper.h>
 #include <vtkGeneralTransform.h>
@@ -87,6 +90,12 @@
 #include <vtkImageData.h>         //TODO: Used for workaround. Remove when fixed
 #include <vtkTrivialProducer.h>   //TODO: Used for workaround. Remove when fixed
 #include <vtkPiecewiseFunction.h> //TODO: Used for workaround. Remove when fixed
+
+// STD includes
+#include <algorithm>
+#include <cmath>
+#include <map>
+#include <utility>
 
 // Register VTK object factory overrides
 #include <vtkAutoInit.h>
@@ -184,6 +193,10 @@ public:
       // For non-linear transforms: store resampled image data
       this->TransformedImageData = vtkSmartPointer<vtkImageData>::New();
       this->TransformedImageDataTrivialProducer = vtkSmartPointer<vtkTrivialProducer>::New();
+
+      // For variable-resolution rendering of multi-resolution volumes
+      this->VariableResolutionImageData = vtkSmartPointer<vtkImageData>::New();
+      this->VariableResolutionTrivialProducer = vtkSmartPointer<vtkTrivialProducer>::New();
     }
     virtual ~Pipeline() = default;
 
@@ -244,6 +257,19 @@ public:
     vtkSmartPointer<vtkImageData> TransformedImageData;
     vtkSmartPointer<vtkTrivialProducer> TransformedImageDataTrivialProducer;
     bool UseTransformedImageData{ false };
+
+    //@{
+    /// Variable-resolution rendering of volumes backed by a multi-resolution
+    /// voxel data provider: only the region visible in the camera frustum is
+    /// rendered, at the resolution level that matches the camera zoom.
+    vtkSmartPointer<vtkImageData> VariableResolutionImageData;
+    vtkSmartPointer<vtkTrivialProducer> VariableResolutionTrivialProducer;
+    bool UseVariableResolution{ false };
+    /// Resolution level of the region currently set as mapper input (-1: none)
+    int DisplayedResolutionLevel{ -1 };
+    /// Extent (in DisplayedResolutionLevel IJK) of the mapper input region
+    int DisplayedRegionExtent[6]{ 0, -1, 0, -1, 0, -1 };
+    //@}
     /// Modification time of the original volume when the transform was applied.
     /// This is used to detect if the volume needs to be resampled again.
     vtkMTimeType TransformedImageDataMTime{ 0 };
@@ -315,6 +341,22 @@ public:
   bool UpdatePipelineTransforms(vtkMRMLVolumeNode* node);
   bool GetVolumeTransformMatrixToWorld(vtkMRMLVolumeNode* node, vtkMatrix4x4* ijkToWorldMatrix);
 
+  //@{
+  // Variable-resolution rendering of multi-resolution provider volumes.
+  // Update the pipeline's mapper input to the region of the volume that is
+  // visible in the camera frustum, at the resolution level matching the
+  // camera zoom. Returns true if the pipeline uses a variable-resolution
+  // region as mapper input (and fills levelToReferenceMatrix with the mapping
+  // from the region's level IJK to the volume node's reference level IJK).
+  bool UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode, Pipeline* pipeline, vtkMatrix4x4* levelToReferenceMatrix);
+  // Select the resolution level and region (in that level's IJK) to render.
+  // Returns false if variable resolution is not applicable.
+  bool SelectResolutionLevelAndRegion(vtkMRMLVolumeRenderingDisplayNode* displayNode, vtkMRMLScalarVolumeNode* volumeNode, int& level, int extent[6]);
+  // Make sure the renderer's active camera and the volume's provider are observed.
+  void UpdateVariableResolutionObservers(vtkMRMLVoxelDataProvider* provider);
+  static void OnCameraOrProviderModified(vtkObject* caller, unsigned long eid, void* clientData, void* callData);
+  //@}
+
   // ROIs
   void UpdatePipelineROIs(vtkMRMLVolumeRenderingDisplayNode* displayNode, const Pipeline* pipeline);
   void UpdateClippingPlanesFromMarkupsROINode(vtkMRMLVolumeRenderingDisplayNode* displayNode, const Pipeline* pipeline);
@@ -373,6 +415,14 @@ public:
 
   /// Last picked volume rendering display node ID
   std::string PickedNodeID;
+
+  //@{
+  /// Variable-resolution rendering state
+  vtkSmartPointer<vtkCallbackCommand> VariableResolutionCallback;
+  vtkWeakPointer<vtkCamera> ObservedCamera;
+  unsigned long ObservedCameraTag{ 0 };
+  std::map<vtkMRMLVoxelDataProvider*, std::pair<vtkWeakPointer<vtkMRMLVoxelDataProvider>, unsigned long>> ObservedProviders;
+  //@}
 
 private:
   /// Multi-volume actor using a common mapper for rendering the multiple volumes
@@ -437,12 +487,30 @@ vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::vtkInternal(vtkMRMLVolume
 
   // Initialize volume rendering window level widget
   this->VolumeRenderingWindowLevelWidget = vtkSmartPointer<vtkMRMLVolumeRenderingWindowLevelWidget>::New();
+
+  this->VariableResolutionCallback = vtkSmartPointer<vtkCallbackCommand>::New();
+  this->VariableResolutionCallback->SetClientData(this);
+  this->VariableResolutionCallback->SetCallback(vtkInternal::OnCameraOrProviderModified);
 }
 
 //---------------------------------------------------------------------------
 vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::~vtkInternal()
 {
   this->ClearDisplayableNodes();
+
+  if (this->ObservedCamera && this->ObservedCameraTag)
+  {
+    this->ObservedCamera->RemoveObserver(this->ObservedCameraTag);
+    this->ObservedCamera = nullptr;
+  }
+  for (auto& observedProvider : this->ObservedProviders)
+  {
+    if (observedProvider.second.first)
+    {
+      observedProvider.second.first->RemoveObserver(observedProvider.second.second);
+    }
+  }
+  this->ObservedProviders.clear();
 
   // Clean up the volume rendering window level widget
   if (this->VolumeRenderingWindowLevelWidget)
@@ -933,6 +1001,357 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::GetVolumeTransformMa
 }
 
 //---------------------------------------------------------------------------
+void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::OnCameraOrProviderModified(vtkObject* caller, unsigned long eid, void* clientData, void* vtkNotUsed(callData))
+{
+  vtkInternal* self = reinterpret_cast<vtkInternal*>(clientData);
+  if (!self)
+  {
+    return;
+  }
+  // Update all pipelines that render a multi-resolution provider volume.
+  // Selection of the target level/region is cheap; pipelines are only
+  // modified when the target actually changes.
+  bool modified = false;
+  for (Pipeline* pipeline : self->DisplayPipelines)
+  {
+    if (!pipeline->DisplayNode)
+    {
+      continue;
+    }
+    vtkMRMLScalarVolumeNode* volumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(pipeline->DisplayNode->GetDisplayableNode());
+    vtkMRMLVoxelDataProvider* provider = volumeNode ? volumeNode->GetVoxelDataProvider() : nullptr;
+    if (!provider || provider->GetNumberOfResolutionLevels() < 2)
+    {
+      continue;
+    }
+    if (eid == vtkMRMLVoxelDataProvider::RegionReadyEvent && caller != provider)
+    {
+      continue;
+    }
+    int level = -1;
+    int extent[6] = { 0, -1, 0, -1, 0, -1 };
+    if (!self->SelectResolutionLevelAndRegion(pipeline->DisplayNode, volumeNode, level, extent))
+    {
+      continue;
+    }
+    bool coveredAtDisplayedLevel = pipeline->UseVariableResolution && level == pipeline->DisplayedResolutionLevel //
+                                   && extent[0] >= pipeline->DisplayedRegionExtent[0] && extent[1] <= pipeline->DisplayedRegionExtent[1]
+                                   && extent[2] >= pipeline->DisplayedRegionExtent[2] && extent[3] <= pipeline->DisplayedRegionExtent[3]
+                                   && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5];
+    if (coveredAtDisplayedLevel)
+    {
+      continue;
+    }
+    // UpdatePipelineTransforms runs UpdateDisplayNodePipeline, which fetches
+    // the region (or requests it in the background) and updates the actor
+    // matrix.
+    self->UpdatePipelineTransforms(volumeNode);
+    modified = true;
+  }
+  if (modified)
+  {
+    self->External->RequestRender();
+  }
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolutionObservers(vtkMRMLVoxelDataProvider* provider)
+{
+  vtkRenderer* renderer = this->External->GetRenderer();
+  vtkCamera* camera = renderer ? renderer->GetActiveCamera() : nullptr;
+  if (camera != this->ObservedCamera)
+  {
+    if (this->ObservedCamera && this->ObservedCameraTag)
+    {
+      this->ObservedCamera->RemoveObserver(this->ObservedCameraTag);
+    }
+    this->ObservedCamera = camera;
+    this->ObservedCameraTag = camera ? camera->AddObserver(vtkCommand::ModifiedEvent, this->VariableResolutionCallback) : 0;
+  }
+  if (provider && this->ObservedProviders.find(provider) == this->ObservedProviders.end())
+  {
+    unsigned long tag = provider->AddObserver(vtkMRMLVoxelDataProvider::RegionReadyEvent, this->VariableResolutionCallback);
+    this->ObservedProviders[provider] = std::make_pair(vtkWeakPointer<vtkMRMLVoxelDataProvider>(provider), tag);
+  }
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLevelAndRegion(vtkMRMLVolumeRenderingDisplayNode* displayNode,
+                                                                                          vtkMRMLScalarVolumeNode* volumeNode,
+                                                                                          int& level,
+                                                                                          int extent[6])
+{
+  vtkMRMLVoxelDataProvider* provider = volumeNode ? volumeNode->GetVoxelDataProvider() : nullptr;
+  if (!provider || provider->GetNumberOfResolutionLevels() < 2)
+  {
+    return false;
+  }
+  // The clipping stencil pipeline computes its stencil on the volume node
+  // grid, which would not match a variable-resolution region.
+  if (displayNode->GetClipping() && !displayNode->IsFastClippingAvailable())
+  {
+    return false;
+  }
+  vtkRenderer* renderer = this->External->GetRenderer();
+  vtkCamera* camera = renderer ? renderer->GetActiveCamera() : nullptr;
+  if (!camera || !renderer->GetRenderWindow())
+  {
+    return false;
+  }
+  const int* rendererSize = renderer->GetSize();
+  if (rendererSize[0] < 2 || rendererSize[1] < 2)
+  {
+    return false;
+  }
+
+  int referenceLevel = provider->GetReferenceResolutionLevel();
+  double referenceScale[3] = { 1.0, 1.0, 1.0 };
+  if (!provider->GetLevelScale(referenceLevel, referenceScale))
+  {
+    return false;
+  }
+
+  // World size of one screen pixel at the camera focal distance
+  double viewHalfHeightWorld = 0.0;
+  if (camera->GetParallelProjection())
+  {
+    viewHalfHeightWorld = camera->GetParallelScale();
+  }
+  else
+  {
+    viewHalfHeightWorld = camera->GetDistance() * tan(vtkMath::RadiansFromDegrees(camera->GetViewAngle() / 2.0));
+  }
+  double pixelSizeWorld = 2.0 * viewHalfHeightWorld / rendererSize[1];
+
+  // Full-resolution (level 0) spacing: node spacing is reference level spacing
+  double referenceSpacing[3] = { 1.0, 1.0, 1.0 };
+  volumeNode->GetSpacing(referenceSpacing);
+  double fullResolutionSpacing[3];
+  for (int axis = 0; axis < 3; axis++)
+  {
+    fullResolutionSpacing[axis] = referenceSpacing[axis] / referenceScale[axis];
+  }
+
+  // Pick the coarsest level that still provides acceptable voxel density on
+  // every axis at the current zoom (same tolerance as slice view LOD).
+  const double acceptableVoxelsPerPixel = 0.75;
+  int numberOfLevels = provider->GetNumberOfResolutionLevels();
+  level = -1;
+  for (int candidateLevel = numberOfLevels - 1; candidateLevel >= 0; candidateLevel--)
+  {
+    if (!provider->IsLevelLoadable(candidateLevel))
+    {
+      // Coarser levels are always loadable if finer ones are not; stop here.
+      break;
+    }
+    double candidateScale[3] = { 1.0, 1.0, 1.0 };
+    if (!provider->GetLevelScale(candidateLevel, candidateScale))
+    {
+      continue;
+    }
+    bool acceptable = true;
+    for (int axis = 0; axis < 3; axis++)
+    {
+      double levelSpacing = fullResolutionSpacing[axis] * candidateScale[axis];
+      if (pixelSizeWorld / levelSpacing < acceptableVoxelsPerPixel)
+      {
+        acceptable = false;
+        break;
+      }
+    }
+    // Stop at the coarsest acceptable level; if no level provides enough
+    // voxel density then the finest loadable level is used.
+    level = candidateLevel;
+    if (acceptable)
+    {
+      break;
+    }
+  }
+  if (level < 0)
+  {
+    return false;
+  }
+
+  // Visible world region: sphere around the camera focal point with the
+  // radius of the viewport half diagonal at focal distance.
+  double aspect = double(rendererSize[0]) / double(rendererSize[1]);
+  double radiusWorld = viewHalfHeightWorld * sqrt(1.0 + aspect * aspect);
+  double focalPoint[3] = { 0.0, 0.0, 0.0 };
+  camera->GetFocalPoint(focalPoint);
+
+  // Convert the world region to an extent in the selected level's IJK
+  vtkNew<vtkMatrix4x4> referenceIJKToWorld;
+  if (!this->GetVolumeTransformMatrixToWorld(volumeNode, referenceIJKToWorld))
+  {
+    return false;
+  }
+  vtkNew<vtkMatrix4x4> worldToReferenceIJK;
+  vtkMatrix4x4::Invert(referenceIJKToWorld, worldToReferenceIJK);
+  double levelScale[3] = { 1.0, 1.0, 1.0 };
+  provider->GetLevelScale(level, levelScale);
+
+  double boundsIJK[6] = { VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX };
+  for (int cornerIndex = 0; cornerIndex < 8; cornerIndex++)
+  {
+    double cornerWorld[4] = { focalPoint[0] + (cornerIndex & 1 ? radiusWorld : -radiusWorld),
+                              focalPoint[1] + (cornerIndex & 2 ? radiusWorld : -radiusWorld),
+                              focalPoint[2] + (cornerIndex & 4 ? radiusWorld : -radiusWorld),
+                              1.0 };
+    double cornerReferenceIJK[4] = { 0.0, 0.0, 0.0, 1.0 };
+    worldToReferenceIJK->MultiplyPoint(cornerWorld, cornerReferenceIJK);
+    for (int axis = 0; axis < 3; axis++)
+    {
+      // reference IJK -> selected level IJK
+      double cornerLevelIJK = cornerReferenceIJK[axis] * referenceScale[axis] / levelScale[axis];
+      boundsIJK[2 * axis] = std::min(boundsIJK[2 * axis], cornerLevelIJK);
+      boundsIJK[2 * axis + 1] = std::max(boundsIJK[2 * axis + 1], cornerLevelIJK);
+    }
+  }
+
+  int levelExtent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!provider->GetExtent(levelExtent, level))
+  {
+    return false;
+  }
+  for (int axis = 0; axis < 3; axis++)
+  {
+    // Pad by 25% (+4 voxels) so that small camera moves do not trigger a new
+    // region fetch, then clamp to the level extent.
+    double padding = 0.25 * (boundsIJK[2 * axis + 1] - boundsIJK[2 * axis]) + 4.0;
+    extent[2 * axis] = std::max(levelExtent[2 * axis], int(floor(boundsIJK[2 * axis] - padding)));
+    extent[2 * axis + 1] = std::min(levelExtent[2 * axis + 1], int(ceil(boundsIJK[2 * axis + 1] + padding)));
+    if (extent[2 * axis] > extent[2 * axis + 1])
+    {
+      // Volume is completely outside the visible region
+      return false;
+    }
+  }
+
+  // Bound the region by the GPU memory budget: coarsen the level until the
+  // region fits into half of the allowed memory.
+  vtkIdType maximumBytes = this->GetMaxMemoryInBytes(displayNode) / 2;
+  int bytesPerVoxel = vtkDataArray::GetDataTypeSize(provider->GetScalarType()) * provider->GetNumberOfScalarComponents();
+  while (level < numberOfLevels - 1)
+  {
+    vtkIdType regionVoxels = vtkIdType(extent[1] - extent[0] + 1) * (extent[3] - extent[2] + 1) * (extent[5] - extent[4] + 1);
+    if (regionVoxels * bytesPerVoxel <= maximumBytes)
+    {
+      break;
+    }
+    // Move the region extent to the next coarser level
+    double coarserScale[3] = { 1.0, 1.0, 1.0 };
+    double currentScale[3] = { 1.0, 1.0, 1.0 };
+    if (!provider->GetLevelScale(level + 1, coarserScale) || !provider->GetLevelScale(level, currentScale))
+    {
+      break;
+    }
+    int coarserLevelExtent[6] = { 0, -1, 0, -1, 0, -1 };
+    if (!provider->GetExtent(coarserLevelExtent, level + 1))
+    {
+      break;
+    }
+    for (int axis = 0; axis < 3; axis++)
+    {
+      double factor = currentScale[axis] / coarserScale[axis];
+      extent[2 * axis] = std::max(coarserLevelExtent[2 * axis], int(floor(extent[2 * axis] * factor)));
+      extent[2 * axis + 1] = std::min(coarserLevelExtent[2 * axis + 1], int(ceil(extent[2 * axis + 1] * factor)));
+    }
+    level++;
+  }
+  return true;
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode,
+                                                                                         Pipeline* pipeline,
+                                                                                         vtkMatrix4x4* levelToReferenceMatrix)
+{
+  vtkMRMLScalarVolumeNode* volumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(displayNode->GetDisplayableNode());
+  vtkMRMLVoxelDataProvider* provider = volumeNode ? volumeNode->GetVoxelDataProvider() : nullptr;
+  if (!provider || provider->GetNumberOfResolutionLevels() < 2)
+  {
+    pipeline->UseVariableResolution = false;
+    pipeline->DisplayedResolutionLevel = -1;
+    return false;
+  }
+  this->UpdateVariableResolutionObservers(provider);
+
+  int level = -1;
+  int extent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!this->SelectResolutionLevelAndRegion(displayNode, volumeNode, level, extent))
+  {
+    pipeline->UseVariableResolution = false;
+    pipeline->DisplayedResolutionLevel = -1;
+    return false;
+  }
+
+  int referenceLevel = provider->GetReferenceResolutionLevel();
+  double referenceScale[3] = { 1.0, 1.0, 1.0 };
+  provider->GetLevelScale(referenceLevel, referenceScale);
+
+  // If the whole volume is visible at the reference level (typical when the
+  // camera is zoomed out) then render the volume node's own image directly,
+  // without keeping a region copy.
+  int referenceExtent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (level == referenceLevel && provider->GetExtent(referenceExtent, referenceLevel) //
+      && extent[0] <= referenceExtent[0] && extent[1] >= referenceExtent[1]           //
+      && extent[2] <= referenceExtent[2] && extent[3] >= referenceExtent[3]           //
+      && extent[4] <= referenceExtent[4] && extent[5] >= referenceExtent[5])
+  {
+    pipeline->UseVariableResolution = false;
+    pipeline->DisplayedResolutionLevel = -1;
+    return false;
+  }
+
+  bool coveredAtDisplayedLevel = pipeline->UseVariableResolution && level == pipeline->DisplayedResolutionLevel //
+                                 && extent[0] >= pipeline->DisplayedRegionExtent[0] && extent[1] <= pipeline->DisplayedRegionExtent[1]
+                                 && extent[2] >= pipeline->DisplayedRegionExtent[2] && extent[3] <= pipeline->DisplayedRegionExtent[3]
+                                 && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5];
+  if (!coveredAtDisplayedLevel)
+  {
+    if (provider->IsRegionAvailable(extent, level))
+    {
+      if (provider->GetRegionIfAvailable(pipeline->VariableResolutionImageData, extent, level))
+      {
+        pipeline->VariableResolutionTrivialProducer->SetOutput(pipeline->VariableResolutionImageData);
+        pipeline->DisplayedResolutionLevel = level;
+        for (int i = 0; i < 6; i++)
+        {
+          pipeline->DisplayedRegionExtent[i] = extent[i];
+        }
+        pipeline->UseVariableResolution = true;
+      }
+    }
+    else
+    {
+      // Fetch in the background (progressive refinement: RegionReadyEvent
+      // triggers another update); keep the current input meanwhile.
+      provider->RequestRegionAsync(extent, level);
+      if (!pipeline->UseVariableResolution)
+      {
+        return false;
+      }
+    }
+  }
+
+  if (!pipeline->UseVariableResolution)
+  {
+    return false;
+  }
+
+  // Mapping from the displayed level's IJK to the volume node (reference
+  // level) IJK, to be concatenated into the actor's user matrix.
+  double displayedScale[3] = { 1.0, 1.0, 1.0 };
+  provider->GetLevelScale(pipeline->DisplayedResolutionLevel, displayedScale);
+  levelToReferenceMatrix->Identity();
+  for (int axis = 0; axis < 3; axis++)
+  {
+    levelToReferenceMatrix->SetElement(axis, axis, displayedScale[axis] / referenceScale[axis]);
+  }
+  return true;
+}
+
+//---------------------------------------------------------------------------
 void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNode(vtkMRMLVolumeRenderingDisplayNode* displayNode)
 {
   // If the display node already exists, just update. Otherwise, add as new node
@@ -1025,6 +1444,23 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
     // Linear transform or no transform - use original volume
     imageConnection = GetRenderedImageDataConnection(volumeNode);
     this->GetVolumeTransformMatrixToWorld(volumeNode, pipeline->IJKToWorldMatrix);
+
+    // Variable-resolution rendering of multi-resolution provider volumes:
+    // render only the region visible in the camera frustum, at the resolution
+    // level that matches the camera zoom.
+    vtkNew<vtkMatrix4x4> levelToReferenceMatrix;
+    if (this->UpdateVariableResolutionInput(displayNode, pipeline, levelToReferenceMatrix))
+    {
+      imageConnection = pipeline->VariableResolutionTrivialProducer->GetOutputPort();
+      // The region image is on the displayed level's grid: concatenate the
+      // level IJK -> reference (node grid) IJK scaling into the actor matrix.
+      vtkMatrix4x4::Multiply4x4(pipeline->IJKToWorldMatrix, levelToReferenceMatrix, pipeline->IJKToWorldMatrix);
+      pipeline->IJKToWorldMatrix->Modified();
+    }
+    else
+    {
+      pipeline->VariableResolutionImageData->Initialize(); // free memory
+    }
 
     // Clear the transformed image data to free memory
     if (pipeline->TransformedImageData->GetNumberOfPoints() > 0)
