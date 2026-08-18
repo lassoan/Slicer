@@ -59,6 +59,63 @@ public:
   /// In-memory backends provide a single level.
   virtual int GetNumberOfResolutionLevels() { return 1; }
 
+  /// Grid scale of a resolution level relative to level 0 (full resolution),
+  /// in ijk axis order. For example {2.0, 2.0, 1.0} for a level downsampled
+  /// by 2 in-plane. Returns false for an invalid level.
+  virtual bool GetLevelScale(int resolutionLevel, double scale[3]);
+
+  /// The resolution level that corresponds to the geometry (extent, spacing,
+  /// IJK to RAS matrix) of the owning volume node. Multi-resolution backends
+  /// may use a coarser preview level as reference so that the volume can be
+  /// loaded and displayed quickly; finer levels are then retrieved on demand
+  /// (e.g. by slice views, according to the current zoom).
+  virtual int GetReferenceResolutionLevel() { return 0; }
+
+  //@{
+  /// Asynchronous region retrieval with progressive refinement support.
+  ///
+  /// GetRegionIfAvailable() returns the region immediately if the backend
+  /// can produce it without expensive work (level data already cached);
+  /// otherwise it returns false and the caller may call RequestRegionAsync()
+  /// to fetch it in the background and use a coarser available level in the
+  /// meantime. When a background request completes, the provider invokes
+  /// RegionReadyEvent (from the main thread, during
+  /// ProcessPendingRegionRequests()).
+  ///
+  /// The base implementation is synchronous: GetRegionIfAvailable() forwards
+  /// to GetRegion() and RequestRegionAsync() does nothing (the data is
+  /// always available).
+  virtual bool GetRegionIfAvailable(vtkImageData* output, const int extent[6], int resolutionLevel = 0);
+
+  /// Returns true if GetRegionIfAvailable() would succeed for this region
+  /// (without producing the data).
+  virtual bool IsRegionAvailable(const int extent[6], int resolutionLevel)
+  {
+    (void)extent;
+    (void)resolutionLevel;
+    return true;
+  }
+
+  /// Request that the data needed for the given region/level is fetched in
+  /// the background. Returns true if a request was queued (or is pending).
+  virtual bool RequestRegionAsync(const int extent[6], int resolutionLevel);
+
+  /// Returns true if a background request is pending.
+  virtual bool HasPendingRegionRequests() { return false; }
+
+  /// Called periodically on the main thread (by the application) to finalize
+  /// completed background requests and invoke RegionReadyEvent.
+  virtual void ProcessPendingRegionRequests() {}
+
+  enum
+  {
+    /// Invoked (on the main thread) when a background region request
+    /// completed and the data can now be retrieved with
+    /// GetRegionIfAvailable().
+    RegionReadyEvent = 24000
+  };
+  //@}
+
   /// Get the extent of the stored image at a resolution level.
   /// Returns false if the provider has no data or the level is invalid.
   virtual bool GetExtent(int extent[6], int resolutionLevel = 0) = 0;

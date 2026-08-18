@@ -241,6 +241,7 @@ set(MRMLCore_SRCS
   vtkMRMLROIListNode.cxx
   vtkMRMLROINode.cxx
   vtkMRMLInMemoryVoxelDataProvider.cxx
+  vtkMRMLOMEZarrVoxelDataProvider.cxx
   vtkMRMLScalarVolumeDisplayNode.cxx
   vtkMRMLScalarVolumeNode.cxx
   vtkMRMLScene.cxx

@@ -1,0 +1,131 @@
+/*=auto=========================================================================
+
+  Portions (c) Copyright 2026 Brigham and Women's Hospital (BWH) All Rights Reserved.
+
+  See COPYRIGHT.txt
+  or http://www.slicer.org/copyright/copyright.txt for details.
+
+=========================================================================auto=*/
+
+#ifndef __vtkMRMLOMEZarrVoxelDataProvider_h
+#define __vtkMRMLOMEZarrVoxelDataProvider_h
+
+// MRML includes
+#include "vtkMRMLVoxelDataProvider.h"
+
+// VTK includes
+#include <vtkSmartPointer.h>
+
+// STD includes
+#include <condition_variable>
+#include <map>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+
+/// \brief Multi-resolution voxel data provider backed by an OME-Zarr (NGFF)
+/// image stored as a zarr v2 directory.
+///
+/// The provider parses the multiscale metadata (level paths, shapes, scales)
+/// without reading voxel data. Each resolution level is loaded lazily (whole
+/// level at a time, through ITK's OMEZarrNGFFImageIO) and cached in memory.
+///
+/// The owning volume node's geometry corresponds to the reference resolution
+/// level (a coarser preview level for large images, so that loading and
+/// initial display is fast). Slice views retrieve finer levels on demand
+/// according to the current zoom, using the asynchronous region API for
+/// progressive refinement: a coarser cached level is displayed immediately
+/// and RegionReadyEvent signals when the requested level became available.
+///
+/// Current limitation: a level is always read as a whole (the ITK IO does
+/// not support partial reads); region requests are served from the cached
+/// level. Chunk-granular streaming is future work.
+class VTK_MRML_EXPORT vtkMRMLOMEZarrVoxelDataProvider : public vtkMRMLVoxelDataProvider
+{
+public:
+  static vtkMRMLOMEZarrVoxelDataProvider* New();
+  vtkTypeMacro(vtkMRMLOMEZarrVoxelDataProvider, vtkMRMLVoxelDataProvider);
+  void PrintSelf(ostream& os, vtkIndent indent) override;
+
+  /// Set the OME-Zarr directory and parse the multiscale metadata
+  /// (no voxel data is read). Returns false if the metadata cannot be parsed.
+  bool SetFileName(const std::string& fileName);
+  const std::string& GetFileName() const { return this->FileName; }
+
+  /// Returns the finest resolution level whose total number of voxels does
+  /// not exceed the specified limit (the coarsest level if all are larger).
+  int PickReferenceResolutionLevel(long long maxNumberOfVoxels);
+  void SetReferenceResolutionLevel(int level);
+  int GetReferenceResolutionLevel() override { return this->ReferenceLevel; }
+
+  /// Seed the level cache with an already-loaded image (e.g. the reference
+  /// level image that the storage node read).
+  void SetLevelImageData(int level, vtkImageData* image);
+  bool IsLevelLoaded(int level);
+
+  /// Physical voxel spacing of a level from the file metadata (ijk order).
+  bool GetLevelSpacing(int level, double spacing[3]);
+
+  /// Release cached levels other than the reference level.
+  void ReleaseCachedLevels();
+
+  //@{
+  /// vtkMRMLVoxelDataProvider interface
+  int GetNumberOfResolutionLevels() override;
+  bool GetLevelScale(int resolutionLevel, double scale[3]) override;
+  bool GetExtent(int extent[6], int resolutionLevel = 0) override;
+  int GetScalarType() override;
+  int GetNumberOfScalarComponents() override;
+  bool GetRegion(vtkImageData* output, const int extent[6], int resolutionLevel = 0) override;
+  bool GetRegionIfAvailable(vtkImageData* output, const int extent[6], int resolutionLevel = 0) override;
+  bool IsRegionAvailable(const int extent[6], int resolutionLevel) override { return this->IsLevelLoaded(resolutionLevel); }
+  bool RequestRegionAsync(const int extent[6], int resolutionLevel) override;
+  bool HasPendingRegionRequests() override;
+  void ProcessPendingRegionRequests() override;
+  double GetVoxelValue(int i, int j, int k, int component = 0) override;
+  bool GetStoredScalarRange(double range[2]) override;
+  vtkImageData* GetStoredImageDataIfInMemory() override;
+  //@}
+
+protected:
+  vtkMRMLOMEZarrVoxelDataProvider();
+  ~vtkMRMLOMEZarrVoxelDataProvider() override;
+  vtkMRMLOMEZarrVoxelDataProvider(const vtkMRMLOMEZarrVoxelDataProvider&) = delete;
+  void operator=(const vtkMRMLOMEZarrVoxelDataProvider&) = delete;
+
+  struct LevelInfo
+  {
+    std::string Path;
+    int Extent[6]{ 0, -1, 0, -1, 0, -1 }; // ijk order
+    double SpacingMM[3]{ 1.0, 1.0, 1.0 }; // ijk order
+  };
+
+  /// Load a level synchronously (used on the main thread and by the worker).
+  /// Does not touch the cache; returns the loaded image.
+  vtkSmartPointer<vtkImageData> LoadLevelImage(int level);
+
+  /// Ensure a level is present in the cache (synchronous).
+  bool EnsureLevelLoaded(int level);
+
+  vtkSmartPointer<vtkImageData> GetCachedLevelImage(int level);
+
+  void EnsureWorker();
+  void WorkerLoop();
+
+  std::string FileName;
+  std::vector<LevelInfo> Levels;
+  int ReferenceLevel{ 0 };
+  int ScalarType{ VTK_VOID };
+  int NumberOfComponents{ 1 };
+
+  std::mutex Mutex; // guards LevelImages, PendingLevel, CompletedLevels, WorkerShouldStop
+  std::map<int, vtkSmartPointer<vtkImageData>> LevelImages;
+  std::thread Worker;
+  std::condition_variable Condition;
+  bool WorkerShouldStop{ false };
+  int PendingLevel{ -1 };
+  std::vector<int> CompletedLevels;
+};
+
+#endif

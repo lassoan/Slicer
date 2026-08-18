@@ -334,16 +334,17 @@ void vtkMRMLScalarVolumeNode::UpdateStoredImageDataConnection()
   vtkSmartPointer<vtkImageData> storedImage = this->VoxelDataProvider->GetStoredImageDataIfInMemory();
   if (!storedImage)
   {
-    // Non-in-memory backend: materialize the full-resolution stored image.
-    // (Region/level-based streaming for out-of-core backends is future work.)
+    // Materialize the stored image at the reference resolution level
+    // (the level that corresponds to this node's grid).
+    int referenceLevel = this->VoxelDataProvider->GetReferenceResolutionLevel();
     int extent[6] = { 0, -1, 0, -1, 0, -1 };
-    if (!this->VoxelDataProvider->GetExtent(extent))
+    if (!this->VoxelDataProvider->GetExtent(extent, referenceLevel))
     {
       this->StoredImageDataProducer = nullptr;
       return;
     }
     storedImage = vtkSmartPointer<vtkImageData>::New();
-    if (!this->VoxelDataProvider->GetRegion(storedImage, extent))
+    if (!this->VoxelDataProvider->GetRegion(storedImage, extent, referenceLevel))
     {
       this->StoredImageDataProducer = nullptr;
       return;
@@ -409,7 +410,7 @@ bool vtkMRMLScalarVolumeNode::HasImageData()
   if (this->VoxelDataProvider)
   {
     int extent[6] = { 0, -1, 0, -1, 0, -1 };
-    return this->VoxelDataProvider->GetExtent(extent);
+    return this->VoxelDataProvider->GetExtent(extent, this->VoxelDataProvider->GetReferenceResolutionLevel());
   }
   return this->Superclass::HasImageData();
 }
@@ -419,7 +420,8 @@ bool vtkMRMLScalarVolumeNode::GetImageExtent(int extent[6])
 {
   if (this->VoxelDataProvider)
   {
-    return this->VoxelDataProvider->GetExtent(extent);
+    // The node's grid corresponds to the provider's reference level.
+    return this->VoxelDataProvider->GetExtent(extent, this->VoxelDataProvider->GetReferenceResolutionLevel());
   }
   return this->Superclass::GetImageExtent(extent);
 }
@@ -436,7 +438,8 @@ double vtkMRMLScalarVolumeNode::GetImageBackgroundScalarComponentAsDouble(int co
     return 0.0;
   }
   int extent[6] = { 0, -1, 0, -1, 0, -1 };
-  if (!this->VoxelDataProvider->GetExtent(extent) || extent[0] > extent[1] || extent[2] > extent[3] || extent[4] > extent[5])
+  if (!this->VoxelDataProvider->GetExtent(extent, this->VoxelDataProvider->GetReferenceResolutionLevel()) //
+      || extent[0] > extent[1] || extent[2] > extent[3] || extent[4] > extent[5])
   {
     return 0.0;
   }
@@ -630,11 +633,11 @@ std::string vtkMRMLScalarVolumeNode::GetVoxelValueAsString(int i, int j, int k, 
   if (this->VoxelDataProvider)
   {
     int extent[6] = { 0, -1, 0, -1, 0, -1 };
-    if (!this->VoxelDataProvider->GetExtent(extent)     //
-        || i < extent[0] || i > extent[1]               //
-        || j < extent[2] || j > extent[3]               //
-        || k < extent[4] || k > extent[5]               //
-        || component < 0                                //
+    if (!this->VoxelDataProvider->GetExtent(extent, this->VoxelDataProvider->GetReferenceResolutionLevel()) //
+        || i < extent[0] || i > extent[1]                                                                   //
+        || j < extent[2] || j > extent[3]                                                                   //
+        || k < extent[4] || k > extent[5]                                                                   //
+        || component < 0                                                                                    //
         || component >= this->VoxelDataProvider->GetNumberOfScalarComponents())
     {
       return std::string();
@@ -698,14 +701,16 @@ void vtkMRMLScalarVolumeNode::UpdatePhysicalImageDataFromProvider()
   vtkSmartPointer<vtkImageData> storedImage = this->VoxelDataProvider->GetStoredImageDataIfInMemory();
   if (!storedImage)
   {
+    // The physical image corresponds to this node's grid: the reference level.
+    int referenceLevel = this->VoxelDataProvider->GetReferenceResolutionLevel();
     int extent[6] = { 0, -1, 0, -1, 0, -1 };
-    if (!this->VoxelDataProvider->GetExtent(extent))
+    if (!this->VoxelDataProvider->GetExtent(extent, referenceLevel))
     {
       vtkErrorMacro("UpdatePhysicalImageDataFromProvider: provider has no data");
       return;
     }
     storedImage = vtkSmartPointer<vtkImageData>::New();
-    if (!this->VoxelDataProvider->GetRegion(storedImage, extent))
+    if (!this->VoxelDataProvider->GetRegion(storedImage, extent, referenceLevel))
     {
       vtkErrorMacro("UpdatePhysicalImageDataFromProvider: failed to get voxel data from provider");
       return;

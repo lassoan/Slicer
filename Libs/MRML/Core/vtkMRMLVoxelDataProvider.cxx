@@ -20,6 +20,35 @@ void vtkMRMLVoxelDataProvider::PrintSelf(ostream& os, vtkIndent indent)
 }
 
 //----------------------------------------------------------------------------
+bool vtkMRMLVoxelDataProvider::GetLevelScale(int resolutionLevel, double scale[3])
+{
+  if (resolutionLevel < 0 || resolutionLevel >= this->GetNumberOfResolutionLevels())
+  {
+    return false;
+  }
+  scale[0] = 1.0;
+  scale[1] = 1.0;
+  scale[2] = 1.0;
+  return true;
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLVoxelDataProvider::GetRegionIfAvailable(vtkImageData* output, const int extent[6], int resolutionLevel /*=0*/)
+{
+  // Base implementation: data is always available synchronously.
+  return this->GetRegion(output, extent, resolutionLevel);
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLVoxelDataProvider::RequestRegionAsync(const int extent[6], int resolutionLevel)
+{
+  (void)extent;
+  (void)resolutionLevel;
+  // Base implementation is synchronous: nothing to request.
+  return false;
+}
+
+//----------------------------------------------------------------------------
 bool vtkMRMLVoxelDataProvider::IsVoxelValueScalingActive()
 {
   return (this->VoxelValueScale != 1.0 || this->VoxelValueOffset != 0.0);

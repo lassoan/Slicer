@@ -24,6 +24,7 @@ Version:   $Revision: 1.6 $
 #endif
 #include "vtkMRMLVolumeArchetypeStorageNode.h"
 #include "vtkCodedEntry.h"
+#include "vtkMRMLOMEZarrVoxelDataProvider.h"
 #include "vtkMRMLScalarVolumeNode.h"
 
 // VTK ITK includes
@@ -540,6 +541,25 @@ int vtkMRMLVolumeArchetypeStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
     reader->SetUseNativeOriginOn();
   }
 
+  // Multi-resolution OME-Zarr image: read a fast preview (reference) level
+  // now and attach a multi-resolution voxel data provider after reading, so
+  // that finer levels are retrieved on demand (e.g. by slice views according
+  // to the current zoom, with progressive refinement).
+  vtkSmartPointer<vtkMRMLOMEZarrVoxelDataProvider> zarrProvider;
+  if (vtksys::SystemTools::FileIsDirectory(fullName.c_str()) //
+      && vtkMRMLStorageNode::GetLowercaseExtensionFromFileName(fullName) == ".zarr")
+  {
+    vtkNew<vtkMRMLOMEZarrVoxelDataProvider> provider;
+    if (provider->SetFileName(fullName) && provider->GetNumberOfResolutionLevels() > 1)
+    {
+      // Preview budget: ~128 M voxels (256 MB for 16-bit voxels)
+      int referenceLevel = provider->PickReferenceResolutionLevel(128LL * 1024LL * 1024LL);
+      provider->SetReferenceResolutionLevel(referenceLevel);
+      reader->SetDatasetIndex(referenceLevel);
+      zarrProvider = provider.GetPointer();
+    }
+  }
+
   bool readingWorked = true;
   std::string errorMessage = "";
   try
@@ -663,6 +683,17 @@ int vtkMRMLVolumeArchetypeStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
   // If the file header carried voxel value scaling metadata then activate
   // voxel value scaling: the image read from file holds stored values.
   SetVoxelValueMetadataFromMetaDataDictionary(volNode, outputImage.GetPointer());
+
+  // Attach the multi-resolution provider (seeded with the reference level
+  // image that was just read). If voxel value scaling was activated from
+  // file metadata then the in-memory provider takes precedence (correctness
+  // over multi-resolution).
+  vtkMRMLScalarVolumeNode* scalarVolNode = vtkMRMLScalarVolumeNode::SafeDownCast(volNode);
+  if (zarrProvider && scalarVolNode && !scalarVolNode->IsVoxelValueScalingActive())
+  {
+    zarrProvider->SetLevelImageData(zarrProvider->GetReferenceResolutionLevel(), outputImage.GetPointer());
+    scalarVolNode->SetVoxelDataProvider(zarrProvider);
+  }
 
   int voxelVectorType = this->ConvertVoxelVectorTypeVTKITKToMRML(reader->GetVoxelVectorType());
   volNode->SetVoxelVectorType(voxelVectorType);
