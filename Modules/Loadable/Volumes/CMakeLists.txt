@@ -27,6 +27,8 @@ set(MODULE_INCLUDE_DIRECTORIES
   )
 
 set(MODULE_SRCS
+  qSlicerOMEZarrFileDialog.cxx
+  qSlicerOMEZarrFileDialog.h
   qSlicer${MODULE_NAME}IOOptionsWidget.cxx
   qSlicer${MODULE_NAME}IOOptionsWidget.h
   qSlicer${MODULE_NAME}Module.cxx

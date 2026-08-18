@@ -45,7 +45,10 @@
 // VTK includes
 #include <vtkImageLogic.h>
 #include <vtkImageExtractComponents.h>
+#include <vtkMatrix4x4.h>
+#include <vtkSmartPointer.h>
 #include <vtkVersion.h>
+#include <vtkWeakPointer.h>
 
 class vtkAssignAttribute;
 class vtkImageReslice;
@@ -54,7 +57,10 @@ class vtkGeneralTransform;
 // STL includes
 // #include <cstdlib>
 
+class vtkCallbackCommand;
 class vtkImageLabelOutline;
+class vtkMRMLScalarVolumeNode;
+class vtkMRMLVoxelDataProvider;
 class vtkTransform;
 
 class VTK_MRML_LOGIC_EXPORT vtkMRMLSliceLayerLogic : public vtkMRMLAbstractLogic
@@ -132,6 +138,17 @@ public:
   vtkGetMacro(InterpolationMode, int);
   vtkSetMacro(InterpolationMode, int);
 
+  /// Resolution level of the volume that is currently displayed in this
+  /// layer (-1 if variable-resolution display is inactive, i.e. the volume
+  /// has a single resolution level). During progressive refinement this may
+  /// temporarily be a coarser level than the zoom factor calls for, until
+  /// the background retrieval of the target level completes.
+  vtkGetMacro(DisplayedResolutionLevel, int);
+
+  /// Extent (in the displayed level's IJK indices) of the region that is
+  /// currently used as the reslice input.
+  vtkGetVector6Macro(DisplayedRegionExtent, int);
+
 protected:
   vtkMRMLSliceLayerLogic();
   ~vtkMRMLSliceLayerLogic() override;
@@ -182,6 +199,43 @@ protected:
   int UpdatingTransforms;
 
   int InterpolationMode;
+
+  //@{
+  /// Variable-resolution display of multi-resolution volumes (volumes whose
+  /// voxel data provider offers more than one resolution level):
+  /// the reslice input is the region of the volume that is displayed in the
+  /// slice view, at the resolution level matching the current zoom factor.
+  /// If the target level is not available yet, it is requested in the
+  /// background and the best already-available coarser level is displayed in
+  /// the meantime (progressive refinement).
+
+  /// Choose resolution level and region for the current view and update the
+  /// reslice input accordingly.
+  void UpdateVariableResolutionInput(vtkMRMLScalarVolumeNode* scalarVolumeNode, vtkMRMLVoxelDataProvider* provider);
+
+  /// Compute the displayed region of the volume (padded, clamped) at the
+  /// requested resolution level. Returns false if it cannot be determined
+  /// (the full level extent should be used then).
+  bool ComputeDisplayedRegion(vtkMRMLScalarVolumeNode* scalarVolumeNode, vtkMRMLVoxelDataProvider* provider, int resolutionLevel, int regionExtent[6]);
+
+  /// Compute the view (XY) to reference-level IJK matrix. Returns false for
+  /// non-linearly transformed volumes (region restriction is not supported).
+  bool GetXYToReferenceIJKMatrix(vtkMRMLScalarVolumeNode* scalarVolumeNode, vtkMatrix4x4* xyToRefIJK);
+
+  /// Keep observing the volume's provider for background request completion.
+  void UpdateVoxelDataProviderObserver(vtkMRMLVoxelDataProvider* provider);
+
+  static void OnVoxelDataProviderModified(vtkObject* caller, unsigned long eid, void* clientData, void* callData);
+
+  /// Maps reference-level IJK coordinates to the currently displayed level's
+  /// IJK coordinates (identity for single-resolution volumes).
+  vtkSmartPointer<vtkMatrix4x4> ResolutionScaleMatrix;
+  vtkSmartPointer<vtkCallbackCommand> VoxelDataProviderObserver;
+  vtkWeakPointer<vtkMRMLVoxelDataProvider> ObservedVoxelDataProvider;
+  /// Currently displayed resolution level (-1: variable resolution inactive)
+  int DisplayedResolutionLevel{ -1 };
+  int DisplayedRegionExtent[6]{ 0, -1, 0, -1, 0, -1 };
+  //@}
 };
 
 #endif

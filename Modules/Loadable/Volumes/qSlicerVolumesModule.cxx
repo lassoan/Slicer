@@ -18,8 +18,10 @@
 
 ==============================================================================*/
 #include <QDebug>
+#include <QTimer>
 
 // Slicer includes
+#include <qSlicerApplication.h>
 #include <qSlicerCoreApplication.h>
 #include <qSlicerIOManager.h>
 #include <qSlicerModuleManager.h>
@@ -29,12 +31,15 @@
 #include <vtkSlicerVolumesLogic.h>
 
 // Volumes QTModule includes
+#include "qSlicerOMEZarrFileDialog.h"
 #include "qSlicerVolumesReader.h"
 #include "qSlicerVolumesModule.h"
 #include "qSlicerVolumesModuleWidget.h"
 
 // MRML Logic includes
 #include <vtkMRMLColorLogic.h>
+#include <vtkMRMLScalarVolumeNode.h>
+#include <vtkMRMLVoxelDataProvider.h>
 
 // MRML includes
 #include <vtkMRMLScene.h>
@@ -135,10 +140,50 @@ void qSlicerVolumesModule::setup()
   ioManager->registerIO(new qSlicerVolumesReader(volumesLogic, this));
   ioManager->registerIO(new qSlicerNodeWriter("Volumes", QString("VolumeFile"), QStringList() << "vtkMRMLVolumeNode", true, this));
 
+  // Offer direct loading of OME-Zarr image directories on drag-and-drop
+  // (next to the DICOM and generic "Any data" choices).
+  qSlicerIOManager* guiIOManager = qSlicerApplication::application() ? qSlicerApplication::application()->ioManager() : nullptr;
+  if (guiIOManager)
+  {
+    guiIOManager->registerDialog(new qSlicerOMEZarrFileDialog());
+  }
+
   // Register Subject Hierarchy core plugins
   qSlicerSubjectHierarchyPluginHandler::instance()->registerPlugin(new qSlicerSubjectHierarchyVolumesPlugin());
   qSlicerSubjectHierarchyPluginHandler::instance()->registerPlugin(new qSlicerSubjectHierarchyLabelMapsPlugin());
   qSlicerSubjectHierarchyPluginHandler::instance()->registerPlugin(new qSlicerSubjectHierarchyDiffusionTensorVolumesPlugin());
+
+  // Pump for background voxel data requests: voxel data providers fetch
+  // resolution levels of multi-resolution volumes in worker threads (for
+  // progressive refinement in slice views), and completed requests must be
+  // finalized on the main thread (RegionReadyEvent is invoked from
+  // ProcessPendingRegionRequests). MRML is Qt-free, so the periodic
+  // main-thread callback is provided here.
+  QTimer* voxelDataRequestTimer = new QTimer(this);
+  voxelDataRequestTimer->setInterval(100);
+  QObject::connect(voxelDataRequestTimer,
+                   &QTimer::timeout,
+                   this,
+                   [this]()
+                   {
+                     vtkMRMLScene* scene = this->mrmlScene();
+                     if (!scene)
+                     {
+                       return;
+                     }
+                     std::vector<vtkMRMLNode*> volumeNodes;
+                     scene->GetNodesByClass("vtkMRMLScalarVolumeNode", volumeNodes);
+                     for (vtkMRMLNode* node : volumeNodes)
+                     {
+                       vtkMRMLScalarVolumeNode* volumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(node);
+                       vtkMRMLVoxelDataProvider* provider = volumeNode ? volumeNode->GetVoxelDataProvider() : nullptr;
+                       if (provider && provider->HasPendingRegionRequests())
+                       {
+                         provider->ProcessPendingRegionRequests();
+                       }
+                     }
+                   });
+  voxelDataRequestTimer->start();
 }
 
 //-----------------------------------------------------------------------------

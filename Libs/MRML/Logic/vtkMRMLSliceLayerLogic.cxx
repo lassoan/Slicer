@@ -19,6 +19,7 @@
 #include "vtkMRMLLabelMapVolumeNode.h"
 #include "vtkMRMLLabelMapVolumeDisplayNode.h"
 #include "vtkMRMLScalarVolumeNode.h"
+#include "vtkMRMLVoxelDataProvider.h"
 #include "vtkMRMLVectorVolumeDisplayNode.h"
 #include "vtkMRMLDiffusionWeightedVolumeDisplayNode.h"
 #include "vtkMRMLDiffusionTensorVolumeDisplayNode.h"
@@ -30,6 +31,7 @@
 #include <vtkAlgorithm.h>
 #include <vtkAlgorithmOutput.h>
 #include <vtkAssignAttribute.h>
+#include <vtkCallbackCommand.h>
 #include <vtkDiffusionTensorMathematics.h>
 #include <vtkFloatArray.h>
 #include <vtkGeneralTransform.h>
@@ -51,6 +53,7 @@
 
 // STD includes
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
 //----------------------------------------------------------------------------
@@ -114,6 +117,12 @@ vtkMRMLSliceLayerLogic::vtkMRMLSliceLayerLogic()
   this->XYToIJKTransform = vtkGeneralTransform::New();
   this->UVWToIJKTransform = vtkGeneralTransform::New();
 
+  this->ResolutionScaleMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
+  this->ResolutionScaleMatrix->Identity();
+  this->VoxelDataProviderObserver = vtkSmartPointer<vtkCallbackCommand>::New();
+  this->VoxelDataProviderObserver->SetClientData(this);
+  this->VoxelDataProviderObserver->SetCallback(vtkMRMLSliceLayerLogic::OnVoxelDataProviderModified);
+
   this->IsLabelLayer = 0;
 
   this->AssignAttributeTensorsToScalars = vtkAssignAttribute::New();
@@ -169,6 +178,7 @@ vtkMRMLSliceLayerLogic::~vtkMRMLSliceLayerLogic()
     vtkSetAndObserveMRMLNodeMacro(this->VolumeDisplayNodeObserved, 0);
   }
 
+  this->UpdateVoxelDataProviderObserver(nullptr);
   this->SetSliceNode(nullptr);
   this->SetVolumeNode(nullptr);
   this->XYToIJKTransform->Delete();
@@ -528,6 +538,12 @@ void vtkMRMLSliceLayerLogic::UpdateTransforms()
     this->XYToIJKTransform->Concatenate(rasToIJK.GetPointer());
     this->UVWToIJKTransform->Concatenate(rasToIJK.GetPointer());
 
+    // Variable-resolution display: map the node's (reference level) IJK
+    // coordinates to the currently displayed resolution level's IJK
+    // coordinates (identity for single-resolution volumes).
+    this->XYToIJKTransform->Concatenate(this->ResolutionScaleMatrix);
+    this->UVWToIJKTransform->Concatenate(this->ResolutionScaleMatrix);
+
     // vtkImageReslice works faster if the input is a linear transform, so try to convert it
     // to a linear transform.
     // Also attempt to make it a permute transform, as it makes reslicing even faster.
@@ -581,6 +597,290 @@ void vtkMRMLSliceLayerLogic::UpdateTransforms()
   {
     this->Modified();
   }
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLSliceLayerLogic::UpdateVoxelDataProviderObserver(vtkMRMLVoxelDataProvider* provider)
+{
+  if (this->ObservedVoxelDataProvider.GetPointer() == provider)
+  {
+    return;
+  }
+  if (this->ObservedVoxelDataProvider)
+  {
+    this->ObservedVoxelDataProvider->RemoveObserver(this->VoxelDataProviderObserver);
+  }
+  this->ObservedVoxelDataProvider = provider;
+  if (provider)
+  {
+    provider->AddObserver(vtkMRMLVoxelDataProvider::RegionReadyEvent, this->VoxelDataProviderObserver);
+  }
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLSliceLayerLogic::OnVoxelDataProviderModified(vtkObject* vtkNotUsed(caller), //
+                                                         unsigned long vtkNotUsed(eid),
+                                                         void* clientData,
+                                                         void* vtkNotUsed(callData))
+{
+  vtkMRMLSliceLayerLogic* self = reinterpret_cast<vtkMRMLSliceLayerLogic*>(clientData);
+  if (!self)
+  {
+    return;
+  }
+  // A background region request completed: re-evaluate level/region, which
+  // now finds the requested level available and swaps it in.
+  self->UpdateImageDisplay();
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLSliceLayerLogic::GetXYToReferenceIJKMatrix(vtkMRMLScalarVolumeNode* scalarVolumeNode, vtkMatrix4x4* xyToRefIJK)
+{
+  if (!this->SliceNode || !scalarVolumeNode || !xyToRefIJK)
+  {
+    return false;
+  }
+  // Only linear (or no) parent transforms are supported; non-linearly
+  // transformed volumes fall back to whole-level display.
+  vtkMRMLTransformNode* transformNode = scalarVolumeNode->GetParentTransformNode();
+  vtkNew<vtkMatrix4x4> worldToNode;
+  worldToNode->Identity();
+  if (transformNode)
+  {
+    if (!transformNode->IsTransformToWorldLinear())
+    {
+      return false;
+    }
+    transformNode->GetMatrixTransformToWorld(worldToNode.GetPointer());
+    worldToNode->Invert();
+  }
+  vtkNew<vtkMatrix4x4> rasToIJK;
+  scalarVolumeNode->GetRASToIJKMatrix(rasToIJK.GetPointer());
+  vtkMatrix4x4::Multiply4x4(worldToNode.GetPointer(), this->SliceNode->GetXYToRAS(), xyToRefIJK);
+  vtkMatrix4x4::Multiply4x4(rasToIJK.GetPointer(), xyToRefIJK, xyToRefIJK);
+  return true;
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLSliceLayerLogic::ComputeDisplayedRegion(vtkMRMLScalarVolumeNode* scalarVolumeNode, //
+                                                    vtkMRMLVoxelDataProvider* provider,
+                                                    int resolutionLevel,
+                                                    int regionExtent[6])
+{
+  int levelExtent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!provider->GetExtent(levelExtent, resolutionLevel))
+  {
+    return false;
+  }
+  double referenceScale[3] = { 1.0, 1.0, 1.0 };
+  double levelScale[3] = { 1.0, 1.0, 1.0 };
+  if (!provider->GetLevelScale(provider->GetReferenceResolutionLevel(), referenceScale) //
+      || !provider->GetLevelScale(resolutionLevel, levelScale))
+  {
+    return false;
+  }
+
+  // XY (view) -> reference IJK
+  vtkNew<vtkMatrix4x4> xyToRefIJK;
+  if (!this->GetXYToReferenceIJKMatrix(scalarVolumeNode, xyToRefIJK.GetPointer()))
+  {
+    return false;
+  }
+
+  int dims[3] = { 0, 0, 0 };
+  this->SliceNode->GetDimensions(dims);
+  if (dims[0] <= 0 || dims[1] <= 0)
+  {
+    return false;
+  }
+
+  // Bounding box of the 8 view-slab corners in level IJK coordinates
+  double boundsMin[3] = { VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, VTK_DOUBLE_MAX };
+  double boundsMax[3] = { VTK_DOUBLE_MIN, VTK_DOUBLE_MIN, VTK_DOUBLE_MIN };
+  for (int cornerIndex = 0; cornerIndex < 8; ++cornerIndex)
+  {
+    double corner[4] = { (cornerIndex & 1) ? static_cast<double>(dims[0]) : 0.0, //
+                         (cornerIndex & 2) ? static_cast<double>(dims[1]) : 0.0, //
+                         (cornerIndex & 4) ? static_cast<double>(dims[2]) : 0.0, //
+                         1.0 };
+    double refIJK[4] = { 0.0, 0.0, 0.0, 1.0 };
+    xyToRefIJK->MultiplyPoint(corner, refIJK);
+    for (int axis = 0; axis < 3; ++axis)
+    {
+      // reference IJK -> level IJK
+      double levelIndex = refIJK[axis] * referenceScale[axis] / levelScale[axis];
+      boundsMin[axis] = std::min(boundsMin[axis], levelIndex);
+      boundsMax[axis] = std::max(boundsMax[axis], levelIndex);
+    }
+  }
+
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    // Pad by 25% of the region size (so that small panning does not trigger
+    // a new region request) plus a fixed interpolation margin.
+    double pad = 0.25 * (boundsMax[axis] - boundsMin[axis]) + 4.0;
+    int low = static_cast<int>(std::floor(boundsMin[axis] - pad));
+    int high = static_cast<int>(std::ceil(boundsMax[axis] + pad));
+    regionExtent[2 * axis] = std::max(low, levelExtent[2 * axis]);
+    regionExtent[2 * axis + 1] = std::min(high, levelExtent[2 * axis + 1]);
+    if (regionExtent[2 * axis] > regionExtent[2 * axis + 1])
+    {
+      // View does not intersect the volume along this axis: use a minimal
+      // valid region (clamped) so that the pipeline stays valid.
+      regionExtent[2 * axis] = std::min(std::max(levelExtent[2 * axis], low), levelExtent[2 * axis + 1]);
+      regionExtent[2 * axis + 1] = regionExtent[2 * axis];
+    }
+  }
+  return true;
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNode* scalarVolumeNode, vtkMRMLVoxelDataProvider* provider)
+{
+  int numberOfLevels = provider->GetNumberOfResolutionLevels();
+  int referenceLevel = provider->GetReferenceResolutionLevel();
+
+  double referenceScale[3] = { 1.0, 1.0, 1.0 };
+  provider->GetLevelScale(referenceLevel, referenceScale);
+
+  // Target level: the coarsest level that still provides at least one voxel
+  // per screen pixel along both in-plane view directions. This is computed
+  // from the actual view-to-IJK mapping (the number of level voxels that one
+  // screen pixel step spans), which correctly handles anisotropic pyramids
+  // (e.g. XY-only downsampling) and oblique slicing.
+  int targetLevel = referenceLevel;
+  vtkNew<vtkMatrix4x4> xyToRefIJK;
+  if (this->GetXYToReferenceIJKMatrix(scalarVolumeNode, xyToRefIJK.GetPointer()))
+  {
+    targetLevel = 0;
+    for (int level = numberOfLevels - 1; level >= 0; --level)
+    {
+      double levelScale[3] = { 1.0, 1.0, 1.0 };
+      if (!provider->GetLevelScale(level, levelScale))
+      {
+        continue;
+      }
+      // Voxels (of this level) per screen pixel along the two view axes
+      double minVoxelsPerPixel = VTK_DOUBLE_MAX;
+      for (int viewAxis = 0; viewAxis < 2; ++viewAxis)
+      {
+        double lengthSquared = 0.0;
+        for (int ijkAxis = 0; ijkAxis < 3; ++ijkAxis)
+        {
+          double component = xyToRefIJK->GetElement(ijkAxis, viewAxis) * referenceScale[ijkAxis] / levelScale[ijkAxis];
+          lengthSquared += component * component;
+        }
+        minVoxelsPerPixel = std::min(minVoxelsPerPixel, std::sqrt(lengthSquared));
+      }
+      // A level is accepted when it provides at least this many voxels per
+      // screen pixel. Using a value slightly below 1.0 prefers the coarser
+      // of two adjacent levels when the zoom falls between them (a voxel
+      // covering up to ~1.3 screen pixels is visually near-indistinguishable,
+      // while the next finer level would require 2x the data along each
+      // downsampled axis). The displayed image is never finer than what the
+      // zoom level calls for.
+      const double acceptableVoxelsPerPixel = 0.75;
+      if (minVoxelsPerPixel >= acceptableVoxelsPerPixel)
+      {
+        // This level matches the screen resolution: coarser levels would
+        // appear blurry, finer levels would be wasteful.
+        targetLevel = level;
+        break;
+      }
+    }
+  }
+
+  // Region needed at the target level
+  int targetExtent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!this->ComputeDisplayedRegion(scalarVolumeNode, provider, targetLevel, targetExtent))
+  {
+    provider->GetExtent(targetExtent, targetLevel);
+  }
+
+  // Progressive refinement: if the target level is not available yet, request
+  // it in the background and display the best available coarser level.
+  int displayLevel = targetLevel;
+  if (!provider->IsRegionAvailable(targetExtent, targetLevel))
+  {
+    provider->RequestRegionAsync(targetExtent, targetLevel);
+    displayLevel = referenceLevel; // always available
+    for (int level = targetLevel + 1; level < numberOfLevels; ++level)
+    {
+      int levelExtent[6] = { 0, -1, 0, -1, 0, -1 };
+      provider->GetExtent(levelExtent, level);
+      if (provider->IsRegionAvailable(levelExtent, level))
+      {
+        displayLevel = level;
+        break;
+      }
+    }
+  }
+
+  // Region for the level that is going to be displayed
+  int displayExtent[6] = { 0, -1, 0, -1, 0, -1 };
+  if (displayLevel == targetLevel)
+  {
+    for (int i = 0; i < 6; ++i)
+    {
+      displayExtent[i] = targetExtent[i];
+    }
+  }
+  else if (!this->ComputeDisplayedRegion(scalarVolumeNode, provider, displayLevel, displayExtent))
+  {
+    provider->GetExtent(displayExtent, displayLevel);
+  }
+
+  // Skip the update if the current input already covers the needed region at
+  // the same level (small panning stays within the padded region).
+  if (displayLevel == this->DisplayedResolutionLevel)
+  {
+    bool covered = true;
+    for (int axis = 0; axis < 3 && covered; ++axis)
+    {
+      // Compare against the unpadded core needs: displayExtent is padded, so
+      // containment of its center 3/4 is approximated by direct containment.
+      if (displayExtent[2 * axis] < this->DisplayedRegionExtent[2 * axis] //
+          || displayExtent[2 * axis + 1] > this->DisplayedRegionExtent[2 * axis + 1])
+      {
+        covered = false;
+      }
+    }
+    if (covered)
+    {
+      return;
+    }
+  }
+
+  vtkNew<vtkImageData> region;
+  if (!provider->GetRegionIfAvailable(region.GetPointer(), displayExtent, displayLevel))
+  {
+    // Should not happen (displayLevel was selected as available); fall back
+    // to the reference stored image.
+    this->Reslice->SetInputData(scalarVolumeNode->GetStoredImageData());
+    this->ResliceUVW->SetInputData(scalarVolumeNode->GetStoredImageData());
+    this->DisplayedResolutionLevel = referenceLevel;
+    this->ResolutionScaleMatrix->Identity();
+    this->UpdateTransforms();
+    return;
+  }
+
+  this->Reslice->SetInputData(region.GetPointer());
+  this->ResliceUVW->SetInputData(region.GetPointer());
+  this->DisplayedResolutionLevel = displayLevel;
+  for (int i = 0; i < 6; ++i)
+  {
+    this->DisplayedRegionExtent[i] = displayExtent[i];
+  }
+
+  // Update reference IJK -> displayed level IJK mapping
+  double displayScale[3] = { 1.0, 1.0, 1.0 };
+  provider->GetLevelScale(displayLevel, displayScale);
+  this->ResolutionScaleMatrix->Identity();
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    this->ResolutionScaleMatrix->SetElement(axis, axis, referenceScale[axis] / displayScale[axis]);
+  }
+  this->UpdateTransforms();
 }
 
 //----------------------------------------------------------------------------
@@ -748,13 +1048,30 @@ void vtkMRMLSliceLayerLogic::UpdateImageDisplay()
   }
   else if (volumeNode)
   {
-    // std::cout << "volumeNode->GetImageData()" << volumeNode->GetImageData() << std::endl;
-    //    if (volumeNode->GetImageData())
-    //      {
-    //      volumeNode->GetImageData()->Print(std::cout);
-    //      }
-    this->Reslice->SetInputData(displayInputImage);
-    this->ResliceUVW->SetInputData(displayInputImage);
+    vtkMRMLVoxelDataProvider* multiResolutionProvider = nullptr;
+    if (scalarVolumeNodeWithProvider //
+        && scalarVolumeNodeWithProvider->GetVoxelDataProvider()->GetNumberOfResolutionLevels() > 1)
+    {
+      multiResolutionProvider = scalarVolumeNodeWithProvider->GetVoxelDataProvider();
+    }
+    this->UpdateVoxelDataProviderObserver(multiResolutionProvider);
+    if (multiResolutionProvider)
+    {
+      // The reslice input is the displayed region at the resolution level
+      // matching the current zoom (with progressive refinement).
+      this->UpdateVariableResolutionInput(scalarVolumeNodeWithProvider, multiResolutionProvider);
+    }
+    else
+    {
+      if (this->DisplayedResolutionLevel != -1)
+      {
+        this->DisplayedResolutionLevel = -1;
+        this->ResolutionScaleMatrix->Identity();
+        this->UpdateTransforms();
+      }
+      this->Reslice->SetInputData(displayInputImage);
+      this->ResliceUVW->SetInputData(displayInputImage);
+    }
     // use the label outline if we have a label map volume, this is the label
     // layer (turned on in slice logic when the label layer is instantiated)
     // and the slice node is set to use it.

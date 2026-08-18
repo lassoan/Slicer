@@ -118,8 +118,9 @@ bool qSlicerVolumesReader::canLoadFile(const QString& fileName) const
   {
     // OME-Zarr/NGFF images are stored as directories (readable if ITK is
     // built with Module_IOOMEZarrNGFF). The generic implementation only
-    // accepts files, therefore directories are handled here.
-    return fileName.endsWith(".zarr", Qt::CaseInsensitive);
+    // accepts files, therefore directories are handled here. Recognized by
+    // name suffix or content (zarr v2 metadata file).
+    return fileName.endsWith(".zarr", Qt::CaseInsensitive) || QFileInfo::exists(fileName + "/.zattrs");
   }
   return Superclass::canLoadFile(fileName);
 }
