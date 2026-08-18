@@ -111,8 +111,27 @@ QStringList qSlicerVolumesReader::extensions() const
 }
 
 //----------------------------------------------------------------------------
+namespace
+{
+bool isRemoteZarrURL(const QString& fileName)
+{
+  // Remote OME-Zarr store (e.g. an image on IDR), streamed through
+  // itk::OMEZarrNGFFImageIO / TensorStore without downloading the whole
+  // image. The store root does not have to end with .zarr (for example
+  // bioformats2raw containers keep the image in a subpath such as
+  // https://.../name.zarr/0).
+  return (fileName.startsWith("http://", Qt::CaseInsensitive) || fileName.startsWith("https://", Qt::CaseInsensitive)) //
+         && fileName.contains(".zarr", Qt::CaseInsensitive);
+}
+} // namespace
+
+//----------------------------------------------------------------------------
 bool qSlicerVolumesReader::canLoadFile(const QString& fileName) const
 {
+  if (isRemoteZarrURL(fileName))
+  {
+    return true;
+  }
   QFileInfo fileInfo(fileName);
   if (fileInfo.isDir())
   {
@@ -129,11 +148,11 @@ bool qSlicerVolumesReader::canLoadFile(const QString& fileName) const
 double qSlicerVolumesReader::canLoadFileConfidence(const QString& fileName) const
 {
   QFileInfo fileInfo(fileName);
-  if (fileInfo.isDir())
+  if (isRemoteZarrURL(fileName) || fileInfo.isDir())
   {
     // 0.55 is what a 4-character extension match would produce
     // (0.5 + 0.01 * extension length); any other reader returns 0 for
-    // directories.
+    // directories and remote zarr stores.
     return this->canLoadFile(fileName) ? 0.55 : 0.0;
   }
   double confidence = Superclass::canLoadFileConfidence(fileName);

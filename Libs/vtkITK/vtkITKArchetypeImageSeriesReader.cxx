@@ -183,16 +183,34 @@ void vtkITKArchetypeImageSeriesReader::PrintSelf(ostream& os, vtkIndent indent)
 }
 
 //----------------------------------------------------------------------------
+bool vtkITKArchetypeImageSeriesReader::IsRemoteURL(const char* fileName)
+{
+  if (!fileName)
+  {
+    return false;
+  }
+  return strncmp(fileName, "http://", 7) == 0 || strncmp(fileName, "https://", 8) == 0;
+}
+
+//----------------------------------------------------------------------------
 itk::ImageIOBase::Pointer vtkITKArchetypeImageSeriesReader::CreateImageIOWithDatasetIndex(const char* fileName)
 {
 #ifdef VTKITK_HAS_OMEZARRNGFF_SUPPORT
   // OME-Zarr images are stored as directories with zarr v2 metadata at the
-  // top level. The IO is constructed directly (instead of relying on
-  // itk::ImageIOFactory) because factory selection calls each IO's
-  // CanReadFile, and OMEZarrNGFFImageIO::CanReadFile is not reliable when
-  // the same store is opened repeatedly in one process; a failed factory
-  // selection would silently fall back to the default IO configuration and
-  // read the wrong (full) resolution level.
+  // top level, or behind an HTTP(S) URL (itk::OMEZarrNGFFImageIO reads remote
+  // stores through TensorStore's http key-value store driver). The IO is
+  // constructed directly (instead of relying on itk::ImageIOFactory) because
+  // factory selection calls each IO's CanReadFile, and
+  // OMEZarrNGFFImageIO::CanReadFile is not reliable when the same store is
+  // opened repeatedly in one process; a failed factory selection would
+  // silently fall back to the default IO configuration and read the wrong
+  // (full) resolution level.
+  if (fileName && IsRemoteURL(fileName) && std::string(fileName).find(".zarr") != std::string::npos)
+  {
+    itk::OMEZarrNGFFImageIO::Pointer zarrImageIO = itk::OMEZarrNGFFImageIO::New();
+    zarrImageIO->SetDatasetIndex(this->DatasetIndex);
+    return zarrImageIO.GetPointer();
+  }
   if (fileName && itksys::SystemTools::FileIsDirectory(fileName) //
       && itksys::SystemTools::FileExists((std::string(fileName) + "/.zattrs").c_str()))
   {
@@ -232,10 +250,10 @@ itk::ImageIOBase::Pointer vtkITKArchetypeImageSeriesReader::GetImageIO(const cha
     return nullptr;
   }
 
-  std::string fileNameCollapsed = itksys::SystemTools::CollapseFullPath(filename);
+  std::string fileNameCollapsed = IsRemoteURL(filename) ? std::string(filename) : itksys::SystemTools::CollapseFullPath(filename);
 
-  // First see if the archetype exists
-  if (!itksys::SystemTools::FileExists(fileNameCollapsed.c_str()))
+  // First see if the archetype exists (remote URLs are not checked)
+  if (!IsRemoteURL(filename) && !itksys::SystemTools::FileExists(fileNameCollapsed.c_str()))
   {
     vtkDebugMacro(<< "The filename does not exist.");
     return nullptr;
@@ -365,12 +383,14 @@ int vtkITKArchetypeImageSeriesReader::RequestInformation(vtkInformation* vtkNotU
   std::vector<std::string> candidateFiles;
   std::vector<std::string> candidateSeries;
   int extent[6];
-  std::string fileNameCollapsed = itksys::SystemTools::CollapseFullPath(this->Archetype);
+  // Remote URLs must not be collapsed into a local filesystem path
+  std::string fileNameCollapsed = IsRemoteURL(this->Archetype) ? std::string(this->Archetype) : itksys::SystemTools::CollapseFullPath(this->Archetype);
 
-  // Directory-based datasets (e.g. OME-Zarr images) are always a single
-  // dataset: scanning for a numbered file series is meaningless and can be
-  // very slow (the directory may contain thousands of chunk files).
-  if (this->Archetype && itksys::SystemTools::FileIsDirectory(this->Archetype))
+  // Directory-based datasets (e.g. OME-Zarr images) and remote URLs are
+  // always a single dataset: scanning for a numbered file series is
+  // meaningless and can be very slow (the directory may contain thousands of
+  // chunk files).
+  if (this->Archetype && (itksys::SystemTools::FileIsDirectory(this->Archetype) || IsRemoteURL(this->Archetype)))
   {
     this->SingleFile = 1;
   }
@@ -393,6 +413,10 @@ int vtkITKArchetypeImageSeriesReader::RequestInformation(vtkInformation* vtkNotU
       fileNameCollapsed.find("#") != std::string::npos)
   {
     vtkDebugMacro("File " << fileNameCollapsed.c_str() << " is a pointer to the mrml scene in memory, not checking for it on disk");
+  }
+  else if (IsRemoteURL(fileNameCollapsed.c_str()))
+  {
+    vtkDebugMacro("File " << fileNameCollapsed.c_str() << " is a remote URL, not checking for it on disk");
   }
   else
   {

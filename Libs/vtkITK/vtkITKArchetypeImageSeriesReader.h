@@ -125,6 +125,12 @@ public:
   /// implementations.
   itk::ImageIOBase::Pointer CreateImageIOWithDatasetIndex(const char* fileName);
 
+  /// Returns true if the file name is a remote HTTP(S) URL. Remote archetypes
+  /// are read as a single dataset without checking for local existence
+  /// (currently supported for OME-Zarr/NGFF stores read by
+  /// itk::OMEZarrNGFFImageIO through TensorStore's http driver).
+  static bool IsRemoteURL(const char* fileName);
+
   /// Determine if the file can be read using ITK
   virtual int CanReadFile(const char* filename);
 

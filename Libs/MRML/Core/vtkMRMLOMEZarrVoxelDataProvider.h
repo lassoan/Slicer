@@ -121,6 +121,12 @@ protected:
   /// Does not touch the cache; returns the loaded image.
   vtkSmartPointer<vtkImageData> LoadLevelImage(int level);
 
+  /// Discover the resolution levels of a remote (HTTP/HTTPS) store by probing
+  /// increasing dataset indices with the ITK reader (only metadata is
+  /// fetched). Used by SetFileName() for remote stores, where the zarr
+  /// metadata files cannot be read from the local file system.
+  bool ProbeRemoteLevels();
+
   /// Ensure a level is present in the cache (synchronous).
   bool EnsureLevelLoaded(int level);
 

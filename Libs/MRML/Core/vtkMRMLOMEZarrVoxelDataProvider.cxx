@@ -15,11 +15,15 @@
 
 // VTK includes
 #include <vtkDataArray.h>
+#include <vtkErrorCode.h>
 #include <vtkExtractVOI.h>
 #include <vtkImageData.h>
+#include <vtkInformation.h>
+#include <vtkMatrix4x4.h>
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
 #include <vtkPointData.h>
+#include <vtkStreamingDemandDrivenPipeline.h>
 
 // RapidJSON includes
 #include <rapidjson/document.h>
@@ -28,6 +32,7 @@
 #include <vtksys/SystemInformation.hxx>
 
 // STD includes
+#include <cmath>
 #include <fstream>
 #include <sstream>
 
@@ -134,6 +139,14 @@ bool vtkMRMLOMEZarrVoxelDataProvider::SetFileName(const std::string& fileName)
     this->LevelImages.clear();
   }
 
+  if (vtkITKArchetypeImageSeriesReader::IsRemoteURL(fileName.c_str()))
+  {
+    // Remote store: the zarr metadata files cannot be read from the local
+    // file system; discover the levels by probing the reader (this fetches
+    // only the store metadata over HTTP, no pixel data).
+    return this->ProbeRemoteLevels();
+  }
+
   rapidjson::Document zattrs;
   if (!ReadJsonDocument(fileName + "/.zattrs", zattrs))
   {
@@ -207,6 +220,68 @@ bool vtkMRMLOMEZarrVoxelDataProvider::SetFileName(const std::string& fileName)
   if (this->Levels.empty())
   {
     vtkErrorMacro("SetFileName: no resolution levels found in " << fileName);
+    return false;
+  }
+  this->ReferenceLevel = 0;
+  this->Modified();
+  return true;
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLOMEZarrVoxelDataProvider::ProbeRemoteLevels()
+{
+  const int maximumNumberOfLevels = 16;
+  for (int levelIndex = 0; levelIndex < maximumNumberOfLevels; ++levelIndex)
+  {
+    vtkNew<vtkITKArchetypeImageSeriesScalarReader> reader;
+    reader->SetArchetype(this->FileName.c_str());
+    reader->SetSingleFile(1);
+    reader->SetDatasetIndex(levelIndex);
+    reader->SetOutputScalarTypeToNative();
+    reader->SetUseNativeOriginOn();
+    reader->UpdateInformation();
+    if (reader->GetErrorCode() != vtkErrorCode::NoError)
+    {
+      // First dataset index that cannot be read: end of the pyramid
+      break;
+    }
+    vtkInformation* outInfo = reader->GetOutputInformation(0);
+    if (!outInfo || !outInfo->Has(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT()))
+    {
+      break;
+    }
+    LevelInfo level;
+    level.Path = std::to_string(levelIndex);
+    outInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), level.Extent);
+    if (level.Extent[1] < level.Extent[0])
+    {
+      break;
+    }
+    // Per-level spacing (mm) from the reader's RAS to IJK matrix: the
+    // reader output image itself uses unit spacing (Slicer convention)
+    vtkMatrix4x4* rasToIjk = reader->GetRasToIjkMatrix();
+    if (rasToIjk)
+    {
+      vtkNew<vtkMatrix4x4> ijkToRas;
+      vtkMatrix4x4::Invert(rasToIjk, ijkToRas);
+      for (int axis = 0; axis < 3; ++axis)
+      {
+        double columnNorm = std::sqrt(ijkToRas->GetElement(0, axis) * ijkToRas->GetElement(0, axis)     //
+                                      + ijkToRas->GetElement(1, axis) * ijkToRas->GetElement(1, axis)   //
+                                      + ijkToRas->GetElement(2, axis) * ijkToRas->GetElement(2, axis)); //
+        level.SpacingMM[axis] = (columnNorm > 0.0) ? columnNorm : 1.0;
+      }
+    }
+    if (this->Levels.empty())
+    {
+      this->ScalarType = reader->GetOutputScalarType();
+      this->NumberOfComponents = std::max(1, static_cast<int>(reader->GetNumberOfComponents()));
+    }
+    this->Levels.push_back(level);
+  }
+  if (this->Levels.empty())
+  {
+    vtkErrorMacro("ProbeRemoteLevels: no readable resolution levels found at " << this->FileName);
     return false;
   }
   this->ReferenceLevel = 0;

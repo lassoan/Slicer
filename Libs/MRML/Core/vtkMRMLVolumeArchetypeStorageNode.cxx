@@ -558,10 +558,16 @@ int vtkMRMLVolumeArchetypeStorageNode::ReadDataInternal(vtkMRMLNode* refNode)
   // Multi-resolution OME-Zarr image: read a fast preview (reference) level
   // now and attach a multi-resolution voxel data provider after reading, so
   // that finer levels are retrieved on demand (e.g. by slice views according
-  // to the current zoom, with progressive refinement).
+  // to the current zoom, with progressive refinement). The store can be a
+  // local directory or a remote HTTP(S) URL (e.g. an image on IDR): remote
+  // stores are streamed through the same reader, only the requested levels
+  // are downloaded.
+  bool localZarr = vtksys::SystemTools::FileIsDirectory(fullName.c_str()) //
+                   && vtkMRMLStorageNode::GetLowercaseExtensionFromFileName(fullName) == ".zarr";
+  bool remoteZarr = vtkITKArchetypeImageSeriesReader::IsRemoteURL(fullName.c_str()) //
+                    && fullName.find(".zarr") != std::string::npos;
   vtkSmartPointer<vtkMRMLOMEZarrVoxelDataProvider> zarrProvider;
-  if (vtksys::SystemTools::FileIsDirectory(fullName.c_str()) //
-      && vtkMRMLStorageNode::GetLowercaseExtensionFromFileName(fullName) == ".zarr")
+  if (localZarr || remoteZarr)
   {
     vtkNew<vtkMRMLOMEZarrVoxelDataProvider> provider;
     if (provider->SetFileName(fullName) && provider->GetNumberOfResolutionLevels() > 1)

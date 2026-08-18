@@ -438,6 +438,17 @@ void vtkSlicerVolumesLogic::InitializeStorageNode(vtkMRMLStorageNode* storageNod
   {
     useURI = mrmlScene->GetCacheManager()->IsRemoteReference(filename);
   }
+  // Remote OME-Zarr stores are NOT downloaded into the cache through the
+  // URI/data IO manager machinery (a store is a directory of thousands of
+  // chunk files, not a single downloadable file): the archetype reader
+  // streams them directly, fetching only the requested resolution levels,
+  // so the URL is kept as the file name.
+  if (useURI && filename                                                                                   //
+      && (strncmp(filename, "http://", 7) == 0 || strncmp(filename, "https://", 8) == 0)                   //
+      && std::string(filename).find(".zarr") != std::string::npos)
+  {
+    useURI = false;
+  }
   if (useURI)
   {
     vtkDebugMacro("AddArchetypeVolume: input filename '" << filename << "' is a URI");
