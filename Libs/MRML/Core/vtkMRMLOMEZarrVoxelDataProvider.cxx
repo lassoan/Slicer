@@ -33,6 +33,7 @@
 
 // STD includes
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 
@@ -737,7 +738,31 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
 bool vtkMRMLOMEZarrVoxelDataProvider::HasPendingRegionRequests()
 {
   std::lock_guard<std::mutex> lock(this->Mutex);
-  return (this->HasPendingRequest || !this->CompletedLevels.empty());
+  return (this->HasPendingRequest || this->RequestInProgress || !this->CompletedLevels.empty());
+}
+
+//----------------------------------------------------------------------------
+double vtkMRMLOMEZarrVoxelDataProvider::GetPendingRegionRequestProgress()
+{
+  std::lock_guard<std::mutex> lock(this->Mutex);
+  if (!this->RequestInProgress)
+  {
+    return this->HasPendingRequest ? 0.0 : -1.0;
+  }
+  if (this->TilesTotal > 0)
+  {
+    // Real progress: completed tiles of the tiled region read
+    return std::min(0.98, static_cast<double>(this->TilesCompleted) / this->TilesTotal);
+  }
+  // Estimate from the request size and the observed retrieval throughput
+  double elapsedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - this->RequestStartTime).count();
+  if (this->ThroughputBytesPerSecond <= 0.0 || this->RequestInProgressBytes <= 0.0)
+  {
+    // Unknown speed: fill gradually over ~10 seconds
+    return std::min(0.9, elapsedSeconds / 10.0);
+  }
+  double expectedSeconds = this->RequestInProgressBytes / this->ThroughputBytesPerSecond;
+  return std::max(0.02, std::min(0.95, elapsedSeconds / expectedSeconds));
 }
 
 //----------------------------------------------------------------------------
@@ -788,57 +813,202 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         this->CompletedLevels.push_back(request.Level);
         continue;
       }
+      // Bookkeeping for the loading progress estimate
+      this->RequestInProgress = true;
+      this->RequestStartTime = std::chrono::steady_clock::now();
+      if (request.WholeLevel)
+      {
+        this->RequestInProgressBytes = static_cast<double>(this->GetLevelMemoryBytes(request.Level));
+      }
+      else
+      {
+        double numberOfVoxels = static_cast<double>(request.Extent[1] - request.Extent[0] + 1)   //
+                                * static_cast<double>(request.Extent[3] - request.Extent[2] + 1) //
+                                * static_cast<double>(request.Extent[5] - request.Extent[4] + 1);
+        this->RequestInProgressBytes = numberOfVoxels * vtkDataArray::GetDataTypeSize(this->ScalarType) * this->NumberOfComponents;
+      }
     }
     // Load outside the lock (this is the expensive part)
+    auto finishRequest = [this](bool success)
+    {
+      // The caller must hold Mutex. Update the observed throughput (EMA)
+      // that the progress estimate of future requests is computed from.
+      double elapsedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - this->RequestStartTime).count();
+      if (success && elapsedSeconds > 0.05 && this->RequestInProgressBytes > 0.0)
+      {
+        double bytesPerSecond = this->RequestInProgressBytes / elapsedSeconds;
+        this->ThroughputBytesPerSecond = (this->ThroughputBytesPerSecond > 0.0) ? (0.5 * this->ThroughputBytesPerSecond + 0.5 * bytesPerSecond) : bytesPerSecond;
+      }
+      this->RequestInProgress = false;
+    };
+    // The region (or the whole level) is read in multiple smaller tiles:
+    // TensorStore fetches only the chunks intersecting each tile, progress is
+    // reported per tile, and a request that got superseded (e.g. the user
+    // zoomed or panned further) is abandoned between tiles.
+    int regionExtent[6];
     if (request.WholeLevel)
     {
-      vtkSmartPointer<vtkImageData> image = this->LoadLevelImage(request.Level);
-      std::lock_guard<std::mutex> lock(this->Mutex);
-      if (image)
+      for (int i = 0; i < 6; ++i)
       {
-        this->LevelImages[request.Level] = image;
-        this->LevelAccessOrder[request.Level] = ++this->AccessCounter;
-        this->CompletedLevels.push_back(request.Level);
+        regionExtent[i] = this->Levels[request.Level].Extent[i];
       }
     }
     else
     {
-      // Chunk-granular: read only the chunks intersecting the region
-      vtkSmartPointer<vtkImageData> image = vtkSmartPointer<vtkImageData>::New();
-      bool success = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(this->FileName.c_str(), request.Level, request.Extent, image);
-      if (!success)
+      for (int i = 0; i < 6; ++i)
       {
-        // Transient read failures have been observed (e.g. store handle
-        // contention, remote hiccup): retry once
-        success = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(this->FileName.c_str(), request.Level, request.Extent, image);
+        regionExtent[i] = request.Extent[i];
       }
-      std::lock_guard<std::mutex> lock(this->Mutex);
-      if (success)
+    }
+    int scalarType = VTK_VOID;
+    bool success = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(this->FileName.c_str(), request.Level, regionExtent, nullptr, scalarType);
+    vtkSmartPointer<vtkImageData> image;
+    bool abandoned = false;
+    if (success)
+    {
+      image = vtkSmartPointer<vtkImageData>::New();
+      image->SetExtent(regionExtent);
+      image->SetOrigin(0.0, 0.0, 0.0);
+      image->SetSpacing(1.0, 1.0, 1.0);
+      image->AllocateScalars(scalarType, 1);
+
+      // Tile plan: split along k (contiguous memory) when the region is
+      // thick, otherwise along j; ~8 MB per tile.
+      const long long tileTargetBytes = 8LL * 1024LL * 1024LL;
+      int xDim = regionExtent[1] - regionExtent[0] + 1;
+      int yDim = regionExtent[3] - regionExtent[2] + 1;
+      int zDim = regionExtent[5] - regionExtent[4] + 1;
+      long long bytesPerVoxel = image->GetScalarSize();
+      int splitAxis = (zDim >= 8) ? 2 : 1;
+      long long bytesPerUnit = (splitAxis == 2) ? (static_cast<long long>(xDim) * yDim * bytesPerVoxel) //
+                                                : (static_cast<long long>(xDim) * zDim * bytesPerVoxel);
+      int axisDim = (splitAxis == 2) ? zDim : yDim;
+      int unitsPerTile = std::max(1, static_cast<int>(tileTargetBytes / std::max(1LL, bytesPerUnit)));
+      int numberOfTiles = (axisDim + unitsPerTile - 1) / unitsPerTile;
       {
-        CachedRegion cachedRegion;
-        cachedRegion.Level = request.Level;
+        std::lock_guard<std::mutex> lock(this->Mutex);
+        this->TilesTotal = numberOfTiles;
+        this->TilesCompleted = 0;
+      }
+      for (int tileIndex = 0; tileIndex < numberOfTiles && success; ++tileIndex)
+      {
+        {
+          std::lock_guard<std::mutex> lock(this->Mutex);
+          if (this->WorkerShouldStop)
+          {
+            return;
+          }
+          if (this->HasPendingRequest)
+          {
+            bool samePendingRequest = (this->PendingRequest.Level == request.Level && this->PendingRequest.WholeLevel == request.WholeLevel);
+            for (int i = 0; i < 6 && samePendingRequest; ++i)
+            {
+              samePendingRequest = (this->PendingRequest.Extent[i] == request.Extent[i]);
+            }
+            if (samePendingRequest)
+            {
+              // Duplicate of what is being read: absorb it
+              this->HasPendingRequest = false;
+            }
+            // Note: a different pending request must NOT abandon the current
+            // read. Several views request regions of the same provider and
+            // supersede each other in the single-slot request queue; only the
+            // guarantee that every started read completes (and its result is
+            // cached, triggering the unserved views to re-request) makes this
+            // converge. Abandoning superseded reads would need per-requester
+            // queues to avoid a livelock.
+          }
+        }
+        int tileExtent[6];
         for (int i = 0; i < 6; ++i)
         {
-          cachedRegion.Extent[i] = request.Extent[i];
+          tileExtent[i] = regionExtent[i];
         }
-        cachedRegion.Image = image;
-        cachedRegion.AccessStamp = ++this->AccessCounter;
-        this->RegionCache.push_back(cachedRegion);
-        // Keep only the most recently used regions
-        while (this->RegionCache.size() > MaximumCachedRegions)
+        int axisMin = regionExtent[2 * splitAxis] + tileIndex * unitsPerTile;
+        tileExtent[2 * splitAxis] = axisMin;
+        tileExtent[2 * splitAxis + 1] = std::min(regionExtent[2 * splitAxis + 1], axisMin + unitsPerTile - 1);
+        bool tileSuccess = false;
+        if (splitAxis == 2)
         {
-          size_t oldestIndex = 0;
-          for (size_t i = 1; i < this->RegionCache.size(); ++i)
+          // k-slab of the full xy region: contiguous in the image buffer
+          void* tileBuffer = image->GetScalarPointer(regionExtent[0], regionExtent[2], tileExtent[4]);
+          tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(this->FileName.c_str(), request.Level, tileExtent, tileBuffer, scalarType);
+          if (!tileSuccess)
           {
-            if (this->RegionCache[i].AccessStamp < this->RegionCache[oldestIndex].AccessStamp)
+            // Transient read failures have been observed (e.g. store handle
+            // contention, remote hiccup): retry once
+            tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(this->FileName.c_str(), request.Level, tileExtent, tileBuffer, scalarType);
+          }
+        }
+        else
+        {
+          // j-slab: read into a temporary tile and copy row by row
+          vtkNew<vtkImageData> tile;
+          tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(this->FileName.c_str(), request.Level, tileExtent, tile.GetPointer());
+          if (!tileSuccess)
+          {
+            tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(this->FileName.c_str(), request.Level, tileExtent, tile.GetPointer());
+          }
+          if (tileSuccess)
+          {
+            long long rowBytes = static_cast<long long>(xDim) * bytesPerVoxel;
+            for (int k = tileExtent[4]; k <= tileExtent[5]; ++k)
             {
-              oldestIndex = i;
+              for (int j = tileExtent[2]; j <= tileExtent[3]; ++j)
+              {
+                memcpy(image->GetScalarPointer(regionExtent[0], j, k), tile->GetScalarPointer(regionExtent[0], j, k), rowBytes);
+              }
             }
           }
-          this->RegionCache.erase(this->RegionCache.begin() + oldestIndex);
+        }
+        success = tileSuccess;
+        if (success)
+        {
+          std::lock_guard<std::mutex> lock(this->Mutex);
+          this->TilesCompleted = tileIndex + 1;
+        }
+      }
+      image->GetPointData()->GetScalars()->Modified();
+    }
+    {
+      std::lock_guard<std::mutex> lock(this->Mutex);
+      this->TilesTotal = 0;
+      this->TilesCompleted = 0;
+      if (success && !abandoned)
+      {
+        if (request.WholeLevel)
+        {
+          this->LevelImages[request.Level] = image;
+          this->LevelAccessOrder[request.Level] = ++this->AccessCounter;
+        }
+        else
+        {
+          CachedRegion cachedRegion;
+          cachedRegion.Level = request.Level;
+          for (int i = 0; i < 6; ++i)
+          {
+            cachedRegion.Extent[i] = request.Extent[i];
+          }
+          cachedRegion.Image = image;
+          cachedRegion.AccessStamp = ++this->AccessCounter;
+          this->RegionCache.push_back(cachedRegion);
+          // Keep only the most recently used regions
+          while (this->RegionCache.size() > MaximumCachedRegions)
+          {
+            size_t oldestIndex = 0;
+            for (size_t i = 1; i < this->RegionCache.size(); ++i)
+            {
+              if (this->RegionCache[i].AccessStamp < this->RegionCache[oldestIndex].AccessStamp)
+              {
+                oldestIndex = i;
+              }
+            }
+            this->RegionCache.erase(this->RegionCache.begin() + oldestIndex);
+          }
         }
         this->CompletedLevels.push_back(request.Level);
       }
+      finishRequest(success && !abandoned);
     }
   }
 }

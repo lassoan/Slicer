@@ -132,6 +132,12 @@ public:
   /// Returns true if a background request is pending.
   virtual bool HasPendingRegionRequests() { return false; }
 
+  /// Progress of the current background region request: -1 if no request is
+  /// pending or executing, otherwise an estimate between 0 and 1 (backends
+  /// typically estimate from the request size and the observed retrieval
+  /// throughput). Used by views to display a loading indicator.
+  virtual double GetPendingRegionRequestProgress() { return -1.0; }
+
   /// Called periodically on the main thread (by the application) to finalize
   /// completed background requests and invoke RegionReadyEvent.
   virtual void ProcessPendingRegionRequests() {}

@@ -227,10 +227,10 @@ itk::ImageIOBase::Pointer vtkITKArchetypeImageSeriesReader::CreateImageIOWithDat
 }
 
 //----------------------------------------------------------------------------
-bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(const char* fileName, int datasetIndex, const int extent[6], vtkImageData* output)
+bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(const char* fileName, int datasetIndex, const int extent[6], void* buffer, int& scalarType)
 {
 #ifdef VTKITK_HAS_OMEZARRNGFF_SUPPORT
-  if (!fileName || !output || extent[1] < extent[0] || extent[3] < extent[2] || extent[5] < extent[4])
+  if (!fileName || extent[1] < extent[0] || extent[3] < extent[2] || extent[5] < extent[4])
   {
     return false;
   }
@@ -245,7 +245,7 @@ bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(const char* fileName, i
     zarrImageIO->SetFileName(fileName);
     zarrImageIO->ReadImageInformation();
 
-    int scalarType = VTK_VOID;
+    scalarType = VTK_VOID;
     switch (zarrImageIO->GetComponentType())
     {
       case itk::ImageIOBase::IOComponentEnum::UCHAR: scalarType = VTK_UNSIGNED_CHAR; break;
@@ -260,6 +260,11 @@ bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(const char* fileName, i
       case itk::ImageIOBase::IOComponentEnum::DOUBLE: scalarType = VTK_DOUBLE; break;
       default: return false;
     }
+    if (!buffer)
+    {
+      // Only the scalar type was requested
+      return true;
+    }
 
     itk::ImageIORegion ioRegion(3);
     for (int axis = 0; axis < 3; ++axis)
@@ -268,14 +273,7 @@ bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(const char* fileName, i
       ioRegion.SetSize(axis, extent[2 * axis + 1] - extent[2 * axis] + 1);
     }
     zarrImageIO->SetIORegion(ioRegion);
-
-    output->SetExtent(extent[0], extent[1], extent[2], extent[3], extent[4], extent[5]);
-    // Slicer convention: geometry is stored in the node, not in the image
-    output->SetOrigin(0.0, 0.0, 0.0);
-    output->SetSpacing(1.0, 1.0, 1.0);
-    output->AllocateScalars(scalarType, 1);
-    zarrImageIO->Read(output->GetScalarPointer());
-    output->GetPointData()->GetScalars()->Modified();
+    zarrImageIO->Read(buffer);
     return true;
   }
   catch (itk::ExceptionObject&)
@@ -290,9 +288,36 @@ bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(const char* fileName, i
   (void)fileName;
   (void)datasetIndex;
   (void)extent;
-  (void)output;
+  (void)buffer;
+  scalarType = VTK_VOID;
   return false;
 #endif
+}
+
+//----------------------------------------------------------------------------
+bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(const char* fileName, int datasetIndex, const int extent[6], vtkImageData* output)
+{
+  if (!output)
+  {
+    return false;
+  }
+  int scalarType = VTK_VOID;
+  // First query the scalar type, then read into the allocated image
+  if (!vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(fileName, datasetIndex, extent, nullptr, scalarType))
+  {
+    return false;
+  }
+  output->SetExtent(extent[0], extent[1], extent[2], extent[3], extent[4], extent[5]);
+  // Slicer convention: geometry is stored in the node, not in the image
+  output->SetOrigin(0.0, 0.0, 0.0);
+  output->SetSpacing(1.0, 1.0, 1.0);
+  output->AllocateScalars(scalarType, 1);
+  if (!vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(fileName, datasetIndex, extent, output->GetScalarPointer(), scalarType))
+  {
+    return false;
+  }
+  output->GetPointData()->GetScalars()->Modified();
+  return true;
 }
 
 //----------------------------------------------------------------------------

@@ -141,6 +141,14 @@ public:
   /// OME-Zarr support is not built or reading fails.
   static bool ReadOMEZarrRegion(const char* fileName, int datasetIndex, const int extent[6], vtkImageData* output);
 
+  /// Read a region of a resolution level of a local or remote OME-Zarr store
+  /// into a caller-allocated buffer (x-fastest voxel order, large enough for
+  /// the extent). \a scalarType receives the VTK scalar type of the stored
+  /// voxels; when \a buffer is nullptr only the scalar type is returned
+  /// (no voxel data is read). Used for reading a large region in multiple
+  /// smaller tiles (continuous progress reporting, early abort).
+  static bool ReadOMEZarrRegionIntoBuffer(const char* fileName, int datasetIndex, const int extent[6], void* buffer, int& scalarType);
+
   /// Determine if the file can be read using ITK
   virtual int CanReadFile(const char* filename);
 

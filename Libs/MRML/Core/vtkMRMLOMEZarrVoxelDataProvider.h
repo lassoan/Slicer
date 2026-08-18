@@ -17,6 +17,7 @@
 #include <vtkSmartPointer.h>
 
 // STD includes
+#include <chrono>
 #include <condition_variable>
 #include <map>
 #include <mutex>
@@ -97,6 +98,7 @@ public:
   bool IsRegionAvailable(const int extent[6], int resolutionLevel) override;
   bool RequestRegionAsync(const int extent[6], int resolutionLevel) override;
   bool HasPendingRegionRequests() override;
+  double GetPendingRegionRequestProgress() override;
   void ProcessPendingRegionRequests() override;
   double GetVoxelValue(int i, int j, int k, int component = 0) override;
   bool GetStoredScalarRange(double range[2]) override;
@@ -184,6 +186,19 @@ protected:
   RegionRequest PendingRequest;
   bool HasPendingRequest{ false };
   std::vector<int> CompletedLevels;
+
+  //@{
+  /// Progress of the request the worker is executing. The region is read in
+  /// multiple smaller tiles, so the tile counters provide real progress (and
+  /// allow abandoning a superseded request between tiles).
+  bool RequestInProgress{ false };
+  int TilesTotal{ 0 };
+  int TilesCompleted{ 0 };
+  double RequestInProgressBytes{ 0.0 };
+  std::chrono::steady_clock::time_point RequestStartTime;
+  /// Exponential moving average of the observed retrieval throughput
+  double ThroughputBytesPerSecond{ 0.0 };
+  //@}
 };
 
 #endif
