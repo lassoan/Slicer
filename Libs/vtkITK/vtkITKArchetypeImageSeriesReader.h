@@ -131,6 +131,16 @@ public:
   /// itk::OMEZarrNGFFImageIO through TensorStore's http driver).
   static bool IsRemoteURL(const char* fileName);
 
+  /// Read a region of a resolution level of a local or remote OME-Zarr store
+  /// into \a output, fetching only the chunks that intersect the region
+  /// (chunk-granular access through TensorStore; for a store with channel or
+  /// time axes the first channel/time point is read). \a extent is in the
+  /// level's IJK space and must be within the level bounds. The output image
+  /// gets the requested extent, unit spacing and zero origin (Slicer
+  /// convention: geometry is stored in the volume node). Returns false if
+  /// OME-Zarr support is not built or reading fails.
+  static bool ReadOMEZarrRegion(const char* fileName, int datasetIndex, const int extent[6], vtkImageData* output);
+
   /// Determine if the file can be read using ITK
   virtual int CanReadFile(const char* filename);
 

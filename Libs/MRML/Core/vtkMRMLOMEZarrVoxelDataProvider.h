@@ -38,9 +38,10 @@
 /// progressive refinement: a coarser cached level is displayed immediately
 /// and RegionReadyEvent signals when the requested level became available.
 ///
-/// Current limitation: a level is always read as a whole (the ITK IO does
-/// not support partial reads); region requests are served from the cached
-/// level. Chunk-granular streaming is future work.
+/// Small levels are loaded and cached whole. Levels that are too large to
+/// cache (or too expensive to fetch, e.g. from a remote store) are served
+/// chunk-granularly: only the chunks intersecting the requested region are
+/// read, and recently used regions are kept in a small region cache.
 class VTK_MRML_EXPORT vtkMRMLOMEZarrVoxelDataProvider : public vtkMRMLVoxelDataProvider
 {
 public:
@@ -93,7 +94,7 @@ public:
   int GetNumberOfScalarComponents() override;
   bool GetRegion(vtkImageData* output, const int extent[6], int resolutionLevel = 0) override;
   bool GetRegionIfAvailable(vtkImageData* output, const int extent[6], int resolutionLevel = 0) override;
-  bool IsRegionAvailable(const int extent[6], int resolutionLevel) override { return this->IsLevelLoaded(resolutionLevel); }
+  bool IsRegionAvailable(const int extent[6], int resolutionLevel) override;
   bool RequestRegionAsync(const int extent[6], int resolutionLevel) override;
   bool HasPendingRegionRequests() override;
   void ProcessPendingRegionRequests() override;
@@ -101,6 +102,7 @@ public:
   bool GetStoredScalarRange(double range[2]) override;
   vtkImageData* GetStoredImageDataIfInMemory() override;
   bool IsLevelLoadable(int resolutionLevel) override;
+  bool IsRegionLoadable(const int extent[6], int resolutionLevel) override;
   void ReleaseUnusedLevels(int keepResolutionLevel) override;
   //@}
 
@@ -143,15 +145,44 @@ protected:
   /// 0 = not initialized yet (computed from physical memory on first use)
   long long MaximumLevelLoadBytes{ 0 };
 
-  std::mutex Mutex; // guards LevelImages, LevelAccessOrder, PendingLevel, CompletedLevels, WorkerShouldStop
+  struct RegionRequest
+  {
+    int Level{ -1 };
+    int Extent[6]{ 0, -1, 0, -1, 0, -1 };
+    /// Load and cache the whole level (small levels) instead of just the
+    /// requested region (chunk-granular access to large levels)
+    bool WholeLevel{ false };
+  };
+
+  struct CachedRegion
+  {
+    int Level{ -1 };
+    int Extent[6]{ 0, -1, 0, -1, 0, -1 };
+    vtkSmartPointer<vtkImageData> Image;
+    long long AccessStamp{ 0 };
+  };
+
+  /// Find a cached region that covers the extent (nullptr if none).
+  /// The caller must hold Mutex.
+  CachedRegion* FindCoveringCachedRegion(const int extent[6], int level);
+
+  /// Largest level (bytes) that is loaded and cached whole instead of
+  /// serving chunk-granular region reads
+  static constexpr long long WholeLevelPreferredBytes = 512LL * 1024LL * 1024LL;
+  /// Number of recently used regions kept per provider
+  static constexpr size_t MaximumCachedRegions = 4;
+
+  std::mutex Mutex; // guards LevelImages, LevelAccessOrder, RegionCache, PendingRequest, HasPendingRequest, CompletedLevels, WorkerShouldStop
   std::map<int, vtkSmartPointer<vtkImageData>> LevelImages;
   /// Monotonic access stamps for LRU eviction (kept in sync with LevelImages)
   std::map<int, long long> LevelAccessOrder;
   long long AccessCounter{ 0 };
+  std::vector<CachedRegion> RegionCache;
   std::thread Worker;
   std::condition_variable Condition;
   bool WorkerShouldStop{ false };
-  int PendingLevel{ -1 };
+  RegionRequest PendingRequest;
+  bool HasPendingRequest{ false };
   std::vector<int> CompletedLevels;
 };
 

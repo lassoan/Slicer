@@ -227,6 +227,75 @@ itk::ImageIOBase::Pointer vtkITKArchetypeImageSeriesReader::CreateImageIOWithDat
 }
 
 //----------------------------------------------------------------------------
+bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(const char* fileName, int datasetIndex, const int extent[6], vtkImageData* output)
+{
+#ifdef VTKITK_HAS_OMEZARRNGFF_SUPPORT
+  if (!fileName || !output || extent[1] < extent[0] || extent[3] < extent[2] || extent[5] < extent[4])
+  {
+    return false;
+  }
+  try
+  {
+    itk::OMEZarrNGFFImageIO::Pointer zarrImageIO = itk::OMEZarrNGFFImageIO::New();
+    zarrImageIO->SetDatasetIndex(datasetIndex);
+    // Multi-dimensional stores: always read the first channel and time point
+    // (setting the indices explicitly also avoids a warning on every read)
+    zarrImageIO->SetChannelIndex(0);
+    zarrImageIO->SetTimeIndex(0);
+    zarrImageIO->SetFileName(fileName);
+    zarrImageIO->ReadImageInformation();
+
+    int scalarType = VTK_VOID;
+    switch (zarrImageIO->GetComponentType())
+    {
+      case itk::ImageIOBase::IOComponentEnum::UCHAR: scalarType = VTK_UNSIGNED_CHAR; break;
+      case itk::ImageIOBase::IOComponentEnum::CHAR: scalarType = VTK_SIGNED_CHAR; break;
+      case itk::ImageIOBase::IOComponentEnum::USHORT: scalarType = VTK_UNSIGNED_SHORT; break;
+      case itk::ImageIOBase::IOComponentEnum::SHORT: scalarType = VTK_SHORT; break;
+      case itk::ImageIOBase::IOComponentEnum::UINT: scalarType = VTK_UNSIGNED_INT; break;
+      case itk::ImageIOBase::IOComponentEnum::INT: scalarType = VTK_INT; break;
+      case itk::ImageIOBase::IOComponentEnum::ULONG: scalarType = VTK_UNSIGNED_LONG; break;
+      case itk::ImageIOBase::IOComponentEnum::LONG: scalarType = VTK_LONG; break;
+      case itk::ImageIOBase::IOComponentEnum::FLOAT: scalarType = VTK_FLOAT; break;
+      case itk::ImageIOBase::IOComponentEnum::DOUBLE: scalarType = VTK_DOUBLE; break;
+      default: return false;
+    }
+
+    itk::ImageIORegion ioRegion(3);
+    for (int axis = 0; axis < 3; ++axis)
+    {
+      ioRegion.SetIndex(axis, extent[2 * axis]);
+      ioRegion.SetSize(axis, extent[2 * axis + 1] - extent[2 * axis] + 1);
+    }
+    zarrImageIO->SetIORegion(ioRegion);
+
+    output->SetExtent(extent[0], extent[1], extent[2], extent[3], extent[4], extent[5]);
+    // Slicer convention: geometry is stored in the node, not in the image
+    output->SetOrigin(0.0, 0.0, 0.0);
+    output->SetSpacing(1.0, 1.0, 1.0);
+    output->AllocateScalars(scalarType, 1);
+    zarrImageIO->Read(output->GetScalarPointer());
+    output->GetPointData()->GetScalars()->Modified();
+    return true;
+  }
+  catch (itk::ExceptionObject&)
+  {
+    return false;
+  }
+  catch (std::exception&)
+  {
+    return false;
+  }
+#else
+  (void)fileName;
+  (void)datasetIndex;
+  (void)extent;
+  (void)output;
+  return false;
+#endif
+}
+
+//----------------------------------------------------------------------------
 int vtkITKArchetypeImageSeriesReader::CanReadFile(const char* filename)
 {
   if (!filename)

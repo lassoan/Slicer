@@ -759,12 +759,19 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
   vtkNew<vtkMatrix4x4> xyToRefIJK;
   if (this->GetXYToReferenceIJKMatrix(scalarVolumeNode, xyToRefIJK.GetPointer()))
   {
-    // Ultimate fallback: the finest level that fits in the provider's memory
-    // budget (levels above the budget are never fetched).
+    // Ultimate fallback for extreme zoom (no level provides enough voxel
+    // density): the finest level whose displayed region fits in the memory
+    // budget. With chunk-granular access this is usually the finest level
+    // of the pyramid, even when the level is far too large to load whole.
     targetLevel = referenceLevel;
     for (int level = 0; level < numberOfLevels; ++level)
     {
-      if (provider->IsLevelLoadable(level))
+      int candidateExtent[6] = { 0, -1, 0, -1, 0, -1 };
+      if (!this->ComputeDisplayedRegion(scalarVolumeNode, provider, level, candidateExtent))
+      {
+        provider->GetExtent(candidateExtent, level);
+      }
+      if (provider->IsRegionLoadable(candidateExtent, level))
       {
         targetLevel = level;
         break;
@@ -772,10 +779,6 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
     }
     for (int level = numberOfLevels - 1; level >= 0; --level)
     {
-      if (!provider->IsLevelLoadable(level))
-      {
-        continue;
-      }
       double levelScale[3] = { 1.0, 1.0, 1.0 };
       if (!provider->GetLevelScale(level, levelScale))
       {
@@ -805,7 +808,18 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
       {
         // This level matches the screen resolution: coarser levels would
         // appear blurry, finer levels would be wasteful.
-        targetLevel = level;
+        int candidateExtent[6] = { 0, -1, 0, -1, 0, -1 };
+        if (!this->ComputeDisplayedRegion(scalarVolumeNode, provider, level, candidateExtent))
+        {
+          provider->GetExtent(candidateExtent, level);
+        }
+        if (provider->IsRegionLoadable(candidateExtent, level))
+        {
+          targetLevel = level;
+        }
+        // else: the region would exceed the memory budget even at the
+        // coarsest acceptable level (finer ones are larger still); keep the
+        // fallback level.
         break;
       }
     }
@@ -828,7 +842,10 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
     for (int level = targetLevel + 1; level < numberOfLevels; ++level)
     {
       int levelExtent[6] = { 0, -1, 0, -1, 0, -1 };
-      provider->GetExtent(levelExtent, level);
+      if (!this->ComputeDisplayedRegion(scalarVolumeNode, provider, level, levelExtent))
+      {
+        provider->GetExtent(levelExtent, level);
+      }
       if (provider->IsRegionAvailable(levelExtent, level))
       {
         displayLevel = level;

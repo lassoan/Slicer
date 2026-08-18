@@ -587,27 +587,72 @@ bool vtkMRMLOMEZarrVoxelDataProvider::EnsureLevelLoaded(int level)
 //----------------------------------------------------------------------------
 bool vtkMRMLOMEZarrVoxelDataProvider::GetRegion(vtkImageData* output, const int extent[6], int resolutionLevel /*=0*/)
 {
-  if (!output || !this->EnsureLevelLoaded(resolutionLevel))
+  if (!output || resolutionLevel < 0 || resolutionLevel >= static_cast<int>(this->Levels.size()))
   {
     return false;
   }
-  return this->GetRegionIfAvailable(output, extent, resolutionLevel);
+  if (this->IsRegionAvailable(extent, resolutionLevel))
+  {
+    return this->GetRegionIfAvailable(output, extent, resolutionLevel);
+  }
+  if (this->IsLevelLoadable(resolutionLevel) && this->GetLevelMemoryBytes(resolutionLevel) <= WholeLevelPreferredBytes)
+  {
+    // Small level: load and cache it whole
+    if (!this->EnsureLevelLoaded(resolutionLevel))
+    {
+      return false;
+    }
+    return this->GetRegionIfAvailable(output, extent, resolutionLevel);
+  }
+  // Large level: chunk-granular synchronous read of just the region
+  return vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(this->FileName.c_str(), resolutionLevel, extent, output);
+}
+
+//----------------------------------------------------------------------------
+vtkMRMLOMEZarrVoxelDataProvider::CachedRegion* vtkMRMLOMEZarrVoxelDataProvider::FindCoveringCachedRegion(const int extent[6], int level)
+{
+  for (CachedRegion& cachedRegion : this->RegionCache)
+  {
+    if (cachedRegion.Level != level)
+    {
+      continue;
+    }
+    bool covers = true;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+      if (extent[2 * axis] < cachedRegion.Extent[2 * axis] || extent[2 * axis + 1] > cachedRegion.Extent[2 * axis + 1])
+      {
+        covers = false;
+        break;
+      }
+    }
+    if (covers)
+    {
+      return &cachedRegion;
+    }
+  }
+  return nullptr;
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLOMEZarrVoxelDataProvider::IsRegionAvailable(const int extent[6], int resolutionLevel)
+{
+  if (this->IsLevelLoaded(resolutionLevel))
+  {
+    return true;
+  }
+  std::lock_guard<std::mutex> lock(this->Mutex);
+  return (this->FindCoveringCachedRegion(extent, resolutionLevel) != nullptr);
 }
 
 //----------------------------------------------------------------------------
 bool vtkMRMLOMEZarrVoxelDataProvider::GetRegionIfAvailable(vtkImageData* output, const int extent[6], int resolutionLevel /*=0*/)
 {
-  if (!output)
-  {
-    return false;
-  }
-  vtkSmartPointer<vtkImageData> levelImage = this->GetCachedLevelImage(resolutionLevel);
-  if (!levelImage)
+  if (!output || resolutionLevel < 0 || resolutionLevel >= static_cast<int>(this->Levels.size()))
   {
     return false;
   }
   const int* levelExtent = this->Levels[resolutionLevel].Extent;
-  bool fullRegion = true;
   for (int axis = 0; axis < 3; ++axis)
   {
     if (extent[2 * axis] < levelExtent[2 * axis] || extent[2 * axis + 1] > levelExtent[2 * axis + 1])
@@ -615,18 +660,37 @@ bool vtkMRMLOMEZarrVoxelDataProvider::GetRegionIfAvailable(vtkImageData* output,
       vtkErrorMacro("GetRegionIfAvailable: requested extent is outside the level extent");
       return false;
     }
-    if (extent[2 * axis] != levelExtent[2 * axis] || extent[2 * axis + 1] != levelExtent[2 * axis + 1])
+  }
+  // Source: the whole cached level, or a cached region that covers the extent
+  vtkSmartPointer<vtkImageData> sourceImage = this->GetCachedLevelImage(resolutionLevel);
+  if (!sourceImage)
+  {
+    std::lock_guard<std::mutex> lock(this->Mutex);
+    CachedRegion* cachedRegion = this->FindCoveringCachedRegion(extent, resolutionLevel);
+    if (!cachedRegion)
     {
-      fullRegion = false;
+      return false;
+    }
+    cachedRegion->AccessStamp = ++this->AccessCounter;
+    sourceImage = cachedRegion->Image;
+  }
+  const int* sourceExtent = sourceImage->GetExtent();
+  bool exactMatch = true;
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    if (extent[2 * axis] != sourceExtent[2 * axis] || extent[2 * axis + 1] != sourceExtent[2 * axis + 1])
+    {
+      exactMatch = false;
+      break;
     }
   }
-  if (fullRegion)
+  if (exactMatch)
   {
-    output->ShallowCopy(levelImage);
+    output->ShallowCopy(sourceImage);
     return true;
   }
   vtkNew<vtkExtractVOI> extractVOI;
-  extractVOI->SetInputData(levelImage);
+  extractVOI->SetInputData(sourceImage);
   extractVOI->SetVOI(extent[0], extent[1], extent[2], extent[3], extent[4], extent[5]);
   extractVOI->Update();
   output->ShallowCopy(extractVOI->GetOutput());
@@ -634,22 +698,36 @@ bool vtkMRMLOMEZarrVoxelDataProvider::GetRegionIfAvailable(vtkImageData* output,
 }
 
 //----------------------------------------------------------------------------
-bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int vtkNotUsed(extent)[6], int resolutionLevel)
+bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], int resolutionLevel)
 {
   if (resolutionLevel < 0 || resolutionLevel >= static_cast<int>(this->Levels.size()))
   {
     return false;
   }
-  if (this->IsLevelLoaded(resolutionLevel))
+  if (this->IsRegionAvailable(extent, resolutionLevel))
   {
     return false; // already available
+  }
+  // Small levels are fetched and cached whole (reusable by all views);
+  // levels above the threshold are accessed chunk-granularly, reading only
+  // the requested region.
+  bool wholeLevel = this->IsLevelLoadable(resolutionLevel) && this->GetLevelMemoryBytes(resolutionLevel) <= WholeLevelPreferredBytes;
+  if (!wholeLevel && !this->IsRegionLoadable(extent, resolutionLevel))
+  {
+    return false;
   }
   this->EnsureWorker();
   {
     std::lock_guard<std::mutex> lock(this->Mutex);
     // Only the most recent request is kept: older pending requests are
     // superseded (e.g. during continued zooming/panning).
-    this->PendingLevel = resolutionLevel;
+    this->PendingRequest.Level = resolutionLevel;
+    this->PendingRequest.WholeLevel = wholeLevel;
+    for (int i = 0; i < 6; ++i)
+    {
+      this->PendingRequest.Extent[i] = extent[i];
+    }
+    this->HasPendingRequest = true;
   }
   this->Condition.notify_all();
   return true;
@@ -659,7 +737,7 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int vtkNotUsed(ex
 bool vtkMRMLOMEZarrVoxelDataProvider::HasPendingRegionRequests()
 {
   std::lock_guard<std::mutex> lock(this->Mutex);
-  return (this->PendingLevel >= 0 || !this->CompletedLevels.empty());
+  return (this->HasPendingRequest || !this->CompletedLevels.empty());
 }
 
 //----------------------------------------------------------------------------
@@ -692,35 +770,96 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
 {
   for (;;)
   {
-    int levelToLoad = -1;
+    RegionRequest request;
     {
       std::unique_lock<std::mutex> lock(this->Mutex);
-      this->Condition.wait(lock, [this] { return this->WorkerShouldStop || this->PendingLevel >= 0; });
+      this->Condition.wait(lock, [this] { return this->WorkerShouldStop || this->HasPendingRequest; });
       if (this->WorkerShouldStop)
       {
         return;
       }
-      levelToLoad = this->PendingLevel;
-      this->PendingLevel = -1;
-      if (this->LevelImages.find(levelToLoad) != this->LevelImages.end())
+      request = this->PendingRequest;
+      this->HasPendingRequest = false;
+      bool alreadyAvailable = (this->LevelImages.find(request.Level) != this->LevelImages.end()) //
+                              || (!request.WholeLevel && this->FindCoveringCachedRegion(request.Extent, request.Level) != nullptr);
+      if (alreadyAvailable)
       {
-        // Already loaded meanwhile: report as completed
-        this->CompletedLevels.push_back(levelToLoad);
+        // Became available meanwhile: report as completed
+        this->CompletedLevels.push_back(request.Level);
         continue;
       }
     }
     // Load outside the lock (this is the expensive part)
-    vtkSmartPointer<vtkImageData> image = this->LoadLevelImage(levelToLoad);
+    if (request.WholeLevel)
     {
+      vtkSmartPointer<vtkImageData> image = this->LoadLevelImage(request.Level);
       std::lock_guard<std::mutex> lock(this->Mutex);
       if (image)
       {
-        this->LevelImages[levelToLoad] = image;
-        this->LevelAccessOrder[levelToLoad] = ++this->AccessCounter;
-        this->CompletedLevels.push_back(levelToLoad);
+        this->LevelImages[request.Level] = image;
+        this->LevelAccessOrder[request.Level] = ++this->AccessCounter;
+        this->CompletedLevels.push_back(request.Level);
+      }
+    }
+    else
+    {
+      // Chunk-granular: read only the chunks intersecting the region
+      vtkSmartPointer<vtkImageData> image = vtkSmartPointer<vtkImageData>::New();
+      bool success = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(this->FileName.c_str(), request.Level, request.Extent, image);
+      if (!success)
+      {
+        // Transient read failures have been observed (e.g. store handle
+        // contention, remote hiccup): retry once
+        success = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(this->FileName.c_str(), request.Level, request.Extent, image);
+      }
+      std::lock_guard<std::mutex> lock(this->Mutex);
+      if (success)
+      {
+        CachedRegion cachedRegion;
+        cachedRegion.Level = request.Level;
+        for (int i = 0; i < 6; ++i)
+        {
+          cachedRegion.Extent[i] = request.Extent[i];
+        }
+        cachedRegion.Image = image;
+        cachedRegion.AccessStamp = ++this->AccessCounter;
+        this->RegionCache.push_back(cachedRegion);
+        // Keep only the most recently used regions
+        while (this->RegionCache.size() > MaximumCachedRegions)
+        {
+          size_t oldestIndex = 0;
+          for (size_t i = 1; i < this->RegionCache.size(); ++i)
+          {
+            if (this->RegionCache[i].AccessStamp < this->RegionCache[oldestIndex].AccessStamp)
+            {
+              oldestIndex = i;
+            }
+          }
+          this->RegionCache.erase(this->RegionCache.begin() + oldestIndex);
+        }
+        this->CompletedLevels.push_back(request.Level);
       }
     }
   }
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLOMEZarrVoxelDataProvider::IsRegionLoadable(const int extent[6], int resolutionLevel)
+{
+  if (resolutionLevel < 0 || resolutionLevel >= static_cast<int>(this->Levels.size()))
+  {
+    return false;
+  }
+  if (extent[1] < extent[0] || extent[3] < extent[2] || extent[5] < extent[4])
+  {
+    return false;
+  }
+  long long numberOfVoxels = static_cast<long long>(extent[1] - extent[0] + 1)   //
+                             * static_cast<long long>(extent[3] - extent[2] + 1) //
+                             * static_cast<long long>(extent[5] - extent[4] + 1);
+  long long bytesPerVoxel = vtkDataArray::GetDataTypeSize(this->ScalarType) * this->NumberOfComponents;
+  // Reading a region transiently needs about twice its data size
+  return (2 * numberOfVoxels * bytesPerVoxel) <= this->GetMaximumLevelLoadBytes();
 }
 
 //----------------------------------------------------------------------------

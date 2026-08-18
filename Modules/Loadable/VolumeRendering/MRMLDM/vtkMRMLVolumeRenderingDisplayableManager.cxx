@@ -1148,11 +1148,9 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
   level = -1;
   for (int candidateLevel = numberOfLevels - 1; candidateLevel >= 0; candidateLevel--)
   {
-    if (!provider->IsLevelLoadable(candidateLevel))
-    {
-      // Coarser levels are always loadable if finer ones are not; stop here.
-      break;
-    }
+    // With chunk-granular access every level is a candidate (the region size
+    // is bounded by the budget checks below), even levels far too large to
+    // load whole.
     double candidateScale[3] = { 1.0, 1.0, 1.0 };
     if (!provider->GetLevelScale(candidateLevel, candidateScale))
     {
@@ -1324,14 +1322,15 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
     }
   }
 
-  // Bound the region by the GPU memory budget: coarsen the level until the
-  // region fits into half of the allowed memory.
+  // Bound the region by the GPU memory budget and the provider's memory
+  // budget: coarsen the level until the region fits into half of the
+  // allowed GPU memory and can be retrieved by the provider.
   vtkIdType maximumBytes = this->GetMaxMemoryInBytes(displayNode) / 2;
   int bytesPerVoxel = vtkDataArray::GetDataTypeSize(provider->GetScalarType()) * provider->GetNumberOfScalarComponents();
   while (level < numberOfLevels - 1)
   {
     vtkIdType regionVoxels = vtkIdType(extent[1] - extent[0] + 1) * (extent[3] - extent[2] + 1) * (extent[5] - extent[4] + 1);
-    if (regionVoxels * bytesPerVoxel <= maximumBytes)
+    if (regionVoxels * bytesPerVoxel <= maximumBytes && provider->IsRegionLoadable(extent, level))
     {
       break;
     }

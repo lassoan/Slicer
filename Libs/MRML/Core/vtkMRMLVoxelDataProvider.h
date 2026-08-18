@@ -96,12 +96,25 @@ public:
     return true;
   }
 
-  /// Returns true if the resolution level can be retrieved within the
-  /// provider's memory budget. Consumers must not request levels that are
-  /// not loadable; they should fall back to the finest loadable level.
+  /// Returns true if the resolution level can be retrieved AS A WHOLE within
+  /// the provider's memory budget. Whole-level consumers (e.g. loading the
+  /// volume node grid at a chosen level) must not request levels that are
+  /// not loadable. Display consumers should gate on IsRegionLoadable()
+  /// instead: a backend with chunk-granular access can serve regions of
+  /// levels that are too large to load whole.
   /// The base implementation returns true (data is already in memory).
   virtual bool IsLevelLoadable(int resolutionLevel)
   {
+    (void)resolutionLevel;
+    return true;
+  }
+
+  /// Returns true if a region of this size can be retrieved at the level
+  /// within the provider's memory budget (regardless of whether the whole
+  /// level would fit). The base implementation returns true.
+  virtual bool IsRegionLoadable(const int extent[6], int resolutionLevel)
+  {
+    (void)extent;
     (void)resolutionLevel;
     return true;
   }
