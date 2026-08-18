@@ -346,9 +346,10 @@ public:
   // Update the pipeline's mapper input to the region of the volume that is
   // visible in the camera frustum, at the resolution level matching the
   // camera zoom. Returns true if the pipeline uses a variable-resolution
-  // region as mapper input (and fills levelToReferenceMatrix with the mapping
-  // from the region's level IJK to the volume node's reference level IJK).
-  bool UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode, Pipeline* pipeline, vtkMatrix4x4* levelToReferenceMatrix);
+  // region as mapper input. The region image carries the level grid scale
+  // (relative to the volume node's reference level) in its spacing, so the
+  // actor keeps using the volume node's IJK to world matrix.
+  bool UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode, Pipeline* pipeline);
   // Select the resolution level and region (in that level's IJK) to render.
   // Returns false if variable resolution is not applicable.
   bool SelectResolutionLevelAndRegion(vtkMRMLVolumeRenderingDisplayNode* displayNode, vtkMRMLScalarVolumeNode* volumeNode, int& level, int extent[6]);
@@ -1262,9 +1263,7 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
 }
 
 //---------------------------------------------------------------------------
-bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode,
-                                                                                         Pipeline* pipeline,
-                                                                                         vtkMatrix4x4* levelToReferenceMatrix)
+bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolutionInput(vtkMRMLVolumeRenderingDisplayNode* displayNode, Pipeline* pipeline)
 {
   vtkMRMLScalarVolumeNode* volumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(displayNode->GetDisplayableNode());
   vtkMRMLVoxelDataProvider* provider = volumeNode ? volumeNode->GetVoxelDataProvider() : nullptr;
@@ -1339,15 +1338,18 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
     return false;
   }
 
-  // Mapping from the displayed level's IJK to the volume node (reference
-  // level) IJK, to be concatenated into the actor's user matrix.
+  // The region image is on the displayed level's grid. Express the level's
+  // grid scale relative to the reference (node grid) in the image spacing -
+  // NOT in the actor matrix: the mapper derives its sample distance and the
+  // scalar opacity correction from the input image spacing, so carrying the
+  // scale in the spacing keeps the accumulated opacity (brightness)
+  // independent of the displayed resolution level. The actor matrix stays
+  // the volume node's IJK (reference level) to world matrix.
   double displayedScale[3] = { 1.0, 1.0, 1.0 };
   provider->GetLevelScale(pipeline->DisplayedResolutionLevel, displayedScale);
-  levelToReferenceMatrix->Identity();
-  for (int axis = 0; axis < 3; axis++)
-  {
-    levelToReferenceMatrix->SetElement(axis, axis, displayedScale[axis] / referenceScale[axis]);
-  }
+  pipeline->VariableResolutionImageData->SetSpacing(displayedScale[0] / referenceScale[0], //
+                                                    displayedScale[1] / referenceScale[1],
+                                                    displayedScale[2] / referenceScale[2]);
   return true;
 }
 
@@ -1447,15 +1449,11 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateDisplayNodePip
 
     // Variable-resolution rendering of multi-resolution provider volumes:
     // render only the region visible in the camera frustum, at the resolution
-    // level that matches the camera zoom.
-    vtkNew<vtkMatrix4x4> levelToReferenceMatrix;
-    if (this->UpdateVariableResolutionInput(displayNode, pipeline, levelToReferenceMatrix))
+    // level that matches the camera zoom. The region image carries the level
+    // grid scale in its spacing, so the actor matrix needs no adjustment.
+    if (this->UpdateVariableResolutionInput(displayNode, pipeline))
     {
       imageConnection = pipeline->VariableResolutionTrivialProducer->GetOutputPort();
-      // The region image is on the displayed level's grid: concatenate the
-      // level IJK -> reference (node grid) IJK scaling into the actor matrix.
-      vtkMatrix4x4::Multiply4x4(pipeline->IJKToWorldMatrix, levelToReferenceMatrix, pipeline->IJKToWorldMatrix);
-      pipeline->IJKToWorldMatrix->Modified();
     }
     else
     {
