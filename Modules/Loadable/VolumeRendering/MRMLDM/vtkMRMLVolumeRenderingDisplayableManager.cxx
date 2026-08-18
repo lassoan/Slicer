@@ -1173,12 +1173,27 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
     return false;
   }
 
-  // Visible world region: sphere around the camera focal point with the
-  // radius of the viewport half diagonal at focal distance.
+  // Visible world region: the viewport half-diagonal radius at focal
+  // distance perpendicular to the view direction, extended ALONG the view
+  // direction to cover the full ray path through the volume. The extension is
+  // essential for shading: if the region started or ended inside the tissue
+  // then the region boundary would form an abrupt density edge that shades
+  // like a flat, grid-axis-aligned wall (strong specular flash when the view
+  // is exactly axis-aligned). By covering the full ray path, rays enter the
+  // data through the real volume boundary, exactly as when rendering the
+  // whole volume.
   double aspect = double(rendererSize[0]) / double(rendererSize[1]);
   double radiusWorld = viewHalfHeightWorld * sqrt(1.0 + aspect * aspect);
   double focalPoint[3] = { 0.0, 0.0, 0.0 };
   camera->GetFocalPoint(focalPoint);
+  double cameraPosition[3] = { 0.0, 0.0, 0.0 };
+  camera->GetPosition(cameraPosition);
+  double viewDirection[3] = { focalPoint[0] - cameraPosition[0], focalPoint[1] - cameraPosition[1], focalPoint[2] - cameraPosition[2] };
+  double focalDistance = vtkMath::Normalize(viewDirection);
+  if (focalDistance <= 0.0)
+  {
+    return false;
+  }
 
   // Convert the world region to an extent in the selected level's IJK
   vtkNew<vtkMatrix4x4> referenceIJKToWorld;
@@ -1191,12 +1206,85 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
   double levelScale[3] = { 1.0, 1.0, 1.0 };
   provider->GetLevelScale(level, levelScale);
 
+  // World-space bounding box of the whole volume (from the reference extent)
+  int referenceExtentForBounds[6] = { 0, -1, 0, -1, 0, -1 };
+  if (!provider->GetExtent(referenceExtentForBounds, provider->GetReferenceResolutionLevel()))
+  {
+    return false;
+  }
+  double volumeBoundsWorld[6] = { VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX };
+  for (int cornerIndex = 0; cornerIndex < 8; cornerIndex++)
+  {
+    double cornerIJK[4] = { double(referenceExtentForBounds[cornerIndex & 1]),
+                            double(referenceExtentForBounds[2 + ((cornerIndex & 2) >> 1)]),
+                            double(referenceExtentForBounds[4 + ((cornerIndex & 4) >> 2)]),
+                            1.0 };
+    double cornerWorld[4] = { 0.0, 0.0, 0.0, 1.0 };
+    referenceIJKToWorld->MultiplyPoint(cornerIJK, cornerWorld);
+    for (int axis = 0; axis < 3; axis++)
+    {
+      volumeBoundsWorld[2 * axis] = std::min(volumeBoundsWorld[2 * axis], cornerWorld[axis]);
+      volumeBoundsWorld[2 * axis + 1] = std::max(volumeBoundsWorld[2 * axis + 1], cornerWorld[axis]);
+    }
+  }
+
+  // Clip the central view ray (from the camera position) against the volume
+  // bounding box to get the entry and exit points of the ray path.
+  double tEntry = 0.0;
+  double tExit = VTK_DOUBLE_MAX;
+  for (int axis = 0; axis < 3; axis++)
+  {
+    if (fabs(viewDirection[axis]) < 1e-12)
+    {
+      if (cameraPosition[axis] < volumeBoundsWorld[2 * axis] || cameraPosition[axis] > volumeBoundsWorld[2 * axis + 1])
+      {
+        // Ray parallel to this slab and outside it: view axis misses the
+        // volume; fall back to the focal region.
+        tEntry = focalDistance - radiusWorld;
+        tExit = focalDistance + radiusWorld;
+        break;
+      }
+      continue;
+    }
+    double tNear = (volumeBoundsWorld[2 * axis] - cameraPosition[axis]) / viewDirection[axis];
+    double tFar = (volumeBoundsWorld[2 * axis + 1] - cameraPosition[axis]) / viewDirection[axis];
+    if (tNear > tFar)
+    {
+      std::swap(tNear, tFar);
+    }
+    tEntry = std::max(tEntry, tNear);
+    tExit = std::min(tExit, tFar);
+  }
+  if (tEntry > tExit)
+  {
+    // Central ray misses the volume; fall back to the focal region.
+    tEntry = std::max(focalDistance - radiusWorld, 0.0);
+    tExit = focalDistance + radiusWorld;
+  }
+
+  // The frustum widens away from the camera: use the beam radius at the far
+  // end of the ray path (for parallel projection the radius is constant).
+  double farRadiusWorld = radiusWorld;
+  if (!camera->GetParallelProjection() && focalDistance > 0.0)
+  {
+    farRadiusWorld = radiusWorld * std::max(1.0, tExit / focalDistance);
+  }
+
+  double regionBoundsWorld[6];
+  for (int axis = 0; axis < 3; axis++)
+  {
+    double entryCoordinate = cameraPosition[axis] + tEntry * viewDirection[axis];
+    double exitCoordinate = cameraPosition[axis] + tExit * viewDirection[axis];
+    regionBoundsWorld[2 * axis] = std::min(entryCoordinate, exitCoordinate) - farRadiusWorld;
+    regionBoundsWorld[2 * axis + 1] = std::max(entryCoordinate, exitCoordinate) + farRadiusWorld;
+  }
+
   double boundsIJK[6] = { VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX };
   for (int cornerIndex = 0; cornerIndex < 8; cornerIndex++)
   {
-    double cornerWorld[4] = { focalPoint[0] + (cornerIndex & 1 ? radiusWorld : -radiusWorld),
-                              focalPoint[1] + (cornerIndex & 2 ? radiusWorld : -radiusWorld),
-                              focalPoint[2] + (cornerIndex & 4 ? radiusWorld : -radiusWorld),
+    double cornerWorld[4] = { regionBoundsWorld[cornerIndex & 1],           //
+                              regionBoundsWorld[2 + ((cornerIndex & 2) >> 1)],
+                              regionBoundsWorld[4 + ((cornerIndex & 4) >> 2)],
                               1.0 };
     double cornerReferenceIJK[4] = { 0.0, 0.0, 0.0, 1.0 };
     worldToReferenceIJK->MultiplyPoint(cornerWorld, cornerReferenceIJK);
