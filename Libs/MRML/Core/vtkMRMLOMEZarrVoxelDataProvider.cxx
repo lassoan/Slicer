@@ -18,6 +18,7 @@
 #include <vtkErrorCode.h>
 #include <vtkExtractVOI.h>
 #include <vtkImageData.h>
+#include <vtkImageReslice.h>
 #include <vtkInformation.h>
 #include <vtkMatrix4x4.h>
 #include <vtkNew.h>
@@ -592,7 +593,13 @@ bool vtkMRMLOMEZarrVoxelDataProvider::GetRegion(vtkImageData* output, const int 
   {
     return false;
   }
-  if (this->IsRegionAvailable(extent, resolutionLevel))
+  bool completeDataAvailable = this->IsLevelLoaded(resolutionLevel);
+  if (!completeDataAvailable)
+  {
+    std::lock_guard<std::mutex> lock(this->Mutex);
+    completeDataAvailable = (this->FindCoveringCachedRegion(extent, resolutionLevel, /*requireComplete=*/true) != nullptr);
+  }
+  if (completeDataAvailable)
   {
     return this->GetRegionIfAvailable(output, extent, resolutionLevel);
   }
@@ -610,8 +617,9 @@ bool vtkMRMLOMEZarrVoxelDataProvider::GetRegion(vtkImageData* output, const int 
 }
 
 //----------------------------------------------------------------------------
-vtkMRMLOMEZarrVoxelDataProvider::CachedRegion* vtkMRMLOMEZarrVoxelDataProvider::FindCoveringCachedRegion(const int extent[6], int level)
+vtkMRMLOMEZarrVoxelDataProvider::CachedRegion* vtkMRMLOMEZarrVoxelDataProvider::FindCoveringCachedRegion(const int extent[6], int level, bool requireComplete /*=false*/)
 {
+  CachedRegion* incompleteMatch = nullptr;
   for (CachedRegion& cachedRegion : this->RegionCache)
   {
     if (cachedRegion.Level != level)
@@ -627,12 +635,20 @@ vtkMRMLOMEZarrVoxelDataProvider::CachedRegion* vtkMRMLOMEZarrVoxelDataProvider::
         break;
       }
     }
-    if (covers)
+    if (!covers)
+    {
+      continue;
+    }
+    if (cachedRegion.Complete)
     {
       return &cachedRegion;
     }
+    if (!incompleteMatch)
+    {
+      incompleteMatch = &cachedRegion;
+    }
   }
-  return nullptr;
+  return requireComplete ? nullptr : incompleteMatch;
 }
 
 //----------------------------------------------------------------------------
@@ -705,9 +721,42 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
   {
     return false;
   }
-  if (this->IsRegionAvailable(extent, resolutionLevel))
   {
-    return false; // already available
+    std::lock_guard<std::mutex> lock(this->Mutex);
+    // Complete data already cached: nothing to do. (An INCOMPLETE covering
+    // region is only a placeholder that is being - or was - streamed; the
+    // request is re-issued unless it is already being served, so that a
+    // placeholder whose streaming got superseded is eventually completed.)
+    if (this->LevelImages.find(resolutionLevel) != this->LevelImages.end() //
+        || this->FindCoveringCachedRegion(extent, resolutionLevel, /*requireComplete=*/true) != nullptr)
+    {
+      return false;
+    }
+    // Already being served by the executing or the queued request
+    auto requestCovers = [&](const RegionRequest& request)
+    {
+      if (request.Level != resolutionLevel)
+      {
+        return false;
+      }
+      if (request.WholeLevel)
+      {
+        return true;
+      }
+      for (int axis = 0; axis < 3; ++axis)
+      {
+        if (extent[2 * axis] < request.Extent[2 * axis] || extent[2 * axis + 1] > request.Extent[2 * axis + 1])
+        {
+          return false;
+        }
+      }
+      return true;
+    };
+    if ((this->RequestInProgress && requestCovers(this->InProgressRequest)) //
+        || (this->HasPendingRequest && requestCovers(this->PendingRequest)))
+    {
+      return true;
+    }
   }
   // Small levels are fetched and cached whole (reusable by all views);
   // levels above the threshold are accessed chunk-granularly, reading only
@@ -766,11 +815,92 @@ double vtkMRMLOMEZarrVoxelDataProvider::GetPendingRegionRequestProgress()
 }
 
 //----------------------------------------------------------------------------
+double vtkMRMLOMEZarrVoxelDataProvider::GetRegionRequestProgress(const int extent[6], int resolutionLevel)
+{
+  std::lock_guard<std::mutex> lock(this->Mutex);
+  auto requestCovers = [&](const RegionRequest& request)
+  {
+    if (request.Level != resolutionLevel)
+    {
+      return false;
+    }
+    if (request.WholeLevel)
+    {
+      return true;
+    }
+    for (int axis = 0; axis < 3; ++axis)
+    {
+      if (extent[2 * axis] < request.Extent[2 * axis] || extent[2 * axis + 1] > request.Extent[2 * axis + 1])
+      {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (this->RequestInProgress && requestCovers(this->InProgressRequest))
+  {
+    if (this->TilesTotal > 0)
+    {
+      return std::min(0.98, static_cast<double>(this->TilesCompleted) / this->TilesTotal);
+    }
+    return 0.02;
+  }
+  if (this->HasPendingRequest && requestCovers(this->PendingRequest))
+  {
+    return 0.0;
+  }
+  return -1.0;
+}
+
+//----------------------------------------------------------------------------
 void vtkMRMLOMEZarrVoxelDataProvider::ProcessPendingRegionRequests()
 {
   std::vector<int> completed;
   {
     std::lock_guard<std::mutex> lock(this->Mutex);
+    // Progressive (tile-by-tile) display: copy the tiles that the worker
+    // completed since the last call from its private image into the
+    // published placeholder image that views are displaying. The copy is
+    // done on the main thread so that it cannot race with rendering.
+    if (!this->CompletedTileExtents.empty() && this->InProgressPublishedImage && this->InProgressPrivateImage)
+    {
+      long long bytesPerVoxel = this->InProgressPrivateImage->GetScalarSize() * this->InProgressPrivateImage->GetNumberOfScalarComponents();
+      const int* privateExtent = this->InProgressPrivateImage->GetExtent();
+      long long rowBytes = static_cast<long long>(privateExtent[1] - privateExtent[0] + 1) * bytesPerVoxel;
+      for (const std::array<int, 6>& tileExtent : this->CompletedTileExtents)
+      {
+        for (int k = tileExtent[4]; k <= tileExtent[5]; ++k)
+        {
+          for (int j = tileExtent[2]; j <= tileExtent[3]; ++j)
+          {
+            memcpy(this->InProgressPublishedImage->GetScalarPointer(privateExtent[0], j, k), //
+                   this->InProgressPrivateImage->GetScalarPointer(privateExtent[0], j, k),
+                   rowBytes);
+          }
+        }
+        this->CompletedLevels.push_back(this->InProgressRequest.Level);
+      }
+      this->CompletedTileExtents.clear();
+      this->InProgressPublishedImage->GetPointData()->GetScalars()->Modified();
+    }
+    // Once the worker finished successfully and all tiles were copied,
+    // the region is complete
+    if (this->ProgressiveCompleted && this->CompletedTileExtents.empty())
+    {
+      if (this->InProgressPublishedImage)
+      {
+        for (CachedRegion& cachedRegion : this->RegionCache)
+        {
+          if (cachedRegion.Image == this->InProgressPublishedImage)
+          {
+            cachedRegion.Complete = true;
+          }
+        }
+      }
+      this->InProgressPublishedImage = nullptr;
+      this->InProgressPrivateImage = nullptr;
+      this->ProgressiveCompleted = false;
+    }
     completed.swap(this->CompletedLevels);
   }
   for (int level : completed)
@@ -788,6 +918,72 @@ void vtkMRMLOMEZarrVoxelDataProvider::EnsureWorker()
   }
   this->WorkerShouldStop = false;
   this->Worker = std::thread(&vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop, this);
+}
+
+//----------------------------------------------------------------------------
+vtkSmartPointer<vtkImageData> vtkMRMLOMEZarrVoxelDataProvider::PublishPlaceholderRegion(const int extent[6], int level)
+{
+  // Best (finest) cached coarser level to upsample from
+  vtkSmartPointer<vtkImageData> coarseImage;
+  int coarseLevel = -1;
+  {
+    std::lock_guard<std::mutex> lock(this->Mutex);
+    for (int candidate = level + 1; candidate < static_cast<int>(this->Levels.size()); ++candidate)
+    {
+      auto it = this->LevelImages.find(candidate);
+      if (it != this->LevelImages.end())
+      {
+        coarseImage = it->second;
+        coarseLevel = candidate;
+        break;
+      }
+    }
+  }
+  if (!coarseImage)
+  {
+    return nullptr;
+  }
+  double fineScale[3] = { 1.0, 1.0, 1.0 };
+  double coarseScale[3] = { 1.0, 1.0, 1.0 };
+  if (!this->GetLevelScale(level, fineScale) || !this->GetLevelScale(coarseLevel, coarseScale))
+  {
+    return nullptr;
+  }
+  // Resample the coarse level onto the requested level's grid (fine index
+  // i_f maps to coarse index i_f * fineScale / coarseScale; both images use
+  // unit spacing and zero origin)
+  vtkNew<vtkMatrix4x4> resliceAxes;
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    resliceAxes->SetElement(axis, axis, fineScale[axis] / coarseScale[axis]);
+  }
+  vtkNew<vtkImageReslice> reslice;
+  reslice->SetInputData(coarseImage);
+  reslice->SetResliceAxes(resliceAxes);
+  reslice->SetInterpolationModeToLinear();
+  reslice->SetOutputExtent(extent[0], extent[1], extent[2], extent[3], extent[4], extent[5]);
+  reslice->SetOutputOrigin(0.0, 0.0, 0.0);
+  reslice->SetOutputSpacing(1.0, 1.0, 1.0);
+  reslice->Update();
+  vtkSmartPointer<vtkImageData> placeholder = vtkSmartPointer<vtkImageData>::New();
+  placeholder->DeepCopy(reslice->GetOutput());
+  {
+    std::lock_guard<std::mutex> lock(this->Mutex);
+    CachedRegion cachedRegion;
+    cachedRegion.Level = level;
+    for (int i = 0; i < 6; ++i)
+    {
+      cachedRegion.Extent[i] = extent[i];
+    }
+    cachedRegion.Image = placeholder;
+    cachedRegion.AccessStamp = ++this->AccessCounter;
+    cachedRegion.Complete = false;
+    this->RegionCache.push_back(cachedRegion);
+    // Announce so that views swap from the coarse fallback to the (initially
+    // identical-looking, progressively sharpening) placeholder immediately
+    this->CompletedLevels.push_back(level);
+  }
+  return placeholder;
 }
 
 //----------------------------------------------------------------------------
@@ -815,6 +1011,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       }
       // Bookkeeping for the loading progress estimate
       this->RequestInProgress = true;
+      this->InProgressRequest = request;
       this->RequestStartTime = std::chrono::steady_clock::now();
       if (request.WholeLevel)
       {
@@ -864,6 +1061,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
     bool success = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(this->FileName.c_str(), request.Level, regionExtent, nullptr, scalarType);
     vtkSmartPointer<vtkImageData> image;
     bool abandoned = false;
+    bool progressive = false;
     if (success)
     {
       image = vtkSmartPointer<vtkImageData>::New();
@@ -871,6 +1069,23 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       image->SetOrigin(0.0, 0.0, 0.0);
       image->SetSpacing(1.0, 1.0, 1.0);
       image->AllocateScalars(scalarType, 1);
+
+      if (!request.WholeLevel)
+      {
+        // Progressive display: publish an upsampled placeholder of the
+        // region immediately, then replace it tile by tile with real data
+        // (the tiles are copied into the published image by the main thread)
+        vtkSmartPointer<vtkImageData> placeholder = this->PublishPlaceholderRegion(regionExtent, request.Level);
+        if (placeholder)
+        {
+          std::lock_guard<std::mutex> lock(this->Mutex);
+          this->InProgressPublishedImage = placeholder;
+          this->InProgressPrivateImage = image;
+          this->CompletedTileExtents.clear();
+          this->ProgressiveCompleted = false;
+          progressive = true;
+        }
+      }
 
       // Tile plan: split along k (contiguous memory) when the region is
       // thick, otherwise along j; ~8 MB per tile.
@@ -966,6 +1181,17 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         {
           std::lock_guard<std::mutex> lock(this->Mutex);
           this->TilesCompleted = tileIndex + 1;
+          if (progressive)
+          {
+            // Publish this tile: the main thread copies it into the
+            // displayed placeholder image and notifies the views
+            std::array<int, 6> completedTile;
+            for (int i = 0; i < 6; ++i)
+            {
+              completedTile[i] = tileExtent[i];
+            }
+            this->CompletedTileExtents.push_back(completedTile);
+          }
         }
       }
       image->GetPointData()->GetScalars()->Modified();
@@ -974,7 +1200,25 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       std::lock_guard<std::mutex> lock(this->Mutex);
       this->TilesTotal = 0;
       this->TilesCompleted = 0;
-      if (success && !abandoned)
+      if (progressive)
+      {
+        if (success && !abandoned)
+        {
+          // The published placeholder already holds (or will hold, after the
+          // main thread copied the last tiles) the real data; the main
+          // thread marks it complete.
+          this->ProgressiveCompleted = true;
+        }
+        else
+        {
+          // Discard the partial read; the placeholder region stays cached
+          // (incomplete), so views keep showing it and re-request the data.
+          this->CompletedTileExtents.clear();
+          this->InProgressPublishedImage = nullptr;
+          this->InProgressPrivateImage = nullptr;
+        }
+      }
+      else if (success && !abandoned)
       {
         if (request.WholeLevel)
         {
@@ -992,21 +1236,21 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
           cachedRegion.Image = image;
           cachedRegion.AccessStamp = ++this->AccessCounter;
           this->RegionCache.push_back(cachedRegion);
-          // Keep only the most recently used regions
-          while (this->RegionCache.size() > MaximumCachedRegions)
-          {
-            size_t oldestIndex = 0;
-            for (size_t i = 1; i < this->RegionCache.size(); ++i)
-            {
-              if (this->RegionCache[i].AccessStamp < this->RegionCache[oldestIndex].AccessStamp)
-              {
-                oldestIndex = i;
-              }
-            }
-            this->RegionCache.erase(this->RegionCache.begin() + oldestIndex);
-          }
         }
         this->CompletedLevels.push_back(request.Level);
+      }
+      // Keep only the most recently used regions
+      while (this->RegionCache.size() > MaximumCachedRegions)
+      {
+        size_t oldestIndex = 0;
+        for (size_t i = 1; i < this->RegionCache.size(); ++i)
+        {
+          if (this->RegionCache[i].AccessStamp < this->RegionCache[oldestIndex].AccessStamp)
+          {
+            oldestIndex = i;
+          }
+        }
+        this->RegionCache.erase(this->RegionCache.begin() + oldestIndex);
       }
       finishRequest(success && !abandoned);
     }

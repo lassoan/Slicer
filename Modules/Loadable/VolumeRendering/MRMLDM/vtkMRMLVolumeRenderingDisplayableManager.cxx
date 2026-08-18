@@ -1049,6 +1049,12 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::OnCameraOrProviderMo
                                    && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5];
     if (coveredAtDisplayedLevel)
     {
+      if (eid == vtkMRMLVoxelDataProvider::RegionReadyEvent)
+      {
+        // The displayed region may have been updated in place (tile-by-tile
+        // progressive streaming shares the pixel array): re-render
+        modified = true;
+      }
       continue;
     }
     // UpdatePipelineTransforms runs UpdateDisplayNodePipeline, which fetches
@@ -1405,6 +1411,10 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
                                  && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5];
   if (!coveredAtDisplayedLevel)
   {
+    // Ensure the region becomes complete (cheap no-op if already cached or
+    // being fetched; re-issues the request if only an incomplete placeholder
+    // is cached)
+    provider->RequestRegionAsync(extent, level);
     if (provider->IsRegionAvailable(extent, level))
     {
       if (provider->GetRegionIfAvailable(pipeline->VariableResolutionImageData, extent, level))
@@ -1420,9 +1430,9 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
     }
     else
     {
-      // Fetch in the background (progressive refinement: RegionReadyEvent
-      // triggers another update); keep the current input meanwhile.
-      provider->RequestRegionAsync(extent, level);
+      // The data is being fetched in the background (progressive
+      // refinement: RegionReadyEvent triggers another update); keep the
+      // current input meanwhile.
       if (!pipeline->UseVariableResolution)
       {
         return false;

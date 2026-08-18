@@ -163,7 +163,9 @@ void qSlicerVolumesModulePrivate::updateLoadingIndicators()
     {
       continue;
     }
-    // Loading progress of the providers of the volumes shown in this view
+    // Loading progress of the region that THIS view is displaying (other
+    // views of the same volume may display different regions/levels and are
+    // not affected by this request)
     double progress = -1.0;
     vtkMRMLSliceLogic* sliceLogic = sliceWidget->sliceLogic();
     if (sliceLogic)
@@ -173,9 +175,9 @@ void qSlicerVolumesModulePrivate::updateLoadingIndicators()
       {
         vtkMRMLScalarVolumeNode* volumeNode = layer ? vtkMRMLScalarVolumeNode::SafeDownCast(layer->GetVolumeNode()) : nullptr;
         vtkMRMLVoxelDataProvider* provider = volumeNode ? volumeNode->GetVoxelDataProvider() : nullptr;
-        if (provider)
+        if (provider && layer->GetTargetResolutionLevel() >= 0)
         {
-          progress = std::max(progress, provider->GetPendingRegionRequestProgress());
+          progress = std::max(progress, provider->GetRegionRequestProgress(layer->GetTargetRegionExtent(), layer->GetTargetResolutionLevel()));
         }
       }
     }

@@ -149,6 +149,17 @@ public:
   /// currently used as the reslice input.
   vtkGetVector6Macro(DisplayedRegionExtent, int);
 
+  //@{
+  /// Resolution level and region that this layer wants to display at the
+  /// current zoom (-1: variable resolution inactive). May be finer than the
+  /// displayed level while a background retrieval is in progress. Views use
+  /// this together with
+  /// vtkMRMLVoxelDataProvider::GetRegionRequestProgress() to show a loading
+  /// indicator only for the region they are displaying.
+  vtkGetMacro(TargetResolutionLevel, int);
+  vtkGetVector6Macro(TargetRegionExtent, int);
+  //@}
+
 protected:
   vtkMRMLSliceLayerLogic();
   ~vtkMRMLSliceLayerLogic() override;
@@ -235,6 +246,9 @@ protected:
   /// Currently displayed resolution level (-1: variable resolution inactive)
   int DisplayedResolutionLevel{ -1 };
   int DisplayedRegionExtent[6]{ 0, -1, 0, -1, 0, -1 };
+  /// Level/region that the layer wants to display at the current zoom
+  int TargetResolutionLevel{ -1 };
+  int TargetRegionExtent[6]{ 0, -1, 0, -1, 0, -1 };
   //@}
 };
 

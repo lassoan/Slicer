@@ -205,17 +205,17 @@ itk::ImageIOBase::Pointer vtkITKArchetypeImageSeriesReader::CreateImageIOWithDat
   // opened repeatedly in one process; a failed factory selection would
   // silently fall back to the default IO configuration and read the wrong
   // (full) resolution level.
-  if (fileName && IsRemoteURL(fileName) && std::string(fileName).find(".zarr") != std::string::npos)
+  bool localZarr = fileName && itksys::SystemTools::FileIsDirectory(fileName) //
+                   && itksys::SystemTools::FileExists((std::string(fileName) + "/.zattrs").c_str());
+  bool remoteZarr = fileName && IsRemoteURL(fileName) && std::string(fileName).find(".zarr") != std::string::npos;
+  if (localZarr || remoteZarr)
   {
     itk::OMEZarrNGFFImageIO::Pointer zarrImageIO = itk::OMEZarrNGFFImageIO::New();
     zarrImageIO->SetDatasetIndex(this->DatasetIndex);
-    return zarrImageIO.GetPointer();
-  }
-  if (fileName && itksys::SystemTools::FileIsDirectory(fileName) //
-      && itksys::SystemTools::FileExists((std::string(fileName) + "/.zattrs").c_str()))
-  {
-    itk::OMEZarrNGFFImageIO::Pointer zarrImageIO = itk::OMEZarrNGFFImageIO::New();
-    zarrImageIO->SetDatasetIndex(this->DatasetIndex);
+    // Multi-dimensional stores: always read the first channel and time point
+    // (setting the indices explicitly also avoids a warning on every read)
+    zarrImageIO->SetChannelIndex(0);
+    zarrImageIO->SetTimeIndex(0);
     return zarrImageIO.GetPointer();
   }
 #endif

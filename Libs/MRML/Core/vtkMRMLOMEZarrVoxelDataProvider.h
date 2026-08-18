@@ -17,6 +17,7 @@
 #include <vtkSmartPointer.h>
 
 // STD includes
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <map>
@@ -99,6 +100,7 @@ public:
   bool RequestRegionAsync(const int extent[6], int resolutionLevel) override;
   bool HasPendingRegionRequests() override;
   double GetPendingRegionRequestProgress() override;
+  double GetRegionRequestProgress(const int extent[6], int resolutionLevel) override;
   void ProcessPendingRegionRequests() override;
   double GetVoxelValue(int i, int j, int k, int component = 0) override;
   bool GetStoredScalarRange(double range[2]) override;
@@ -162,11 +164,23 @@ protected:
     int Extent[6]{ 0, -1, 0, -1, 0, -1 };
     vtkSmartPointer<vtkImageData> Image;
     long long AccessStamp{ 0 };
+    /// False while the region is being streamed in tiles: the image starts
+    /// as an upsampled placeholder computed from a coarser level and tiles
+    /// of real data replace it progressively.
+    bool Complete{ true };
   };
 
   /// Find a cached region that covers the extent (nullptr if none).
+  /// Prefers a complete region; requireComplete skips incomplete ones.
   /// The caller must hold Mutex.
-  CachedRegion* FindCoveringCachedRegion(const int extent[6], int level);
+  CachedRegion* FindCoveringCachedRegion(const int extent[6], int level, bool requireComplete = false);
+
+  /// Create the progressive placeholder for a region request: the best
+  /// cached coarser level resampled to the requested level's grid, published
+  /// to the region cache (marked incomplete) so that views can display it
+  /// immediately while the real data is streamed in tiles.
+  /// Returns the published image (nullptr if no coarser data is cached).
+  vtkSmartPointer<vtkImageData> PublishPlaceholderRegion(const int extent[6], int level);
 
   /// Largest level (bytes) that is loaded and cached whole instead of
   /// serving chunk-granular region reads
@@ -186,6 +200,21 @@ protected:
   RegionRequest PendingRequest;
   bool HasPendingRequest{ false };
   std::vector<int> CompletedLevels;
+
+  //@{
+  /// Progressive (tile-by-tile) display of the request being executed:
+  /// the worker reads tiles into a private image, and the main thread
+  /// (ProcessPendingRegionRequests) copies completed tiles into the
+  /// published (displayed) placeholder image.
+  RegionRequest InProgressRequest;
+  vtkSmartPointer<vtkImageData> InProgressPublishedImage;
+  vtkSmartPointer<vtkImageData> InProgressPrivateImage;
+  std::vector<std::array<int, 6>> CompletedTileExtents;
+  /// Set by the worker when the streamed request finished successfully;
+  /// the main thread then marks the published region complete after the
+  /// last tiles have been copied.
+  bool ProgressiveCompleted{ false };
+  //@}
 
   //@{
   /// Progress of the request the worker is executing. The region is read in

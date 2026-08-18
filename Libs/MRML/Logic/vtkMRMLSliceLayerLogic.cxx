@@ -832,12 +832,25 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
     provider->GetExtent(targetExtent, targetLevel);
   }
 
-  // Progressive refinement: if the target level is not available yet, request
-  // it in the background and display the best available coarser level.
+  // Record the target so that views can display a loading indicator for the
+  // region they are showing
+  this->TargetResolutionLevel = targetLevel;
+  for (int i = 0; i < 6; ++i)
+  {
+    this->TargetRegionExtent[i] = targetExtent[i];
+  }
+
+  // Ensure the target region becomes complete. This is a cheap no-op if the
+  // data is already cached or the request is being served; it also re-issues
+  // the request when only an incomplete placeholder of the region is cached
+  // (e.g. after a superseded or failed background read).
+  provider->RequestRegionAsync(targetExtent, targetLevel);
+
+  // Progressive refinement: if the target level is not available yet,
+  // display the best available coarser level meanwhile.
   int displayLevel = targetLevel;
   if (!provider->IsRegionAvailable(targetExtent, targetLevel))
   {
-    provider->RequestRegionAsync(targetExtent, targetLevel);
     displayLevel = referenceLevel; // always available
     for (int level = targetLevel + 1; level < numberOfLevels; ++level)
     {
@@ -1118,6 +1131,7 @@ void vtkMRMLSliceLayerLogic::UpdateImageDisplay()
         this->ResolutionScaleMatrix->Identity();
         this->UpdateTransforms();
       }
+      this->TargetResolutionLevel = -1;
       this->Reslice->SetInputData(displayInputImage);
       this->ResliceUVW->SetInputData(displayInputImage);
     }

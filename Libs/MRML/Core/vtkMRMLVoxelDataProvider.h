@@ -138,6 +138,17 @@ public:
   /// throughput). Used by views to display a loading indicator.
   virtual double GetPendingRegionRequestProgress() { return -1.0; }
 
+  /// Progress of the background request that serves this specific region:
+  /// -1 if no pending or executing request covers the region at this level,
+  /// otherwise 0..1. Views use this to display a loading indicator only for
+  /// the region they are showing.
+  virtual double GetRegionRequestProgress(const int extent[6], int resolutionLevel)
+  {
+    (void)extent;
+    (void)resolutionLevel;
+    return -1.0;
+  }
+
   /// Called periodically on the main thread (by the application) to finalize
   /// completed background requests and invoke RegionReadyEvent.
   virtual void ProcessPendingRegionRequests() {}
