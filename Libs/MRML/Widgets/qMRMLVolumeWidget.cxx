@@ -115,8 +115,16 @@ bool qMRMLVolumeWidgetPrivate::blockSignals(bool block)
 // --------------------------------------------------------------------------
 void qMRMLVolumeWidgetPrivate::updateValueProxy()
 {
-  double scale = this->VolumeDisplayNode ? this->VolumeDisplayNode->GetVoxelValueScale() : 1.0;
-  double offset = this->VolumeDisplayNode ? this->VolumeDisplayNode->GetVoxelValueOffset() : 0.0;
+  // The value mapping is owned by the volume node (voxel data provider);
+  // window/level/threshold values in the display node are expressed in
+  // stored units whenever voxel value scaling is active on the volume node.
+  vtkMRMLScalarVolumeNode* volumeNode = this->VolumeNode;
+  if (!volumeNode && this->VolumeDisplayNode)
+  {
+    volumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(this->VolumeDisplayNode->GetDisplayableNode());
+  }
+  double scale = volumeNode ? volumeNode->GetVoxelValueScale() : 1.0;
+  double offset = volumeNode ? volumeNode->GetVoxelValueOffset() : 0.0;
   if (scale == 0.0)
   {
     scale = 1.0;

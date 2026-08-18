@@ -239,8 +239,10 @@ protected:
   void operator=(const vtkMRMLScalarVolumeNode&);
 
   /// Reimplemented so that scalar display nodes receive the stored image
-  /// connection and the value mapping (scale/offset) when voxel value
-  /// scaling is active.
+  /// connection when voxel value scaling is active (window/level/threshold
+  /// then operate in stored units; presentation layers obtain the value
+  /// mapping from this volume node via the display node's
+  /// GetDisplayableNode()).
   void SetImageDataToDisplayNode(vtkMRMLVolumeDisplayNode* displayNode) override;
 
   /// Reimplemented so that copying a packed volume copies the stored image

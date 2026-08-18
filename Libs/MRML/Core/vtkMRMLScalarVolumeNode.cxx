@@ -488,21 +488,16 @@ void vtkMRMLScalarVolumeNode::UpdateScene(vtkMRMLScene* scene)
 void vtkMRMLScalarVolumeNode::SetImageDataToDisplayNode(vtkMRMLVolumeDisplayNode* displayNode)
 {
   vtkMRMLScalarVolumeDisplayNode* scalarDisplayNode = vtkMRMLScalarVolumeDisplayNode::SafeDownCast(displayNode);
-  if (scalarDisplayNode)
+  if (scalarDisplayNode && this->VoxelDataProvider)
   {
-    if (this->VoxelDataProvider)
-    {
-      // Stored-tier display: the display pipeline consumes stored values and
-      // keeps window/level/threshold in stored units; presentation layers
-      // convert using the value mapping. Rendering output is pixel-identical
-      // because the value mapping and window/level are both affine.
-      scalarDisplayNode->SetVoxelValueScale(this->VoxelDataProvider->GetVoxelValueScale());
-      scalarDisplayNode->SetVoxelValueOffset(this->VoxelDataProvider->GetVoxelValueOffset());
-      scalarDisplayNode->SetInputImageDataConnection(this->GetStoredImageDataConnection());
-      return;
-    }
-    scalarDisplayNode->SetVoxelValueScale(1.0);
-    scalarDisplayNode->SetVoxelValueOffset(0.0);
+    // Stored-tier display: the display pipeline consumes stored values and
+    // keeps window/level/threshold in stored units; presentation layers
+    // convert using the value mapping of this volume node (reachable from
+    // the display node via GetDisplayableNode()). Rendering output is
+    // pixel-identical because the value mapping and window/level are both
+    // affine.
+    scalarDisplayNode->SetInputImageDataConnection(this->GetStoredImageDataConnection());
+    return;
   }
   this->Superclass::SetImageDataToDisplayNode(displayNode);
 }

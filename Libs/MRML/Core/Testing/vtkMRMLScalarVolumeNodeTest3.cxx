@@ -203,8 +203,11 @@ int vtkMRMLScalarVolumeNodeTest3(int, char*[])
     displayedNode->CreateDefaultDisplayNodes();
     vtkMRMLScalarVolumeDisplayNode* displayNode = vtkMRMLScalarVolumeDisplayNode::SafeDownCast(displayedNode->GetDisplayNode());
     CHECK_NOT_NULL(displayNode);
-    CHECK_DOUBLE(displayNode->GetVoxelValueScale(), 0.01);
-    CHECK_DOUBLE(displayNode->GetVoxelValueOffset(), 0.0);
+    // The value mapping is reachable from the display node via the
+    // displayable node back-reference (this is what presentation layers use)
+    vtkMRMLScalarVolumeNode* backReferencedNode = vtkMRMLScalarVolumeNode::SafeDownCast(displayNode->GetDisplayableNode());
+    CHECK_POINTER(backReferencedNode, displayedNode);
+    CHECK_DOUBLE(backReferencedNode->GetVoxelValueScale(), 0.01);
     // Display pipeline input is the stored image; the physical image is not
     // generated for display
     CHECK_POINTER(displayNode->GetInputImageData(), displayedStored.GetPointer());

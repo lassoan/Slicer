@@ -84,20 +84,6 @@ public:
                     "e.g. slicer.app.applicationLogic().GetInteractionNode().SetCurrentInteractionMode(slicer.vtkMRMLInteractionNode.ViewTransform)");
   };
 
-  //@{
-  /// Voxel value scaling of the input image:
-  /// physical = VoxelValueScale * inputValue + VoxelValueOffset.
-  /// Set by the volume node when its voxel value scaling is active (the
-  /// display pipeline then consumes stored values, and window/level/threshold
-  /// are expressed in stored units). Presentation layers (window/level
-  /// widgets, color legend) use these to convert displayed numbers to
-  /// physical values. Both are identity (1/0) for ordinary volumes.
-  vtkGetMacro(VoxelValueScale, double);
-  vtkSetMacro(VoxelValueScale, double);
-  vtkGetMacro(VoxelValueOffset, double);
-  vtkSetMacro(VoxelValueOffset, double);
-  //@}
-
   ///
   /// Specifies whether windowing and leveling are to be performed automatically
   vtkBooleanMacro(AutoWindowLevel, int);
@@ -287,8 +273,6 @@ protected:
   int AutoThreshold;
   int InvertDisplayScalarRange;
   int WindowMappingMethod;
-  double VoxelValueScale{ 1.0 };
-  double VoxelValueOffset{ 0.0 };
 
   vtkImageLogic* AlphaLogic;
   vtkImageMapToColors* MapToColors;
