@@ -96,6 +96,22 @@ public:
     return true;
   }
 
+  /// Returns true if the resolution level can be retrieved within the
+  /// provider's memory budget. Consumers must not request levels that are
+  /// not loadable; they should fall back to the finest loadable level.
+  /// The base implementation returns true (data is already in memory).
+  virtual bool IsLevelLoadable(int resolutionLevel)
+  {
+    (void)resolutionLevel;
+    return true;
+  }
+
+  /// Allow the provider to release cached data that is not needed anymore.
+  /// \a keepResolutionLevel is the level currently displayed/used (in
+  /// addition to any level the provider must always keep, such as the
+  /// reference level). The base implementation does nothing.
+  virtual void ReleaseUnusedLevels(int keepResolutionLevel) { (void)keepResolutionLevel; }
+
   /// Request that the data needed for the given region/level is fetched in
   /// the background. Returns true if a request was queued (or is pending).
   virtual bool RequestRegionAsync(const int extent[6], int resolutionLevel);

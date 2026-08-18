@@ -14,6 +14,7 @@
 #include "vtkITKArchetypeImageSeriesScalarReader.h"
 
 // VTK includes
+#include <vtkDataArray.h>
 #include <vtkExtractVOI.h>
 #include <vtkImageData.h>
 #include <vtkNew.h>
@@ -22,6 +23,9 @@
 
 // RapidJSON includes
 #include <rapidjson/document.h>
+
+// VTKsys includes
+#include <vtksys/SystemInformation.hxx>
 
 // STD includes
 #include <fstream>
@@ -248,10 +252,12 @@ void vtkMRMLOMEZarrVoxelDataProvider::SetLevelImageData(int level, vtkImageData*
     if (image)
     {
       this->LevelImages[level] = image;
+      this->LevelAccessOrder[level] = ++this->AccessCounter;
     }
     else
     {
       this->LevelImages.erase(level);
+      this->LevelAccessOrder.erase(level);
     }
   }
   this->Modified();
@@ -279,6 +285,108 @@ bool vtkMRMLOMEZarrVoxelDataProvider::GetLevelSpacing(int level, double spacing[
 }
 
 //----------------------------------------------------------------------------
+void vtkMRMLOMEZarrVoxelDataProvider::SetMaximumLevelLoadBytes(long long bytes)
+{
+  this->MaximumLevelLoadBytes = bytes;
+}
+
+//----------------------------------------------------------------------------
+long long vtkMRMLOMEZarrVoxelDataProvider::GetMaximumLevelLoadBytes()
+{
+  if (this->MaximumLevelLoadBytes <= 0)
+  {
+    // Default: a quarter of the total physical memory. Loading a level
+    // transiently needs about twice its data size, so this keeps a single
+    // level load below about half of the physical memory.
+    vtksys::SystemInformation systemInfo;
+    systemInfo.RunMemoryCheck();
+    long long totalPhysicalMB = static_cast<long long>(systemInfo.GetTotalPhysicalMemory());
+    long long totalPhysicalBytes = totalPhysicalMB * 1024LL * 1024LL;
+    this->MaximumLevelLoadBytes = (totalPhysicalBytes > 0) ? totalPhysicalBytes / 4 : 4LL * 1024LL * 1024LL * 1024LL;
+  }
+  return this->MaximumLevelLoadBytes;
+}
+
+//----------------------------------------------------------------------------
+long long vtkMRMLOMEZarrVoxelDataProvider::GetLevelMemoryBytes(int resolutionLevel)
+{
+  if (resolutionLevel < 0 || resolutionLevel >= static_cast<int>(this->Levels.size()))
+  {
+    return 0;
+  }
+  const int* extent = this->Levels[resolutionLevel].Extent;
+  long long numberOfVoxels = static_cast<long long>(extent[1] - extent[0] + 1)   //
+                             * static_cast<long long>(extent[3] - extent[2] + 1) //
+                             * static_cast<long long>(extent[5] - extent[4] + 1);
+  int scalarSize = vtkDataArray::GetDataTypeSize(this->ScalarType != VTK_VOID ? this->ScalarType : VTK_SHORT);
+  return numberOfVoxels * scalarSize * this->NumberOfComponents;
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLOMEZarrVoxelDataProvider::IsLevelLoadable(int resolutionLevel)
+{
+  if (resolutionLevel < 0 || resolutionLevel >= static_cast<int>(this->Levels.size()))
+  {
+    return false;
+  }
+  if (this->IsLevelLoaded(resolutionLevel))
+  {
+    return true;
+  }
+  // Loading a level transiently needs about twice its data size
+  // (ITK reading buffer + VTK image copy).
+  return (2 * this->GetLevelMemoryBytes(resolutionLevel) <= this->GetMaximumLevelLoadBytes());
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLOMEZarrVoxelDataProvider::ReleaseUnusedLevels(int keepResolutionLevel)
+{
+  // Levels are only evicted when the total cache size exceeds the memory
+  // budget, in least-recently-used order. Levels must never be evicted just
+  // because one consumer stopped using them: several views may display
+  // different levels of the same volume simultaneously, and eager eviction
+  // would make the views endlessly reload each other's evicted levels.
+  long long cacheBudget = this->GetMaximumLevelLoadBytes();
+  std::lock_guard<std::mutex> lock(this->Mutex);
+  for (;;)
+  {
+    long long totalBytes = 0;
+    for (const auto& levelImage : this->LevelImages)
+    {
+      totalBytes += this->GetLevelMemoryBytes(levelImage.first);
+    }
+    if (totalBytes <= cacheBudget)
+    {
+      return;
+    }
+    // Evict the least recently used level (never the reference level or the
+    // level that the caller currently uses)
+    int lruLevel = -1;
+    long long lruStamp = 0;
+    for (const auto& levelImage : this->LevelImages)
+    {
+      int level = levelImage.first;
+      if (level == this->ReferenceLevel || level == keepResolutionLevel)
+      {
+        continue;
+      }
+      long long stamp = this->LevelAccessOrder.count(level) ? this->LevelAccessOrder[level] : 0;
+      if (lruLevel < 0 || stamp < lruStamp)
+      {
+        lruLevel = level;
+        lruStamp = stamp;
+      }
+    }
+    if (lruLevel < 0)
+    {
+      return; // nothing evictable
+    }
+    this->LevelImages.erase(lruLevel);
+    this->LevelAccessOrder.erase(lruLevel);
+  }
+}
+
+//----------------------------------------------------------------------------
 void vtkMRMLOMEZarrVoxelDataProvider::ReleaseCachedLevels()
 {
   std::lock_guard<std::mutex> lock(this->Mutex);
@@ -286,6 +394,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::ReleaseCachedLevels()
   {
     if (it->first != this->ReferenceLevel)
     {
+      this->LevelAccessOrder.erase(it->first);
       it = this->LevelImages.erase(it);
     }
     else
@@ -346,7 +455,12 @@ vtkSmartPointer<vtkImageData> vtkMRMLOMEZarrVoxelDataProvider::GetCachedLevelIma
 {
   std::lock_guard<std::mutex> lock(this->Mutex);
   auto it = this->LevelImages.find(level);
-  return (it != this->LevelImages.end()) ? it->second : nullptr;
+  if (it == this->LevelImages.end())
+  {
+    return nullptr;
+  }
+  this->LevelAccessOrder[level] = ++this->AccessCounter;
+  return it->second;
 }
 
 //----------------------------------------------------------------------------
@@ -391,6 +505,7 @@ bool vtkMRMLOMEZarrVoxelDataProvider::EnsureLevelLoaded(int level)
   }
   std::lock_guard<std::mutex> lock(this->Mutex);
   this->LevelImages[level] = image;
+  this->LevelAccessOrder[level] = ++this->AccessCounter;
   return true;
 }
 
@@ -526,6 +641,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       if (image)
       {
         this->LevelImages[levelToLoad] = image;
+        this->LevelAccessOrder[levelToLoad] = ++this->AccessCounter;
         this->CompletedLevels.push_back(levelToLoad);
       }
     }

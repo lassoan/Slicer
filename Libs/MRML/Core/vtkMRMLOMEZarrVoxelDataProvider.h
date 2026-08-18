@@ -71,6 +71,20 @@ public:
   void ReleaseCachedLevels();
 
   //@{
+  /// Maximum amount of memory (bytes) that loading a single resolution level
+  /// may require. Loading a level transiently needs about twice its data
+  /// size (ITK reading buffer + VTK image copy), which is accounted for
+  /// here. Levels above the budget are reported as not loadable
+  /// (IsLevelLoadable) and are never fetched; views then use the finest
+  /// loadable level. Default: a quarter of the total physical memory.
+  void SetMaximumLevelLoadBytes(long long bytes);
+  long long GetMaximumLevelLoadBytes();
+
+  /// Uncompressed in-memory size of a level (bytes).
+  long long GetLevelMemoryBytes(int resolutionLevel);
+  //@}
+
+  //@{
   /// vtkMRMLVoxelDataProvider interface
   int GetNumberOfResolutionLevels() override;
   bool GetLevelScale(int resolutionLevel, double scale[3]) override;
@@ -86,6 +100,8 @@ public:
   double GetVoxelValue(int i, int j, int k, int component = 0) override;
   bool GetStoredScalarRange(double range[2]) override;
   vtkImageData* GetStoredImageDataIfInMemory() override;
+  bool IsLevelLoadable(int resolutionLevel) override;
+  void ReleaseUnusedLevels(int keepResolutionLevel) override;
   //@}
 
 protected:
@@ -118,9 +134,14 @@ protected:
   int ReferenceLevel{ 0 };
   int ScalarType{ VTK_VOID };
   int NumberOfComponents{ 1 };
+  /// 0 = not initialized yet (computed from physical memory on first use)
+  long long MaximumLevelLoadBytes{ 0 };
 
-  std::mutex Mutex; // guards LevelImages, PendingLevel, CompletedLevels, WorkerShouldStop
+  std::mutex Mutex; // guards LevelImages, LevelAccessOrder, PendingLevel, CompletedLevels, WorkerShouldStop
   std::map<int, vtkSmartPointer<vtkImageData>> LevelImages;
+  /// Monotonic access stamps for LRU eviction (kept in sync with LevelImages)
+  std::map<int, long long> LevelAccessOrder;
+  long long AccessCounter{ 0 };
   std::thread Worker;
   std::condition_variable Condition;
   bool WorkerShouldStop{ false };

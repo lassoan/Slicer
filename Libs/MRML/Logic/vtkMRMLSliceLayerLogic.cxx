@@ -541,8 +541,10 @@ void vtkMRMLSliceLayerLogic::UpdateTransforms()
     // Variable-resolution display: map the node's (reference level) IJK
     // coordinates to the currently displayed resolution level's IJK
     // coordinates (identity for single-resolution volumes).
+    // Note: only the 2D (XY) reslice pipeline is variable-resolution; the
+    // UVW (texture) pipeline geometry is computed by the slice logic from
+    // the volume's native resolution and always uses the reference level.
     this->XYToIJKTransform->Concatenate(this->ResolutionScaleMatrix);
-    this->UVWToIJKTransform->Concatenate(this->ResolutionScaleMatrix);
 
     // vtkImageReslice works faster if the input is a linear transform, so try to convert it
     // to a linear transform.
@@ -752,9 +754,23 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
   vtkNew<vtkMatrix4x4> xyToRefIJK;
   if (this->GetXYToReferenceIJKMatrix(scalarVolumeNode, xyToRefIJK.GetPointer()))
   {
-    targetLevel = 0;
+    // Ultimate fallback: the finest level that fits in the provider's memory
+    // budget (levels above the budget are never fetched).
+    targetLevel = referenceLevel;
+    for (int level = 0; level < numberOfLevels; ++level)
+    {
+      if (provider->IsLevelLoadable(level))
+      {
+        targetLevel = level;
+        break;
+      }
+    }
     for (int level = numberOfLevels - 1; level >= 0; --level)
     {
+      if (!provider->IsLevelLoadable(level))
+      {
+        continue;
+      }
       double levelScale[3] = { 1.0, 1.0, 1.0 };
       if (!provider->GetLevelScale(level, levelScale))
       {
@@ -851,13 +867,17 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
     }
   }
 
+  // The UVW (texture) pipeline always uses the reference level (its
+  // geometry is computed by the slice logic from the volume's native
+  // resolution; making it variable-resolution is future work).
+  this->ResliceUVW->SetInputData(scalarVolumeNode->GetStoredImageData());
+
   vtkNew<vtkImageData> region;
   if (!provider->GetRegionIfAvailable(region.GetPointer(), displayExtent, displayLevel))
   {
     // Should not happen (displayLevel was selected as available); fall back
     // to the reference stored image.
     this->Reslice->SetInputData(scalarVolumeNode->GetStoredImageData());
-    this->ResliceUVW->SetInputData(scalarVolumeNode->GetStoredImageData());
     this->DisplayedResolutionLevel = referenceLevel;
     this->ResolutionScaleMatrix->Identity();
     this->UpdateTransforms();
@@ -865,7 +885,6 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
   }
 
   this->Reslice->SetInputData(region.GetPointer());
-  this->ResliceUVW->SetInputData(region.GetPointer());
   this->DisplayedResolutionLevel = displayLevel;
   for (int i = 0; i < 6; ++i)
   {
@@ -881,6 +900,14 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
     this->ResolutionScaleMatrix->SetElement(axis, axis, referenceScale[axis] / displayScale[axis]);
   }
   this->UpdateTransforms();
+
+  // Bound memory use: once the zoom-matched level is displayed, cached
+  // levels that are no longer used can be released (the reference level is
+  // always kept).
+  if (displayLevel == targetLevel)
+  {
+    provider->ReleaseUnusedLevels(displayLevel);
+  }
 }
 
 //----------------------------------------------------------------------------
