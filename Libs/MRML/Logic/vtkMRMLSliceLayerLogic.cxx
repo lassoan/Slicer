@@ -882,7 +882,11 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
   }
 
   // Skip the update if the current input already covers the needed region at
-  // the same level (small panning stays within the padded region).
+  // the same level (small panning stays within the padded region). The
+  // displayed input must hold COMPLETE data: if it is a progressive
+  // placeholder (possibly one whose streaming got interrupted), fall through
+  // and re-fetch, so that complete data that arrived in a different cache
+  // entry replaces the stale placeholder.
   if (displayLevel == this->DisplayedResolutionLevel)
   {
     bool covered = true;
@@ -896,7 +900,7 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
         covered = false;
       }
     }
-    if (covered)
+    if (covered && provider->IsRegionComplete(this->DisplayedRegionExtent, displayLevel))
     {
       return;
     }

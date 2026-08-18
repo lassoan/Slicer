@@ -96,6 +96,15 @@ public:
     return true;
   }
 
+  /// Returns true if COMPLETE data of this region is available. A region can
+  /// be available but incomplete: backends with progressive (tile-by-tile)
+  /// streaming publish a placeholder that is upsampled from a coarser level
+  /// and gets replaced by real data as it arrives. Consumers must not treat
+  /// an available region as final unless it is complete (otherwise a
+  /// displayed placeholder whose streaming got interrupted would never be
+  /// replaced). The base implementation equals IsRegionAvailable().
+  virtual bool IsRegionComplete(const int extent[6], int resolutionLevel) { return this->IsRegionAvailable(extent, resolutionLevel); }
+
   /// Returns true if the resolution level can be retrieved AS A WHOLE within
   /// the provider's memory budget. Whole-level consumers (e.g. loading the
   /// volume node grid at a chosen level) must not request levels that are

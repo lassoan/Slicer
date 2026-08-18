@@ -1046,7 +1046,8 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::OnCameraOrProviderMo
     bool coveredAtDisplayedLevel = pipeline->UseVariableResolution && level == pipeline->DisplayedResolutionLevel //
                                    && extent[0] >= pipeline->DisplayedRegionExtent[0] && extent[1] <= pipeline->DisplayedRegionExtent[1]
                                    && extent[2] >= pipeline->DisplayedRegionExtent[2] && extent[3] <= pipeline->DisplayedRegionExtent[3]
-                                   && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5];
+                                   && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5]
+                                   && provider->IsRegionComplete(pipeline->DisplayedRegionExtent, pipeline->DisplayedResolutionLevel);
     if (coveredAtDisplayedLevel)
     {
       if (eid == vtkMRMLVoxelDataProvider::RegionReadyEvent)
@@ -1408,7 +1409,11 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
   bool coveredAtDisplayedLevel = pipeline->UseVariableResolution && level == pipeline->DisplayedResolutionLevel //
                                  && extent[0] >= pipeline->DisplayedRegionExtent[0] && extent[1] <= pipeline->DisplayedRegionExtent[1]
                                  && extent[2] >= pipeline->DisplayedRegionExtent[2] && extent[3] <= pipeline->DisplayedRegionExtent[3]
-                                 && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5];
+                                 && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5]
+                                 // The displayed input must hold complete data: a (possibly stale)
+                                 // progressive placeholder is re-fetched so that complete data
+                                 // replaces it
+                                 && provider->IsRegionComplete(pipeline->DisplayedRegionExtent, pipeline->DisplayedResolutionLevel);
   if (!coveredAtDisplayedLevel)
   {
     // Ensure the region becomes complete (cheap no-op if already cached or

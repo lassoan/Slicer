@@ -109,6 +109,7 @@ public:
   bool GetRegion(vtkImageData* output, const int extent[6], int resolutionLevel = 0) override;
   bool GetRegionIfAvailable(vtkImageData* output, const int extent[6], int resolutionLevel = 0) override;
   bool IsRegionAvailable(const int extent[6], int resolutionLevel) override;
+  bool IsRegionComplete(const int extent[6], int resolutionLevel) override;
   bool RequestRegionAsync(const int extent[6], int resolutionLevel) override;
   bool HasPendingRegionRequests() override;
   double GetPendingRegionRequestProgress() override;

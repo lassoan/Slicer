@@ -29,6 +29,9 @@
 #include <vtkPointData.h>
 #include <vtkStreamingDemandDrivenPipeline.h>
 
+// STD includes
+#include <mutex>
+
 // ITK includes
 #include <itkImageIOFactory.h>
 #include <itkNiftiImageIO.h>
@@ -243,7 +246,14 @@ bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(const char* f
     zarrImageIO->SetChannelIndex(0);
     zarrImageIO->SetTimeIndex(0);
     zarrImageIO->SetFileName(fileName);
-    zarrImageIO->ReadImageInformation();
+    {
+      // Opening the same store concurrently from several worker threads has
+      // been observed to fail transiently; serialize the open (metadata
+      // read). The voxel reads themselves stay concurrent.
+      static std::mutex zarrOpenMutex;
+      std::lock_guard<std::mutex> lock(zarrOpenMutex);
+      zarrImageIO->ReadImageInformation();
+    }
 
     scalarType = VTK_VOID;
     switch (zarrImageIO->GetComponentType())

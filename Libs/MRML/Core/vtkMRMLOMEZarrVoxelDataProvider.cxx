@@ -679,6 +679,17 @@ bool vtkMRMLOMEZarrVoxelDataProvider::IsRegionAvailable(const int extent[6], int
 }
 
 //----------------------------------------------------------------------------
+bool vtkMRMLOMEZarrVoxelDataProvider::IsRegionComplete(const int extent[6], int resolutionLevel)
+{
+  if (this->IsLevelLoaded(resolutionLevel))
+  {
+    return true;
+  }
+  std::lock_guard<std::mutex> lock(this->Mutex);
+  return (this->FindCoveringCachedRegion(extent, resolutionLevel, /*requireComplete=*/true) != nullptr);
+}
+
+//----------------------------------------------------------------------------
 bool vtkMRMLOMEZarrVoxelDataProvider::GetRegionIfAvailable(vtkImageData* output, const int extent[6], int resolutionLevel /*=0*/)
 {
   if (!output || resolutionLevel < 0 || resolutionLevel >= static_cast<int>(this->Levels.size()))
@@ -1240,6 +1251,11 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
           }
         }
         success = tileSuccess;
+        if (!tileSuccess)
+        {
+          vtkWarningMacro("WorkerLoop: failed to read tile [" << tileExtent[0] << "-" << tileExtent[1] << ", " << tileExtent[2] << "-" << tileExtent[3] << ", " //
+                                                              << tileExtent[4] << "-" << tileExtent[5] << "] of level " << request.Level << " of " << this->FileName);
+        }
         if (success)
         {
           std::lock_guard<std::mutex> lock(this->Mutex);
@@ -1259,6 +1275,14 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       }
       image->GetPointData()->GetScalars()->Modified();
     }
+    if (!success)
+    {
+      // Transient read failures happen (e.g. concurrent store access, remote
+      // hiccup). Back off briefly before notifying, so that the automatic
+      // retry (consumers re-request on the notification) does not turn into
+      // a hot loop when the failure persists.
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
     {
       std::lock_guard<std::mutex> lock(this->Mutex);
       if (progressive)
@@ -1267,11 +1291,14 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         if (!active->Succeeded)
         {
           // Discard the partial read; the placeholder region stays cached
-          // (incomplete), so views keep showing it and re-request the data.
+          // (incomplete). Notify consumers so that they re-evaluate and
+          // re-issue the request: a silent failure would leave the views
+          // showing the placeholder forever.
           active->CompletedTileExtents.clear();
           active->PublishedImage = nullptr;
           active->PrivateImage = nullptr;
           this->ActiveRequests.erase(std::remove(this->ActiveRequests.begin(), this->ActiveRequests.end(), active), this->ActiveRequests.end());
+          this->CompletedLevels.push_back(request.Level);
         }
         // Successful progressive requests stay in ActiveRequests until the
         // main thread copied the remaining tiles and marked the published
@@ -1302,6 +1329,12 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       {
         finishRequest(success && !abandoned);
         this->ActiveRequests.erase(std::remove(this->ActiveRequests.begin(), this->ActiveRequests.end(), active), this->ActiveRequests.end());
+        if (!success)
+        {
+          // Notify consumers so that they re-evaluate and re-issue the
+          // failed request (see the note above)
+          this->CompletedLevels.push_back(request.Level);
+        }
       }
       // Keep only the most recently used regions
       while (this->RegionCache.size() > MaximumCachedRegions)
