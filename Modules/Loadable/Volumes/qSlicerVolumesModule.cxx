@@ -97,6 +97,15 @@ struct qSlicerVolumesLoadingIndicator
   vtkSmartPointer<vtkActor2D> SectorActor;
   vtkWeakPointer<vtkRenderer> Renderer;
   bool Visible{ false };
+  /// Monotonic displayed progress for the current target region: the raw
+  /// per-request progress can transiently drop or disappear (e.g. between a
+  /// completing and a follow-up request), but the user-visible progress for
+  /// an unchanged target only ever increases, creeping forward slowly while
+  /// the raw value stalls, and resets only when the target changes (user
+  /// interaction).
+  double DisplayedProgress{ -1.0 };
+  int TargetLevel{ -1 };
+  int TargetExtent[6]{ 0, -1, 0, -1, 0, -1 };
 };
 
 //-----------------------------------------------------------------------------
@@ -166,7 +175,10 @@ void qSlicerVolumesModulePrivate::updateLoadingIndicators()
     // Loading progress of the region that THIS view is displaying (other
     // views of the same volume may display different regions/levels and are
     // not affected by this request)
-    double progress = -1.0;
+    double rawProgress = -1.0;
+    bool loading = false;
+    int targetLevel = -1;
+    int targetExtent[6] = { 0, -1, 0, -1, 0, -1 };
     vtkMRMLSliceLogic* sliceLogic = sliceWidget->sliceLogic();
     if (sliceLogic)
     {
@@ -175,11 +187,53 @@ void qSlicerVolumesModulePrivate::updateLoadingIndicators()
       {
         vtkMRMLScalarVolumeNode* volumeNode = layer ? vtkMRMLScalarVolumeNode::SafeDownCast(layer->GetVolumeNode()) : nullptr;
         vtkMRMLVoxelDataProvider* provider = volumeNode ? volumeNode->GetVoxelDataProvider() : nullptr;
-        if (provider && layer->GetTargetResolutionLevel() >= 0)
+        if (provider && layer->GetTargetResolutionLevel() >= 0 //
+            && !provider->IsRegionComplete(layer->GetTargetRegionExtent(), layer->GetTargetResolutionLevel()))
         {
-          progress = std::max(progress, provider->GetRegionRequestProgress(layer->GetTargetRegionExtent(), layer->GetTargetResolutionLevel()));
+          // The view is waiting for data (complete data for its target is
+          // not available yet), regardless of the momentary request state
+          loading = true;
+          targetLevel = layer->GetTargetResolutionLevel();
+          layer->GetTargetRegionExtent(targetExtent);
+          rawProgress = std::max(rawProgress, provider->GetRegionRequestProgress(layer->GetTargetRegionExtent(), layer->GetTargetResolutionLevel()));
         }
       }
+    }
+    qSlicerVolumesLoadingIndicator& indicatorState = this->LoadingIndicators[viewName];
+    double progress = -1.0;
+    if (loading)
+    {
+      bool sameTarget = (targetLevel == indicatorState.TargetLevel);
+      for (int i = 0; i < 6 && sameTarget; ++i)
+      {
+        sameTarget = (targetExtent[i] == indicatorState.TargetExtent[i]);
+      }
+      if (!sameTarget)
+      {
+        // New target (user interaction): restart the progress display
+        indicatorState.TargetLevel = targetLevel;
+        for (int i = 0; i < 6; ++i)
+        {
+          indicatorState.TargetExtent[i] = targetExtent[i];
+        }
+        indicatorState.DisplayedProgress = std::max(0.0, rawProgress);
+      }
+      else if (rawProgress > indicatorState.DisplayedProgress)
+      {
+        indicatorState.DisplayedProgress = rawProgress;
+      }
+      else
+      {
+        // Raw progress stalled or transiently dropped: keep the displayed
+        // progress moving forward slowly (asymptotically below complete)
+        indicatorState.DisplayedProgress += (0.98 - indicatorState.DisplayedProgress) * 0.01;
+      }
+      progress = indicatorState.DisplayedProgress;
+    }
+    else
+    {
+      indicatorState.TargetLevel = -1;
+      indicatorState.DisplayedProgress = -1.0;
     }
     vtkRenderWindow* renderWindow = sliceView->renderWindow();
     vtkRenderer* renderer = renderWindow ? vtkRenderer::SafeDownCast(renderWindow->GetRenderers()->GetItemAsObject(0)) : nullptr;

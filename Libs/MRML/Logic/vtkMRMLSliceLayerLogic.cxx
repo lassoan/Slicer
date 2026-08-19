@@ -931,7 +931,15 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
         covered = false;
       }
     }
-    if (covered && provider->IsRegionComplete(this->DisplayedRegionExtent, displayLevel))
+    // The early return requires that the PIXELS CURRENTLY DISPLAYED were
+    // built from complete data (DisplayedRegionComplete, recorded at the
+    // last input swap) - checking only the cache is not enough: the input
+    // may be a detached copy made from an incomplete placeholder, which the
+    // later-arriving complete data never updates. (The IsRegionComplete
+    // call is also kept for its side effect of refreshing the cached
+    // region's LRU stamp while it is displayed.)
+    bool cachedComplete = provider->IsRegionComplete(this->DisplayedRegionExtent, displayLevel);
+    if (covered && cachedComplete && this->DisplayedRegionComplete)
     {
       return;
     }
@@ -960,6 +968,9 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
   {
     this->DisplayedRegionExtent[i] = displayExtent[i];
   }
+  // Record whether the pixels just set as reslice input come from complete
+  // data (used by the covered-early-return above)
+  this->DisplayedRegionComplete = provider->IsRegionComplete(displayExtent, displayLevel);
 
   // Update reference IJK -> displayed level IJK mapping
   double displayScale[3] = { 1.0, 1.0, 1.0 };
@@ -1167,6 +1178,7 @@ void vtkMRMLSliceLayerLogic::UpdateImageDisplay()
         this->UpdateTransforms();
       }
       this->TargetResolutionLevel = -1;
+      this->DisplayedRegionComplete = false;
       this->Reslice->SetInputData(displayInputImage);
       this->ResliceUVW->SetInputData(displayInputImage);
     }

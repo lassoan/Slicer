@@ -831,6 +831,10 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
     const size_t maximumQueuedRequests = 4;
     while (this->PendingRequests.size() > maximumQueuedRequests)
     {
+      // Notify so that the dropped request's consumer re-evaluates and can
+      // re-request (a silent drop could leave a view waiting until the next
+      // interaction)
+      this->CompletedLevels.push_back(this->PendingRequests.front().Level);
       this->PendingRequests.pop_front();
     }
   }
@@ -1116,6 +1120,38 @@ vtkSmartPointer<vtkImageData> vtkMRMLOMEZarrVoxelDataProvider::PublishPlaceholde
   placeholder->DeepCopy(reslice->GetOutput());
   {
     std::lock_guard<std::mutex> lock(this->Mutex);
+    // Seed the placeholder with real data already cached for overlapping
+    // regions of the same level (e.g. the previous pan position): the
+    // overlapping parts appear at full quality immediately instead of
+    // dropping back to the upsampled coarse level.
+    long long bytesPerVoxel = placeholder->GetScalarSize() * placeholder->GetNumberOfScalarComponents();
+    for (CachedRegion& sourceRegion : this->RegionCache)
+    {
+      if (sourceRegion.Level != level || !sourceRegion.Complete || !sourceRegion.Image)
+      {
+        continue;
+      }
+      int overlap[6];
+      bool overlaps = true;
+      for (int axis = 0; axis < 3 && overlaps; ++axis)
+      {
+        overlap[2 * axis] = std::max(extent[2 * axis], sourceRegion.Extent[2 * axis]);
+        overlap[2 * axis + 1] = std::min(extent[2 * axis + 1], sourceRegion.Extent[2 * axis + 1]);
+        overlaps = (overlap[2 * axis] <= overlap[2 * axis + 1]);
+      }
+      if (!overlaps || sourceRegion.Image->GetScalarType() != placeholder->GetScalarType())
+      {
+        continue;
+      }
+      long long rowBytes = static_cast<long long>(overlap[1] - overlap[0] + 1) * bytesPerVoxel;
+      for (int k = overlap[4]; k <= overlap[5]; ++k)
+      {
+        for (int j = overlap[2]; j <= overlap[3]; ++j)
+        {
+          memcpy(placeholder->GetScalarPointer(overlap[0], j, k), sourceRegion.Image->GetScalarPointer(overlap[0], j, k), rowBytes);
+        }
+      }
+    }
     CachedRegion cachedRegion;
     cachedRegion.Level = level;
     for (int i = 0; i < 6; ++i)
@@ -1359,7 +1395,30 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         tileExtent[2 * splitAxis] = axisMin;
         tileExtent[2 * splitAxis + 1] = std::min(regionExtent[2 * splitAxis + 1], axisMin + unitsPerTile - 1);
         bool tileSuccess = false;
-        if (splitAxis == 2)
+        // If complete cached data covers this tile (e.g. the overlap with
+        // the previous pan position), copy it instead of fetching: panning
+        // then only downloads the newly exposed part of the region.
+        {
+          std::lock_guard<std::mutex> lock(this->Mutex);
+          CachedRegion* cachedCover = this->FindCoveringCachedRegion(tileExtent, request.Level, /*requireComplete=*/true);
+          if (cachedCover && cachedCover->Image && cachedCover->Image->GetScalarType() == image->GetScalarType())
+          {
+            long long rowBytes = static_cast<long long>(tileExtent[1] - tileExtent[0] + 1) * bytesPerVoxel;
+            for (int k = tileExtent[4]; k <= tileExtent[5]; ++k)
+            {
+              for (int j = tileExtent[2]; j <= tileExtent[3]; ++j)
+              {
+                memcpy(image->GetScalarPointer(tileExtent[0], j, k), cachedCover->Image->GetScalarPointer(tileExtent[0], j, k), rowBytes);
+              }
+            }
+            tileSuccess = true;
+          }
+        }
+        if (tileSuccess)
+        {
+          // served from cache
+        }
+        else if (splitAxis == 2)
         {
           // k-slab of the full xy region: contiguous in the image buffer
           void* tileBuffer = image->GetScalarPointer(regionExtent[0], regionExtent[2], tileExtent[4]);

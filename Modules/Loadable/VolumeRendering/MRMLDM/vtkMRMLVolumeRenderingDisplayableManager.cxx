@@ -270,6 +270,8 @@ public:
     int DisplayedResolutionLevel{ -1 };
     /// Extent (in DisplayedResolutionLevel IJK) of the mapper input region
     int DisplayedRegionExtent[6]{ 0, -1, 0, -1, 0, -1 };
+    /// Whether the current mapper input pixels were built from complete data
+    bool DisplayedRegionComplete{ false };
     /// Applies the volume grid's per-axis anisotropy to the image spacing
     /// (metadata only, no pixel copy) when the volume node's own image is
     /// rendered. The GPU raycast shader weights lighting gradients by the
@@ -1047,7 +1049,8 @@ void vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::OnCameraOrProviderMo
                                    && extent[0] >= pipeline->DisplayedRegionExtent[0] && extent[1] <= pipeline->DisplayedRegionExtent[1]
                                    && extent[2] >= pipeline->DisplayedRegionExtent[2] && extent[3] <= pipeline->DisplayedRegionExtent[3]
                                    && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5]
-                                   && provider->IsRegionComplete(pipeline->DisplayedRegionExtent, pipeline->DisplayedResolutionLevel);
+                                   && provider->IsRegionComplete(pipeline->DisplayedRegionExtent, pipeline->DisplayedResolutionLevel) //
+                                   && pipeline->DisplayedRegionComplete;
     if (coveredAtDisplayedLevel)
     {
       if (eid == vtkMRMLVoxelDataProvider::RegionReadyEvent)
@@ -1416,10 +1419,13 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
                                  && extent[0] >= pipeline->DisplayedRegionExtent[0] && extent[1] <= pipeline->DisplayedRegionExtent[1]
                                  && extent[2] >= pipeline->DisplayedRegionExtent[2] && extent[3] <= pipeline->DisplayedRegionExtent[3]
                                  && extent[4] >= pipeline->DisplayedRegionExtent[4] && extent[5] <= pipeline->DisplayedRegionExtent[5]
-                                 // The displayed input must hold complete data: a (possibly stale)
-                                 // progressive placeholder is re-fetched so that complete data
-                                 // replaces it
-                                 && provider->IsRegionComplete(pipeline->DisplayedRegionExtent, pipeline->DisplayedResolutionLevel);
+                                 // The displayed PIXELS must come from complete data (recorded at
+                                 // the input swap): a (possibly stale) progressive placeholder or a
+                                 // detached partial copy is re-fetched so that complete data
+                                 // replaces it. The IsRegionComplete call also refreshes the cached
+                                 // region's LRU stamp while it is displayed.
+                                 && provider->IsRegionComplete(pipeline->DisplayedRegionExtent, pipeline->DisplayedResolutionLevel) //
+                                 && pipeline->DisplayedRegionComplete;
   if (!coveredAtDisplayedLevel)
   {
     // Ensure the region becomes complete (cheap no-op if already cached or
@@ -1437,6 +1443,8 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
           pipeline->DisplayedRegionExtent[i] = extent[i];
         }
         pipeline->UseVariableResolution = true;
+        // Whether the pixels just set as mapper input come from complete data
+        pipeline->DisplayedRegionComplete = provider->IsRegionComplete(extent, level);
       }
     }
     else

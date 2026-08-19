@@ -258,6 +258,9 @@ protected:
   /// Currently displayed resolution level (-1: variable resolution inactive)
   int DisplayedResolutionLevel{ -1 };
   int DisplayedRegionExtent[6]{ 0, -1, 0, -1, 0, -1 };
+  /// Whether the current reslice input pixels were built from complete data
+  /// (false while they come from a progressively streamed placeholder)
+  bool DisplayedRegionComplete{ false };
   /// Level/region that the layer wants to display at the current zoom
   int TargetResolutionLevel{ -1 };
   int TargetRegionExtent[6]{ 0, -1, 0, -1, 0, -1 };
