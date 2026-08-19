@@ -103,6 +103,7 @@ public:
   /// vtkMRMLVoxelDataProvider interface
   int GetNumberOfResolutionLevels() override;
   bool GetLevelScale(int resolutionLevel, double scale[3]) override;
+  bool GetLevelOffset(int resolutionLevel, double offset[3]) override;
   bool GetExtent(int extent[6], int resolutionLevel = 0) override;
   int GetScalarType() override;
   int GetNumberOfScalarComponents() override;
@@ -134,6 +135,12 @@ protected:
     std::string Path;
     int Extent[6]{ 0, -1, 0, -1, 0, -1 }; // ijk order
     double SpacingMM[3]{ 1.0, 1.0, 1.0 }; // ijk order
+    /// Physical position of the voxel-0 center in the multiscale coordinate
+    /// space (the dataset's translation transform; ijk order). Coarser
+    /// levels of a mean-downsampled pyramid are offset by half a fine voxel
+    /// per downsampling step; ignoring this shifts the levels against each
+    /// other on screen.
+    double TranslationMM[3]{ 0.0, 0.0, 0.0 }; // ijk order
   };
 
   /// Load a level synchronously (used on the main thread and by the worker).

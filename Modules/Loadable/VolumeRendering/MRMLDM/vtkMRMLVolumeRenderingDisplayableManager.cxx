@@ -1227,6 +1227,10 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
   vtkMatrix4x4::Invert(referenceIJKToWorld, worldToReferenceIJK);
   double levelScale[3] = { 1.0, 1.0, 1.0 };
   provider->GetLevelScale(level, levelScale);
+  double referenceOffset[3] = { 0.0, 0.0, 0.0 };
+  double levelOffset[3] = { 0.0, 0.0, 0.0 };
+  provider->GetLevelOffset(referenceLevel, referenceOffset);
+  provider->GetLevelOffset(level, levelOffset);
 
   // World-space bounding box of the whole volume (from the reference extent)
   int referenceExtentForBounds[6] = { 0, -1, 0, -1, 0, -1 };
@@ -1312,8 +1316,10 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
     worldToReferenceIJK->MultiplyPoint(cornerWorld, cornerReferenceIJK);
     for (int axis = 0; axis < 3; axis++)
     {
-      // reference IJK -> selected level IJK
-      double cornerLevelIJK = cornerReferenceIJK[axis] * referenceScale[axis] / levelScale[axis];
+      // reference IJK -> selected level IJK (the level offsets are the
+      // voxel-0 center positions from the multiscale translation
+      // transforms, in level-0 voxel units)
+      double cornerLevelIJK = (referenceOffset[axis] - levelOffset[axis] + cornerReferenceIJK[axis] * referenceScale[axis]) / levelScale[axis];
       boundsIJK[2 * axis] = std::min(boundsIJK[2 * axis], cornerLevelIJK);
       boundsIJK[2 * axis + 1] = std::max(boundsIJK[2 * axis + 1], cornerLevelIJK);
     }
@@ -1353,7 +1359,10 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
     // Move the region extent to the next coarser level
     double coarserScale[3] = { 1.0, 1.0, 1.0 };
     double currentScale[3] = { 1.0, 1.0, 1.0 };
-    if (!provider->GetLevelScale(level + 1, coarserScale) || !provider->GetLevelScale(level, currentScale))
+    double coarserOffset[3] = { 0.0, 0.0, 0.0 };
+    double currentOffset[3] = { 0.0, 0.0, 0.0 };
+    if (!provider->GetLevelScale(level + 1, coarserScale) || !provider->GetLevelScale(level, currentScale) //
+        || !provider->GetLevelOffset(level + 1, coarserOffset) || !provider->GetLevelOffset(level, currentOffset))
     {
       break;
     }
@@ -1365,8 +1374,9 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
     for (int axis = 0; axis < 3; axis++)
     {
       double factor = currentScale[axis] / coarserScale[axis];
-      extent[2 * axis] = std::max(coarserLevelExtent[2 * axis], int(floor(extent[2 * axis] * factor)));
-      extent[2 * axis + 1] = std::min(coarserLevelExtent[2 * axis + 1], int(ceil(extent[2 * axis + 1] * factor)));
+      double shift = (currentOffset[axis] - coarserOffset[axis]) / coarserScale[axis];
+      extent[2 * axis] = std::max(coarserLevelExtent[2 * axis], int(floor(extent[2 * axis] * factor + shift)));
+      extent[2 * axis + 1] = std::min(coarserLevelExtent[2 * axis + 1], int(ceil(extent[2 * axis + 1] * factor + shift)));
     }
     level++;
   }
@@ -1478,6 +1488,18 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
   pipeline->VariableResolutionImageData->SetSpacing(anisotropy[0] * displayedScale[0] / referenceScale[0], //
                                                     anisotropy[1] * displayedScale[1] / referenceScale[1],
                                                     anisotropy[2] * displayedScale[2] / referenceScale[2]);
+  // The constant part of the level-to-reference mapping (the difference of
+  // the levels' voxel-0 center positions, from the multiscale translation
+  // transforms) goes into the image origin, in the same per-axis units as
+  // the spacing above; without it the rendered region is shifted by up to
+  // half a coarse voxel against the reference grid.
+  double displayedOffset[3] = { 0.0, 0.0, 0.0 };
+  double referenceOffset[3] = { 0.0, 0.0, 0.0 };
+  provider->GetLevelOffset(pipeline->DisplayedResolutionLevel, displayedOffset);
+  provider->GetLevelOffset(referenceLevel, referenceOffset);
+  pipeline->VariableResolutionImageData->SetOrigin(anisotropy[0] * (displayedOffset[0] - referenceOffset[0]) / referenceScale[0], //
+                                                   anisotropy[1] * (displayedOffset[1] - referenceOffset[1]) / referenceScale[1],
+                                                   anisotropy[2] * (displayedOffset[2] - referenceOffset[2]) / referenceScale[2]);
   return true;
 }
 

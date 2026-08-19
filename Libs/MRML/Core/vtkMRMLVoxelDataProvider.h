@@ -64,6 +64,18 @@ public:
   /// by 2 in-plane. Returns false for an invalid level.
   virtual bool GetLevelScale(int resolutionLevel, double scale[3]);
 
+  /// Offset of the voxel-0 CENTER of a resolution level relative to the
+  /// voxel-0 center of level 0, in level-0 voxel units (ijk axis order):
+  ///   level-0 index = offset + level index * scale
+  /// Multiscale stores declare this as per-dataset translation transforms:
+  /// mean-downsampling places a coarser level's voxel-0 center half a fine
+  /// voxel past the fine voxel-0 center along each downsampled axis.
+  /// Consumers that map between levels must include this offset, otherwise
+  /// the levels appear slightly shifted against each other.
+  /// Returns false for an invalid level. The base implementation returns a
+  /// zero offset.
+  virtual bool GetLevelOffset(int resolutionLevel, double offset[3]);
+
   /// The resolution level that corresponds to the geometry (extent, spacing,
   /// IJK to RAS matrix) of the owning volume node. Multi-resolution backends
   /// may use a coarser preview level as reference so that the volume can be

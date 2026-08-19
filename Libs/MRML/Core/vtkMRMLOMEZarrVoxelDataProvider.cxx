@@ -207,6 +207,19 @@ bool vtkMRMLOMEZarrVoxelDataProvider::SetFileName(const std::string& fileName)
             level.SpacingMM[axis] = scale[numberOfAxes - 1 - axis].GetDouble();
           }
         }
+        // Translation: physical position of the level's voxel-0 center.
+        // Mean-downsampled pyramids offset each coarser level by half a
+        // fine voxel; without it the levels appear shifted on screen.
+        if (transform.HasMember("type") && std::string(transform["type"].GetString()) == "translation" //
+            && transform.HasMember("translation") && transform["translation"].IsArray() && transform["translation"].Size() >= 3)
+        {
+          const rapidjson::Value& translation = transform["translation"];
+          int numberOfAxes = static_cast<int>(translation.Size());
+          for (int axis = 0; axis < 3; ++axis)
+          {
+            level.TranslationMM[axis] = translation[numberOfAxes - 1 - axis].GetDouble();
+          }
+        }
       }
     }
 
@@ -289,6 +302,12 @@ bool vtkMRMLOMEZarrVoxelDataProvider::ProbeRemoteLevels()
                                       + ijkToRas->GetElement(2, axis) * ijkToRas->GetElement(2, axis)); //
         level.SpacingMM[axis] = (columnNorm > 0.0) ? columnNorm : 1.0;
       }
+      // Per-level translation (NGFF translation transform) arrives in the
+      // reader's origin. Zarr grids are axis-aligned and the reader builds
+      // RAS from LPS by negating the first two axes.
+      level.TranslationMM[0] = -ijkToRas->GetElement(0, 3);
+      level.TranslationMM[1] = -ijkToRas->GetElement(1, 3);
+      level.TranslationMM[2] = ijkToRas->GetElement(2, 3);
     }
     if (this->Levels.empty())
     {
@@ -513,6 +532,21 @@ bool vtkMRMLOMEZarrVoxelDataProvider::GetLevelScale(int resolutionLevel, double 
   for (int axis = 0; axis < 3; ++axis)
   {
     scale[axis] = this->Levels[resolutionLevel].SpacingMM[axis] / this->Levels[0].SpacingMM[axis];
+  }
+  return true;
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLOMEZarrVoxelDataProvider::GetLevelOffset(int resolutionLevel, double offset[3])
+{
+  if (resolutionLevel < 0 || resolutionLevel >= static_cast<int>(this->Levels.size()))
+  {
+    return false;
+  }
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    offset[axis] = (this->Levels[resolutionLevel].TranslationMM[axis] - this->Levels[0].TranslationMM[axis]) //
+                   / this->Levels[0].SpacingMM[axis];
   }
   return true;
 }
@@ -1096,17 +1130,23 @@ vtkSmartPointer<vtkImageData> vtkMRMLOMEZarrVoxelDataProvider::PublishPlaceholde
   }
   double fineScale[3] = { 1.0, 1.0, 1.0 };
   double coarseScale[3] = { 1.0, 1.0, 1.0 };
-  if (!this->GetLevelScale(level, fineScale) || !this->GetLevelScale(coarseLevel, coarseScale))
+  double fineOffset[3] = { 0.0, 0.0, 0.0 };
+  double coarseOffset[3] = { 0.0, 0.0, 0.0 };
+  if (!this->GetLevelScale(level, fineScale) || !this->GetLevelScale(coarseLevel, coarseScale) //
+      || !this->GetLevelOffset(level, fineOffset) || !this->GetLevelOffset(coarseLevel, coarseOffset))
   {
     return nullptr;
   }
-  // Resample the coarse level onto the requested level's grid (fine index
-  // i_f maps to coarse index i_f * fineScale / coarseScale; both images use
-  // unit spacing and zero origin)
+  // Resample the coarse level onto the requested level's grid: fine index
+  // i_f maps to coarse index (fineOffset - coarseOffset + i_f * fineScale)
+  // / coarseScale (offsets are the level translations, i.e. the voxel-0
+  // center positions, in level-0 voxel units; both images use unit spacing
+  // and zero origin).
   vtkNew<vtkMatrix4x4> resliceAxes;
   for (int axis = 0; axis < 3; ++axis)
   {
     resliceAxes->SetElement(axis, axis, fineScale[axis] / coarseScale[axis]);
+    resliceAxes->SetElement(axis, 3, (fineOffset[axis] - coarseOffset[axis]) / coarseScale[axis]);
   }
   vtkNew<vtkImageReslice> reslice;
   reslice->SetInputData(coarseImage);

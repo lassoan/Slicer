@@ -33,6 +33,19 @@ bool vtkMRMLVoxelDataProvider::GetLevelScale(int resolutionLevel, double scale[3
 }
 
 //----------------------------------------------------------------------------
+bool vtkMRMLVoxelDataProvider::GetLevelOffset(int resolutionLevel, double offset[3])
+{
+  if (resolutionLevel < 0 || resolutionLevel >= this->GetNumberOfResolutionLevels())
+  {
+    return false;
+  }
+  offset[0] = 0.0;
+  offset[1] = 0.0;
+  offset[2] = 0.0;
+  return true;
+}
+
+//----------------------------------------------------------------------------
 bool vtkMRMLVoxelDataProvider::GetRegionIfAvailable(vtkImageData* output, const int extent[6], int resolutionLevel /*=0*/)
 {
   // Base implementation: data is always available synchronously.

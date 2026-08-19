@@ -690,8 +690,12 @@ bool vtkMRMLSliceLayerLogic::ComputeDisplayedRegion(vtkMRMLScalarVolumeNode* sca
   }
   double referenceScale[3] = { 1.0, 1.0, 1.0 };
   double levelScale[3] = { 1.0, 1.0, 1.0 };
+  double referenceOffset[3] = { 0.0, 0.0, 0.0 };
+  double levelOffset[3] = { 0.0, 0.0, 0.0 };
   if (!provider->GetLevelScale(provider->GetReferenceResolutionLevel(), referenceScale) //
-      || !provider->GetLevelScale(resolutionLevel, levelScale))
+      || !provider->GetLevelScale(resolutionLevel, levelScale)                          //
+      || !provider->GetLevelOffset(provider->GetReferenceResolutionLevel(), referenceOffset)
+      || !provider->GetLevelOffset(resolutionLevel, levelOffset))
   {
     return false;
   }
@@ -723,8 +727,10 @@ bool vtkMRMLSliceLayerLogic::ComputeDisplayedRegion(vtkMRMLScalarVolumeNode* sca
     xyToRefIJK->MultiplyPoint(corner, refIJK);
     for (int axis = 0; axis < 3; ++axis)
     {
-      // reference IJK -> level IJK
-      double levelIndex = refIJK[axis] * referenceScale[axis] / levelScale[axis];
+      // reference IJK -> level IJK (the level offsets are the voxel-0
+      // center positions from the multiscale translation transforms, in
+      // level-0 voxel units)
+      double levelIndex = (referenceOffset[axis] - levelOffset[axis] + refIJK[axis] * referenceScale[axis]) / levelScale[axis];
       boundsMin[axis] = std::min(boundsMin[axis], levelIndex);
       boundsMax[axis] = std::max(boundsMax[axis], levelIndex);
     }
@@ -972,13 +978,21 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
   // data (used by the covered-early-return above)
   this->DisplayedRegionComplete = provider->IsRegionComplete(displayExtent, displayLevel);
 
-  // Update reference IJK -> displayed level IJK mapping
+  // Update reference IJK -> displayed level IJK mapping. The level offsets
+  // (voxel-0 center positions from the multiscale translation transforms,
+  // in level-0 voxel units) must be included: without them the displayed
+  // level is shifted by up to half a coarse voxel against the node grid.
   double displayScale[3] = { 1.0, 1.0, 1.0 };
+  double displayOffset[3] = { 0.0, 0.0, 0.0 };
+  double referenceOffset[3] = { 0.0, 0.0, 0.0 };
   provider->GetLevelScale(displayLevel, displayScale);
+  provider->GetLevelOffset(displayLevel, displayOffset);
+  provider->GetLevelOffset(referenceLevel, referenceOffset);
   this->ResolutionScaleMatrix->Identity();
   for (int axis = 0; axis < 3; ++axis)
   {
     this->ResolutionScaleMatrix->SetElement(axis, axis, referenceScale[axis] / displayScale[axis]);
+    this->ResolutionScaleMatrix->SetElement(axis, 3, (referenceOffset[axis] - displayOffset[axis]) / displayScale[axis]);
   }
   this->UpdateTransforms();
 
