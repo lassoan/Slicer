@@ -115,6 +115,7 @@ vtkMRMLSliceLayerLogic::vtkMRMLSliceLayerLogic()
   this->SliceNode = nullptr;
 
   this->XYToIJKTransform = vtkGeneralTransform::New();
+  this->XYToNodeIJKTransform = vtkGeneralTransform::New();
   this->UVWToIJKTransform = vtkGeneralTransform::New();
 
   this->ResolutionScaleMatrix = vtkSmartPointer<vtkMatrix4x4>::New();
@@ -182,6 +183,7 @@ vtkMRMLSliceLayerLogic::~vtkMRMLSliceLayerLogic()
   this->SetSliceNode(nullptr);
   this->SetVolumeNode(nullptr);
   this->XYToIJKTransform->Delete();
+  this->XYToNodeIJKTransform->Delete();
   this->UVWToIJKTransform->Delete();
 
   this->Reslice->SetInputConnection(nullptr);
@@ -500,9 +502,11 @@ void vtkMRMLSliceLayerLogic::UpdateTransforms()
   uvwToIJK->Identity();
 
   this->XYToIJKTransform->Identity();
+  this->XYToNodeIJKTransform->Identity();
   this->UVWToIJKTransform->Identity();
 
   this->XYToIJKTransform->PostMultiply();
+  this->XYToNodeIJKTransform->PostMultiply();
   this->UVWToIJKTransform->PostMultiply();
 
   if (this->SliceNode)
@@ -514,6 +518,7 @@ void vtkMRMLSliceLayerLogic::UpdateTransforms()
     this->SliceNode->GetUVWDimensions(dimensionsUVW);
 
     this->XYToIJKTransform->Concatenate(xyToIJK.GetPointer());
+    this->XYToNodeIJKTransform->Concatenate(xyToIJK.GetPointer());
     this->UVWToIJKTransform->Concatenate(uvwToIJK.GetPointer());
   }
 
@@ -529,6 +534,7 @@ void vtkMRMLSliceLayerLogic::UpdateTransforms()
       // worldTransform->Inverse();
 
       this->XYToIJKTransform->Concatenate(worldTransform.GetPointer());
+      this->XYToNodeIJKTransform->Concatenate(worldTransform.GetPointer());
       this->UVWToIJKTransform->Concatenate(worldTransform.GetPointer());
     }
 
@@ -536,6 +542,9 @@ void vtkMRMLSliceLayerLogic::UpdateTransforms()
     this->VolumeNode->GetRASToIJKMatrix(rasToIJK.GetPointer());
 
     this->XYToIJKTransform->Concatenate(rasToIJK.GetPointer());
+    // The node transform maps to the volume node's own (reference level)
+    // grid: the ResolutionScaleMatrix (displayed level) is not applied
+    this->XYToNodeIJKTransform->Concatenate(rasToIJK.GetPointer());
     this->UVWToIJKTransform->Concatenate(rasToIJK.GetPointer());
 
     // Variable-resolution display: map the node's (reference level) IJK

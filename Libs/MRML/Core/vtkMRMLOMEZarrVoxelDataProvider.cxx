@@ -686,7 +686,17 @@ bool vtkMRMLOMEZarrVoxelDataProvider::IsRegionComplete(const int extent[6], int 
     return true;
   }
   std::lock_guard<std::mutex> lock(this->Mutex);
-  return (this->FindCoveringCachedRegion(extent, resolutionLevel, /*requireComplete=*/true) != nullptr);
+  CachedRegion* cachedRegion = this->FindCoveringCachedRegion(extent, resolutionLevel, /*requireComplete=*/true);
+  if (cachedRegion)
+  {
+    // Consumers call this for the region they are displaying (e.g. in the
+    // covered-early-return of the slice display update): refresh the LRU
+    // stamp so that a displayed region is not evicted just because it did
+    // not need to be re-fetched for a while.
+    cachedRegion->AccessStamp = ++this->AccessCounter;
+    return true;
+  }
+  return false;
 }
 
 //----------------------------------------------------------------------------
@@ -990,6 +1000,59 @@ void vtkMRMLOMEZarrVoxelDataProvider::EnsureWorkers()
 }
 
 //----------------------------------------------------------------------------
+void vtkMRMLOMEZarrVoxelDataProvider::TrimRegionCache()
+{
+  long long maximumBytes = this->GetMaximumLevelLoadBytes() / 8;
+  auto regionBytes = [](const CachedRegion& region) -> long long
+  {
+    if (!region.Image || !region.Image->GetPointData() || !region.Image->GetPointData()->GetScalars())
+    {
+      return 0;
+    }
+    return static_cast<long long>(region.Image->GetPointData()->GetScalars()->GetNumberOfTuples()) //
+           * region.Image->GetPointData()->GetScalars()->GetNumberOfComponents() * region.Image->GetScalarSize();
+  };
+  auto isBeingStreamed = [this](const CachedRegion& region)
+  {
+    for (const std::shared_ptr<ActiveRequest>& active : this->ActiveRequests)
+    {
+      if (active->PublishedImage && active->PublishedImage == region.Image)
+      {
+        return true;
+      }
+    }
+    return false;
+  };
+  long long totalBytes = 0;
+  for (const CachedRegion& region : this->RegionCache)
+  {
+    totalBytes += regionBytes(region);
+  }
+  while ((totalBytes > maximumBytes || this->RegionCache.size() > MaximumCachedRegions) && !this->RegionCache.empty())
+  {
+    // Least recently used region that is not being streamed
+    int oldestIndex = -1;
+    for (size_t i = 0; i < this->RegionCache.size(); ++i)
+    {
+      if (isBeingStreamed(this->RegionCache[i]))
+      {
+        continue;
+      }
+      if (oldestIndex < 0 || this->RegionCache[i].AccessStamp < this->RegionCache[oldestIndex].AccessStamp)
+      {
+        oldestIndex = static_cast<int>(i);
+      }
+    }
+    if (oldestIndex < 0)
+    {
+      break; // everything is being streamed
+    }
+    totalBytes -= regionBytes(this->RegionCache[oldestIndex]);
+    this->RegionCache.erase(this->RegionCache.begin() + oldestIndex);
+  }
+}
+
+//----------------------------------------------------------------------------
 vtkSmartPointer<vtkImageData> vtkMRMLOMEZarrVoxelDataProvider::PublishPlaceholderRegion(const int extent[6], int level)
 {
   // Best (finest) cached coarser level to upsample from
@@ -1048,6 +1111,7 @@ vtkSmartPointer<vtkImageData> vtkMRMLOMEZarrVoxelDataProvider::PublishPlaceholde
     cachedRegion.AccessStamp = ++this->AccessCounter;
     cachedRegion.Complete = false;
     this->RegionCache.push_back(cachedRegion);
+    this->TrimRegionCache();
     // Announce so that views swap from the coarse fallback to the (initially
     // identical-looking, progressively sharpening) placeholder immediately
     this->CompletedLevels.push_back(level);
@@ -1336,19 +1400,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
           this->CompletedLevels.push_back(request.Level);
         }
       }
-      // Keep only the most recently used regions
-      while (this->RegionCache.size() > MaximumCachedRegions)
-      {
-        size_t oldestIndex = 0;
-        for (size_t i = 1; i < this->RegionCache.size(); ++i)
-        {
-          if (this->RegionCache[i].AccessStamp < this->RegionCache[oldestIndex].AccessStamp)
-          {
-            oldestIndex = i;
-          }
-        }
-        this->RegionCache.erase(this->RegionCache.begin() + oldestIndex);
-      }
+      this->TrimRegionCache();
     }
   }
 }

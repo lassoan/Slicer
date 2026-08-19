@@ -129,8 +129,19 @@ public:
   void UpdateNodeReferences();
 
   ///
-  /// The current reslice transform XYToIJK
+  /// The current reslice transform XYToIJK. When variable-resolution display
+  /// is active, the output IJK coordinates are in the DISPLAYED resolution
+  /// level's grid (the reslice input); use GetXYToNodeIJKTransform() to get
+  /// coordinates in the volume node's own grid.
   vtkGetObjectMacro(XYToIJKTransform, vtkGeneralTransform);
+
+  ///
+  /// XY to volume node IJK transform: like GetXYToIJKTransform(), but the
+  /// output IJK coordinates are always in the volume node's own (reference
+  /// level) grid, independent of the resolution level that is currently
+  /// displayed. Use this for probing voxels of the volume node (e.g. Data
+  /// Probe) and for any consumer that indexes the node's image data.
+  vtkGetObjectMacro(XYToNodeIJKTransform, vtkGeneralTransform);
 
   ///
   /// Get/set interpolation mode used in image reslice (when interpolation is enabled).
@@ -203,6 +214,7 @@ protected:
 
   /// TODO: make this a vtkAbstractTransform for non-linear
   vtkGeneralTransform* XYToIJKTransform;
+  vtkGeneralTransform* XYToNodeIJKTransform;
   vtkGeneralTransform* UVWToIJKTransform;
 
   int IsLabelLayer;

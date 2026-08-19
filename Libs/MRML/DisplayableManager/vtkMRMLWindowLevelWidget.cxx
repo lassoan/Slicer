@@ -593,8 +593,9 @@ bool vtkMRMLWindowLevelWidget::UpdateWindowLevelFromRectangle(int layer, int cor
     return false;
   }
 
-  // get the rubberband bounding box in ijk coordinates
-  vtkGeneralTransform* xyToIJK = layerLogic->GetXYToIJKTransform();
+  // get the rubberband bounding box in ijk coordinates (in the volume node's
+  // own grid, independent of the displayed resolution level)
+  vtkGeneralTransform* xyToIJK = layerLogic->GetXYToNodeIJKTransform();
   if (!xyToIJK)
   {
     return false;

@@ -198,8 +198,17 @@ protected:
   /// Largest level (bytes) that is loaded and cached whole instead of
   /// serving chunk-granular region reads
   static constexpr long long WholeLevelPreferredBytes = 512LL * 1024LL * 1024LL;
-  /// Number of recently used regions kept per provider
-  static constexpr size_t MaximumCachedRegions = 4;
+  /// Hard cap on the number of cached regions (the effective limit is the
+  /// byte budget in TrimRegionCache: several views each keep their own
+  /// display regions cached, and evicting a region that a view still shows
+  /// forces that view to re-fetch it on its next update)
+  static constexpr size_t MaximumCachedRegions = 32;
+
+  /// Evict least recently used cached regions while the region cache exceeds
+  /// its byte budget (an eighth of the level load budget). Regions that
+  /// belong to an executing request are never evicted.
+  /// The caller must hold Mutex.
+  void TrimRegionCache();
 
   /// A background request being executed by a worker thread. The region is
   /// read in multiple smaller tiles: the tile counters provide real

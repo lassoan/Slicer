@@ -276,7 +276,11 @@ class DataProbeInfoWidget:
             ijk = [0, 0, 0]
             if volumeNode:
                 hasVolume = True
-                xyToIJK = layerLogic.GetXYToIJKTransform()
+                # The node IJK transform maps to the volume node's own grid.
+                # (GetXYToIJKTransform maps to the currently displayed
+                # resolution level's grid of a multi-resolution volume, which
+                # must not be used for indexing the volume node.)
+                xyToIJK = layerLogic.GetXYToNodeIJKTransform()
                 ijkFloat = xyToIJK.TransformDoublePoint(xyz)
                 ijk = [_roundInt(value) for value in ijkFloat]
             self.layerNames[layer].setText(self.generateLayerName(layerLogic))

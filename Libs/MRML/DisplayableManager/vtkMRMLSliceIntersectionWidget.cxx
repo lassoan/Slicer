@@ -1519,7 +1519,9 @@ bool vtkMRMLSliceIntersectionWidget::IsEventInsideVolume(bool background, vtkMRM
   const int* eventPosition = eventData->GetDisplayPosition();
   double xyz[3] = { 0 };
   vtkMRMLAbstractSliceViewDisplayableManager::ConvertDeviceToXYZ(this->GetRenderer(), sliceNode, eventPosition[0], eventPosition[1], xyz);
-  vtkGeneralTransform* xyToBackgroundIJK = layerLogic->GetXYToIJKTransform();
+  // IJK in the volume node's own grid (independent of the displayed
+  // resolution level), for comparison against the node's image extent
+  vtkGeneralTransform* xyToBackgroundIJK = layerLogic->GetXYToNodeIJKTransform();
   double mousePositionIJK[3] = { 0 };
   xyToBackgroundIJK->TransformPoint(xyz, mousePositionIJK);
   int volumeExtent[6] = { 0 };
