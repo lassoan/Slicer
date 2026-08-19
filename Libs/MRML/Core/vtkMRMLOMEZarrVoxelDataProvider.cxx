@@ -1132,8 +1132,14 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       {
         return;
       }
-      RegionRequest request = this->PendingRequests.front();
-      this->PendingRequests.pop_front();
+      // Serve the NEWEST queued request first: during continued interaction
+      // (e.g. slice scrolling) the queue accumulates requests for slabs that
+      // the user has already moved past; the currently visible one must not
+      // wait behind them. Started reads still always run to completion, and
+      // stale queued requests are either served later or dropped by the
+      // queue bound (their requesters re-request if still interested).
+      RegionRequest request = this->PendingRequests.back();
+      this->PendingRequests.pop_back();
       bool alreadyAvailable = (this->LevelImages.find(request.Level) != this->LevelImages.end()) //
                               || (!request.WholeLevel && this->FindCoveringCachedRegion(request.Extent, request.Level, /*requireComplete=*/true) != nullptr);
       bool alreadyBeingServed = false;
@@ -1246,14 +1252,21 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         }
       }
 
-      // Tile plan: split along k (contiguous memory) when the region is
-      // thick, otherwise along j; ~8 MB per tile.
-      const long long tileTargetBytes = 8LL * 1024LL * 1024LL;
+      // Tile plan: split along the LARGER of the j/k axes, so that for a
+      // slab-shaped region (a slice view: thin k, large j) the tiles are
+      // strips ACROSS the viewed plane and the progressive display visibly
+      // sharpens strip by strip (splitting a slab along its thin axis would
+      // deliver all visible content in a single tile). Thick regions
+      // (volume rendering) split along k, which is contiguous in the output
+      // buffer. ~4 MB per tile; chunks shared between tiles (e.g. j-strips
+      // crossing the same chunk row) are served from the session's chunk
+      // cache, not re-fetched.
+      const long long tileTargetBytes = 4LL * 1024LL * 1024LL;
       int xDim = regionExtent[1] - regionExtent[0] + 1;
       int yDim = regionExtent[3] - regionExtent[2] + 1;
       int zDim = regionExtent[5] - regionExtent[4] + 1;
       long long bytesPerVoxel = image->GetScalarSize();
-      int splitAxis = (zDim >= 8) ? 2 : 1;
+      int splitAxis = (zDim >= 8 && zDim >= yDim) ? 2 : 1;
       long long bytesPerUnit = (splitAxis == 2) ? (static_cast<long long>(xDim) * yDim * bytesPerVoxel) //
                                                 : (static_cast<long long>(xDim) * zDim * bytesPerVoxel);
       int axisDim = (splitAxis == 2) ? zDim : yDim;
@@ -1277,6 +1290,42 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
           {
             return;
           }
+          // During continued interaction (e.g. fast slice scrolling) stale
+          // requests can occupy every worker while the currently visible
+          // request waits in the queue. When that happens, the OLDEST active
+          // request abandons between tiles to free its worker - but never
+          // the newest active one, so at least one request always runs to
+          // completion (abandoning unconditionally is a proven livelock).
+          // Abandoned requests notify their requesters, which re-request if
+          // still interested.
+          if (!this->PendingRequests.empty() && this->ActiveRequests.size() >= static_cast<size_t>(this->NumberOfWorkerThreads) && this->ActiveRequests.size() > 1)
+          {
+            bool isOldest = true;
+            bool isNewest = true;
+            for (const std::shared_ptr<ActiveRequest>& other : this->ActiveRequests)
+            {
+              if (other.get() == active.get())
+              {
+                continue;
+              }
+              if (other->StartTime < active->StartTime)
+              {
+                isOldest = false;
+              }
+              if (other->StartTime > active->StartTime)
+              {
+                isNewest = false;
+              }
+            }
+            if (isOldest && !isNewest)
+            {
+              abandoned = true;
+            }
+          }
+        }
+        if (abandoned)
+        {
+          break;
         }
         int tileExtent[6];
         for (int i = 0; i < 6; ++i)
@@ -1401,10 +1450,10 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       {
         finishRequest(success && !abandoned);
         this->ActiveRequests.erase(std::remove(this->ActiveRequests.begin(), this->ActiveRequests.end(), active), this->ActiveRequests.end());
-        if (!success)
+        if (!success || abandoned)
         {
           // Notify consumers so that they re-evaluate and re-issue the
-          // failed request (see the note above)
+          // failed or abandoned request (see the note above)
           this->CompletedLevels.push_back(request.Level);
         }
       }
