@@ -35,12 +35,40 @@
 // STD includes
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 
 namespace
 {
+
+//----------------------------------------------------------------------------
+// Diagnostic trace of the background request handling, enabled by setting
+// the SLICER_OMEZARR_TRACE environment variable to an output file path.
+void ProviderTrace(const std::string& message)
+{
+  static const char* tracePath = std::getenv("SLICER_OMEZARR_TRACE");
+  if (!tracePath)
+  {
+    return;
+  }
+  static std::mutex traceMutex;
+  std::lock_guard<std::mutex> lock(traceMutex);
+  std::ofstream traceFile(tracePath, std::ios::app);
+  double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+  traceFile.precision(3);
+  traceFile << std::fixed << seconds << " " << message << "\n";
+}
+
+//----------------------------------------------------------------------------
+std::string ProviderTraceExtent(const int extent[6], int level)
+{
+  std::ostringstream stream;
+  stream << "L" << level << " [" << extent[0] << ":" << extent[1] << "," << extent[2] << ":" << extent[3] << "," << extent[4] << ":" << extent[5] << "]";
+  return stream.str();
+}
 
 //----------------------------------------------------------------------------
 bool ReadJsonDocument(const std::string& filePath, rapidjson::Document& document)
@@ -788,12 +816,35 @@ bool vtkMRMLOMEZarrVoxelDataProvider::GetRegionIfAvailable(vtkImageData* output,
 //----------------------------------------------------------------------------
 bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], int resolutionLevel)
 {
+  return this->RequestRegionAsync(extent, resolutionLevel, nullptr);
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], int resolutionLevel, vtkObject* requester)
+{
   if (resolutionLevel < 0 || resolutionLevel >= static_cast<int>(this->Levels.size()))
   {
     return false;
   }
   {
     std::lock_guard<std::mutex> lock(this->Mutex);
+    // Record the requester's current region of interest FIRST (even if the
+    // request itself is deduplicated below): it withdraws the requester's
+    // interest in whatever it asked for before, letting queued requests that
+    // nobody wants anymore be dropped here and executing ones abandon
+    // between tiles (IsRequestWanted in the worker loop).
+    if (requester)
+    {
+      RegionRequest interest;
+      interest.Level = resolutionLevel;
+      for (int i = 0; i < 6; ++i)
+      {
+        interest.Extent[i] = extent[i];
+      }
+      this->RequesterRegionsOfInterest[requester] = interest;
+      ProviderTrace("roi " + ProviderTraceExtent(extent, resolutionLevel) + " requester=" + std::to_string(reinterpret_cast<uintptr_t>(requester)));
+      this->DropUnwantedQueuedRequests();
+    }
     // Complete data already cached: nothing to do. (An INCOMPLETE covering
     // region is only a placeholder that is being - or was - streamed; the
     // request is re-issued unless it is already being served, so that a
@@ -852,6 +903,7 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
     RegionRequest request;
     request.Level = resolutionLevel;
     request.WholeLevel = wholeLevel;
+    request.Requester = requester;
     for (int i = 0; i < 6; ++i)
     {
       request.Extent[i] = extent[i];
@@ -860,8 +912,7 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
     // Keep the queue SHORT (worker count): every live consumer re-requests
     // its target on each update, so a dropped stale entry costs at most one
     // event cycle, while a long queue of stale requests keeps the worker
-    // pool busy (and the oldest-active preemption firing) long after the
-    // interaction that created them has moved on.
+    // pool busy long after the interaction that created them has moved on.
     const size_t maximumQueuedRequests = 4;
     while (this->PendingRequests.size() > maximumQueuedRequests)
     {
@@ -874,6 +925,72 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
   }
   this->Condition.notify_one();
   return true;
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLOMEZarrVoxelDataProvider::CancelRegionRequests(vtkObject* requester)
+{
+  if (!requester)
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(this->Mutex);
+  this->RequesterRegionsOfInterest.erase(requester);
+  this->DropUnwantedQueuedRequests();
+  // Executing requests re-evaluate IsRequestWanted between tiles and abandon
+  // on their own.
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLOMEZarrVoxelDataProvider::IsRequestWanted(const RegionRequest& request)
+{
+  if (request.Requester == nullptr || request.WholeLevel)
+  {
+    // Anonymous requests carry no interest information, and whole levels are
+    // cached permanently and reusable by every view: always complete them.
+    return true;
+  }
+  for (const auto& requesterAndInterest : this->RequesterRegionsOfInterest)
+  {
+    const RegionRequest& interest = requesterAndInterest.second;
+    if (interest.Level != request.Level)
+    {
+      continue;
+    }
+    bool intersects = true;
+    for (int axis = 0; axis < 3 && intersects; ++axis)
+    {
+      intersects = (interest.Extent[2 * axis] <= request.Extent[2 * axis + 1] //
+                    && interest.Extent[2 * axis + 1] >= request.Extent[2 * axis]);
+    }
+    if (intersects)
+    {
+      // Partial overlap keeps the request alive: its completed tiles are
+      // reused from the region cache by the overlapping request.
+      return true;
+    }
+  }
+  return false;
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLOMEZarrVoxelDataProvider::DropUnwantedQueuedRequests()
+{
+  for (auto it = this->PendingRequests.begin(); it != this->PendingRequests.end();)
+  {
+    if (!this->IsRequestWanted(*it))
+    {
+      // Notify so that any consumer that was (unexpectedly) still waiting
+      // for this region re-evaluates instead of stalling
+      ProviderTrace("drop-queued " + ProviderTraceExtent(it->Extent, it->Level));
+      this->CompletedLevels.push_back(it->Level);
+      it = this->PendingRequests.erase(it);
+    }
+    else
+    {
+      ++it;
+    }
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -1017,6 +1134,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::ProcessPendingRegionRequests()
       // the region is complete
       if (active->Finished && active->Succeeded && active->CompletedTileExtents.empty())
       {
+        ProviderTrace("finalize " + ProviderTraceExtent(active->Request.Extent, active->Request.Level));
         if (active->PublishedImage)
         {
           for (CachedRegion& cachedRegion : this->RegionCache)
@@ -1231,6 +1349,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       // queue bound (their requesters re-request if still interested).
       RegionRequest request = this->PendingRequests.back();
       this->PendingRequests.pop_back();
+      ProviderTrace("pop " + ProviderTraceExtent(request.Extent, request.Level) + (request.WholeLevel ? " whole" : ""));
       bool alreadyAvailable = (this->LevelImages.find(request.Level) != this->LevelImages.end()) //
                               || (!request.WholeLevel && this->FindCoveringCachedRegion(request.Extent, request.Level, /*requireComplete=*/true) != nullptr);
       bool alreadyBeingServed = false;
@@ -1368,11 +1487,12 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         active->TilesTotal = numberOfTiles;
         active->TilesCompleted = 0;
       }
-      // Note: a started read always runs to completion (except at shutdown).
+      // Note: a started read always runs to completion, except at shutdown
+      // and when NO requester is interested in it anymore (see below).
       // Several views request regions of the same provider; only the
-      // guarantee that every started read completes (and its result is
-      // cached, triggering the unserved views to re-request) makes the
-      // request handling converge.
+      // guarantee that every read some view still waits for completes (and
+      // its result is cached, triggering the unserved views to re-request)
+      // makes the request handling converge.
       for (int tileIndex = 0; tileIndex < numberOfTiles && success; ++tileIndex)
       {
         {
@@ -1381,45 +1501,23 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
           {
             return;
           }
-          // During continued interaction (e.g. fast slice scrolling) stale
-          // requests can occupy every worker while the currently visible
-          // request waits in the queue. When that happens, the OLDEST active
-          // request abandons between tiles to free its worker - but never
-          // the newest active one, so at least one request always runs to
-          // completion (abandoning unconditionally is a proven livelock).
-          // Abandoned requests notify their requesters, which re-request if
-          // still interested.
-          // Additional guards: a request that is already half done is
-          // cheaper to finish than to re-fetch (abandoning it near
-          // completion is what users perceive as "progress restarting from
-          // zero"), and a request younger than a few seconds is likely
-          // serving the CURRENT view (it would immediately be re-requested).
-          double ageSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - active->StartTime).count();
-          bool worthFinishing = (active->TilesTotal > 0 && active->TilesCompleted * 2 >= active->TilesTotal) || ageSeconds < 3.0;
-          if (!worthFinishing && !this->PendingRequests.empty() //
-              && this->ActiveRequests.size() >= static_cast<size_t>(this->NumberOfWorkerThreads) && this->ActiveRequests.size() > 1)
+          // Requester-aware cancellation: a request that no requester is
+          // interested in anymore (every requester has since recorded a
+          // different region of interest) is abandoned between tiles,
+          // freeing the worker and the bandwidth for the regions the views
+          // want NOW. The interest is re-evaluated on every tile rather
+          // than latched, so a view that returns to the region before the
+          // next tile keeps the request alive. A request that any requester
+          // still wants ALWAYS runs to completion (abandoning wanted
+          // requests is a proven livelock), and so do anonymous requests,
+          // which carry no interest information. Abandoned requests notify
+          // their (former) requesters, which re-request if somehow still
+          // interested.
+          if (!this->IsRequestWanted(active->Request))
           {
-            bool isOldest = true;
-            bool isNewest = true;
-            for (const std::shared_ptr<ActiveRequest>& other : this->ActiveRequests)
-            {
-              if (other.get() == active.get())
-              {
-                continue;
-              }
-              if (other->StartTime < active->StartTime)
-              {
-                isOldest = false;
-              }
-              if (other->StartTime > active->StartTime)
-              {
-                isNewest = false;
-              }
-            }
-            if (isOldest && !isNewest)
-            {
-              abandoned = true;
-            }
+            ProviderTrace("abandon " + ProviderTraceExtent(active->Request.Extent, active->Request.Level) //
+                          + " tiles=" + std::to_string(active->TilesCompleted) + "/" + std::to_string(active->TilesTotal));
+            abandoned = true;
           }
         }
         if (abandoned)
@@ -1499,6 +1597,8 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
           vtkWarningMacro("WorkerLoop: failed to read tile [" << tileExtent[0] << "-" << tileExtent[1] << ", " << tileExtent[2] << "-" << tileExtent[3] << ", " //
                                                               << tileExtent[4] << "-" << tileExtent[5] << "] of level " << request.Level << " of " << this->FileName);
         }
+        ProviderTrace("tile " + std::to_string(tileIndex + 1) + "/" + std::to_string(numberOfTiles) //
+                      + (tileSuccess ? "" : " FAILED") + " " + ProviderTraceExtent(request.Extent, request.Level));
         if (success)
         {
           std::lock_guard<std::mutex> lock(this->Mutex);
@@ -1526,6 +1626,8 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       // a hot loop when the failure persists.
       std::this_thread::sleep_for(std::chrono::seconds(1));
     }
+    ProviderTrace("finish " + ProviderTraceExtent(request.Extent, request.Level) + " success=" + std::to_string(success) //
+                  + " abandoned=" + std::to_string(abandoned) + " progressive=" + std::to_string(progressive));
     {
       std::lock_guard<std::mutex> lock(this->Mutex);
       if (progressive)

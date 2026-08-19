@@ -112,6 +112,8 @@ public:
   bool IsRegionAvailable(const int extent[6], int resolutionLevel) override;
   bool IsRegionComplete(const int extent[6], int resolutionLevel) override;
   bool RequestRegionAsync(const int extent[6], int resolutionLevel) override;
+  bool RequestRegionAsync(const int extent[6], int resolutionLevel, vtkObject* requester) override;
+  void CancelRegionRequests(vtkObject* requester) override;
   bool HasPendingRegionRequests() override;
   double GetPendingRegionRequestProgress() override;
   double GetRegionRequestProgress(const int extent[6], int resolutionLevel) override;
@@ -176,6 +178,10 @@ protected:
     /// Load and cache the whole level (small levels) instead of just the
     /// requested region (chunk-granular access to large levels)
     bool WholeLevel{ false };
+    /// Identity of the consumer the request was made for (nullptr for
+    /// anonymous requests). Used only as a key into
+    /// RequesterRegionsOfInterest; never dereferenced.
+    vtkObject* Requester{ nullptr };
   };
 
   struct CachedRegion
@@ -189,6 +195,18 @@ protected:
     /// of real data replace it progressively.
     bool Complete{ true };
   };
+
+  /// Returns true if some requester is still interested in the request:
+  /// its current region of interest is at the same level and intersects the
+  /// request (partial overlap keeps the request alive because completed
+  /// tiles are reused from the cache). Anonymous requests (no requester)
+  /// and whole-level requests (cached permanently, reusable by every view)
+  /// are always wanted. The caller must hold Mutex.
+  bool IsRequestWanted(const RegionRequest& request);
+
+  /// Remove queued requests that no requester is interested in anymore,
+  /// notifying their (former) consumers. The caller must hold Mutex.
+  void DropUnwantedQueuedRequests();
 
   /// Find a cached region that covers the extent (nullptr if none).
   /// Prefers a complete region; requireComplete skips incomplete ones.
@@ -239,7 +257,7 @@ protected:
     bool Succeeded{ false };
   };
 
-  std::mutex Mutex; // guards LevelImages, LevelAccessOrder, RegionCache, PendingRequests, ActiveRequests, CompletedLevels, WorkerShouldStop
+  std::mutex Mutex; // guards LevelImages, LevelAccessOrder, RegionCache, PendingRequests, ActiveRequests, CompletedLevels, RequesterRegionsOfInterest, WorkerShouldStop
   std::map<int, vtkSmartPointer<vtkImageData>> LevelImages;
   /// Monotonic access stamps for LRU eviction (kept in sync with LevelImages)
   std::map<int, long long> LevelAccessOrder;
@@ -251,6 +269,13 @@ protected:
   bool WorkerShouldStop{ false };
   std::deque<RegionRequest> PendingRequests;
   std::vector<std::shared_ptr<ActiveRequest>> ActiveRequests;
+  /// Current region of interest of each known requester (WholeLevel unused).
+  /// Requests that intersect no requester's current interest are cancelled
+  /// (queued: dropped; executing: abandoned between tiles). The keys are
+  /// identity-only pointers (never dereferenced); a stale entry of a
+  /// destroyed requester merely keeps matching requests running, which is
+  /// the pre-cancellation behavior.
+  std::map<vtkObject*, RegionRequest> RequesterRegionsOfInterest;
   std::vector<int> CompletedLevels;
   /// Exponential moving average of the observed retrieval throughput
   double ThroughputBytesPerSecond{ 0.0 };

@@ -150,6 +150,28 @@ public:
   /// the background. Returns true if a request was queued (or is pending).
   virtual bool RequestRegionAsync(const int extent[6], int resolutionLevel);
 
+  /// Request asynchronous fetching on behalf of a specific requester (for
+  /// example a slice view layer or a volume rendering pipeline).
+  /// A requester has one current region of interest per provider: this call
+  /// records it, withdrawing the requester's interest in whatever it
+  /// requested before. Backends can then cancel queued or executing
+  /// background work that no requester is interested in anymore (the user
+  /// moved on), instead of spending bandwidth on completing it.
+  /// The requester pointer is used only as an identity key; it is never
+  /// dereferenced and no reference is held.
+  /// The base implementation ignores the requester.
+  virtual bool RequestRegionAsync(const int extent[6], int resolutionLevel, vtkObject* requester)
+  {
+    (void)requester;
+    return this->RequestRegionAsync(extent, resolutionLevel);
+  }
+
+  /// Withdraw a requester's region of interest (the requester is being
+  /// destroyed or switched to a different data source), allowing the backend
+  /// to cancel background work that only this requester was waiting for.
+  /// The base implementation does nothing.
+  virtual void CancelRegionRequests(vtkObject* requester) { (void)requester; }
+
   /// Returns true if a background request is pending.
   virtual bool HasPendingRegionRequests() { return false; }
 

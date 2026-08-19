@@ -620,6 +620,10 @@ void vtkMRMLSliceLayerLogic::UpdateVoxelDataProviderObserver(vtkMRMLVoxelDataPro
   if (this->ObservedVoxelDataProvider)
   {
     this->ObservedVoxelDataProvider->RemoveObserver(this->VoxelDataProviderObserver);
+    // This layer stops using the provider (volume changed or layer is being
+    // torn down): withdraw its region of interest so that background work
+    // that only served this layer can be cancelled
+    this->ObservedVoxelDataProvider->CancelRegionRequests(this);
   }
   this->ObservedVoxelDataProvider = provider;
   if (provider)
@@ -880,8 +884,11 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
   // Ensure the target region becomes complete. This is a cheap no-op if the
   // data is already cached or the request is being served; it also re-issues
   // the request when only an incomplete placeholder of the region is cached
-  // (e.g. after a superseded or failed background read).
-  provider->RequestRegionAsync(targetExtent, targetLevel);
+  // (e.g. after a superseded or failed background read). Passing this layer
+  // as the requester records the layer's current region of interest, so the
+  // provider can cancel background work for regions this layer asked for
+  // earlier but no view is interested in anymore.
+  provider->RequestRegionAsync(targetExtent, targetLevel, this);
 
   // Progressive refinement: if the target level is not available yet,
   // display the best available coarser level meanwhile.

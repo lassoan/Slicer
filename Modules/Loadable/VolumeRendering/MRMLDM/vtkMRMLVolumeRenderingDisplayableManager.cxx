@@ -875,6 +875,18 @@ vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::PipelineListType::iterato
 
   if (pipeline)
   {
+    // Withdraw this pipeline's region of interest so that background
+    // fetches that only served it can be cancelled (e.g. the user turned
+    // volume rendering off while a large region was being downloaded)
+    if (pipeline->DisplayNode)
+    {
+      vtkMRMLScalarVolumeNode* providerVolumeNode = vtkMRMLScalarVolumeNode::SafeDownCast(pipeline->DisplayNode->GetDisplayableNode());
+      vtkMRMLVoxelDataProvider* provider = providerVolumeNode ? providerVolumeNode->GetVoxelDataProvider() : nullptr;
+      if (provider)
+      {
+        provider->CancelRegionRequests(pipeline->DisplayNode);
+      }
+    }
     if (pipeline->VolumeActor)
     {
       this->External->GetRenderer()->RemoveVolume(pipeline->VolumeActor);
@@ -1420,6 +1432,11 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
       && extent[2] <= referenceExtent[2] && extent[3] >= referenceExtent[3]           //
       && extent[4] <= referenceExtent[4] && extent[5] >= referenceExtent[5])
   {
+    // Rendering the whole volume at the reference level: this pipeline
+    // needs no region anymore; withdraw its interest so that a fetch that
+    // was started for an earlier zoomed-in state can be cancelled (the
+    // user zoomed out while a large region was downloading)
+    provider->CancelRegionRequests(displayNode);
     pipeline->UseVariableResolution = false;
     pipeline->DisplayedResolutionLevel = -1;
     return false;
@@ -1440,8 +1457,10 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::UpdateVariableResolu
   {
     // Ensure the region becomes complete (cheap no-op if already cached or
     // being fetched; re-issues the request if only an incomplete placeholder
-    // is cached)
-    provider->RequestRegionAsync(extent, level);
+    // is cached). The display node identifies this pipeline as the
+    // requester, so the provider can cancel background work for regions
+    // that no view is interested in anymore.
+    provider->RequestRegionAsync(extent, level, displayNode);
     if (provider->IsRegionAvailable(extent, level))
     {
       if (provider->GetRegionIfAvailable(pipeline->VariableResolutionImageData, extent, level))
