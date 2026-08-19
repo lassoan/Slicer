@@ -230,13 +230,34 @@ itk::ImageIOBase::Pointer vtkITKArchetypeImageSeriesReader::CreateImageIOWithDat
 }
 
 //----------------------------------------------------------------------------
-bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(const char* fileName, int datasetIndex, const int extent[6], void* buffer, int& scalarType)
+void* vtkITKArchetypeImageSeriesReader::OpenOMEZarrRegionReader(const char* fileName, int datasetIndex, int& scalarType)
 {
+  scalarType = VTK_VOID;
 #ifdef VTKITK_HAS_OMEZARRNGFF_SUPPORT
-  if (!fileName || extent[1] < extent[0] || extent[3] < extent[2] || extent[5] < extent[4])
+  if (!fileName)
   {
-    return false;
+    return nullptr;
   }
+  // A stalled network transfer would otherwise hang a read forever (and with
+  // it the worker thread executing it): make TensorStore's HTTP transport
+  // abort transfers that are slower than 128 bytes/s for 20 s, unless the
+  // user configured the limits already. Failed reads are retried/re-issued
+  // by the caller. Must be set before TensorStore performs its first HTTP
+  // request in this process.
+  static std::once_flag curlLimitsOnce;
+  std::call_once(curlLimitsOnce,
+                 []
+                 {
+                   std::string existingValue;
+                   if (!itksys::SystemTools::GetEnv("TENSORSTORE_CURL_LOW_SPEED_TIME_SECONDS", existingValue))
+                   {
+                     itksys::SystemTools::PutEnv("TENSORSTORE_CURL_LOW_SPEED_TIME_SECONDS=20");
+                   }
+                   if (!itksys::SystemTools::GetEnv("TENSORSTORE_CURL_LOW_SPEED_LIMIT_BYTES", existingValue))
+                   {
+                     itksys::SystemTools::PutEnv("TENSORSTORE_CURL_LOW_SPEED_LIMIT_BYTES=128");
+                   }
+                 });
   try
   {
     itk::OMEZarrNGFFImageIO::Pointer zarrImageIO = itk::OMEZarrNGFFImageIO::New();
@@ -249,13 +270,30 @@ bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(const char* f
     {
       // Opening the same store concurrently from several worker threads has
       // been observed to fail transiently; serialize the open (metadata
-      // read). The voxel reads themselves stay concurrent.
-      static std::mutex zarrOpenMutex;
-      std::lock_guard<std::mutex> lock(zarrOpenMutex);
-      zarrImageIO->ReadImageInformation();
+      // read). A TIMED lock is used so that one hung open (e.g. a stalled
+      // remote connection) cannot block every other read forever: after the
+      // timeout the open proceeds unserialized (risking a transient failure,
+      // which the caller retries, instead of a certain hang).
+      static std::timed_mutex zarrOpenMutex;
+      bool locked = zarrOpenMutex.try_lock_for(std::chrono::seconds(15));
+      try
+      {
+        zarrImageIO->ReadImageInformation();
+      }
+      catch (...)
+      {
+        if (locked)
+        {
+          zarrOpenMutex.unlock();
+        }
+        throw;
+      }
+      if (locked)
+      {
+        zarrOpenMutex.unlock();
+      }
     }
 
-    scalarType = VTK_VOID;
     switch (zarrImageIO->GetComponentType())
     {
       case itk::ImageIOBase::IOComponentEnum::UCHAR: scalarType = VTK_UNSIGNED_CHAR; break;
@@ -268,14 +306,39 @@ bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(const char* f
       case itk::ImageIOBase::IOComponentEnum::LONG: scalarType = VTK_LONG; break;
       case itk::ImageIOBase::IOComponentEnum::FLOAT: scalarType = VTK_FLOAT; break;
       case itk::ImageIOBase::IOComponentEnum::DOUBLE: scalarType = VTK_DOUBLE; break;
-      default: return false;
+      default: return nullptr;
     }
-    if (!buffer)
-    {
-      // Only the scalar type was requested
-      return true;
-    }
+    // Hand out a manually reference-counted handle
+    itk::OMEZarrNGFFImageIO* handle = zarrImageIO.GetPointer();
+    handle->Register();
+    return handle;
+  }
+  catch (itk::ExceptionObject&)
+  {
+    return nullptr;
+  }
+  catch (std::exception&)
+  {
+    return nullptr;
+  }
+#else
+  (void)fileName;
+  (void)datasetIndex;
+  return nullptr;
+#endif
+}
 
+//----------------------------------------------------------------------------
+bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionWithReader(void* sessionReader, const int extent[6], void* buffer)
+{
+#ifdef VTKITK_HAS_OMEZARRNGFF_SUPPORT
+  if (!sessionReader || !buffer || extent[1] < extent[0] || extent[3] < extent[2] || extent[5] < extent[4])
+  {
+    return false;
+  }
+  try
+  {
+    itk::OMEZarrNGFFImageIO* zarrImageIO = static_cast<itk::OMEZarrNGFFImageIO*>(sessionReader);
     itk::ImageIORegion ioRegion(3);
     for (int axis = 0; axis < 3; ++axis)
     {
@@ -295,13 +358,41 @@ bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(const char* f
     return false;
   }
 #else
-  (void)fileName;
-  (void)datasetIndex;
+  (void)sessionReader;
   (void)extent;
   (void)buffer;
-  scalarType = VTK_VOID;
   return false;
 #endif
+}
+
+//----------------------------------------------------------------------------
+void vtkITKArchetypeImageSeriesReader::CloseOMEZarrRegionReader(void* sessionReader)
+{
+#ifdef VTKITK_HAS_OMEZARRNGFF_SUPPORT
+  if (sessionReader)
+  {
+    static_cast<itk::OMEZarrNGFFImageIO*>(sessionReader)->UnRegister();
+  }
+#else
+  (void)sessionReader;
+#endif
+}
+
+//----------------------------------------------------------------------------
+bool vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(const char* fileName, int datasetIndex, const int extent[6], void* buffer, int& scalarType)
+{
+  void* sessionReader = vtkITKArchetypeImageSeriesReader::OpenOMEZarrRegionReader(fileName, datasetIndex, scalarType);
+  if (!sessionReader)
+  {
+    return false;
+  }
+  bool success = true;
+  if (buffer)
+  {
+    success = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionWithReader(sessionReader, extent, buffer);
+  }
+  vtkITKArchetypeImageSeriesReader::CloseOMEZarrRegionReader(sessionReader);
+  return success;
 }
 
 //----------------------------------------------------------------------------

@@ -1212,8 +1212,14 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         regionExtent[i] = request.Extent[i];
       }
     }
+    // Open the store once for the whole request (opening fetches store
+    // metadata, which for a remote store means several HTTP requests per
+    // open; the tiles are read through the same session)
     int scalarType = VTK_VOID;
-    bool success = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(this->FileName.c_str(), request.Level, regionExtent, nullptr, scalarType);
+    std::unique_ptr<void, void (*)(void*)> sessionReader( //
+      vtkITKArchetypeImageSeriesReader::OpenOMEZarrRegionReader(this->FileName.c_str(), request.Level, scalarType),
+      &vtkITKArchetypeImageSeriesReader::CloseOMEZarrRegionReader);
+    bool success = (sessionReader != nullptr);
     vtkSmartPointer<vtkImageData> image;
     bool abandoned = false;
     bool progressive = false;
@@ -1285,22 +1291,24 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         {
           // k-slab of the full xy region: contiguous in the image buffer
           void* tileBuffer = image->GetScalarPointer(regionExtent[0], regionExtent[2], tileExtent[4]);
-          tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(this->FileName.c_str(), request.Level, tileExtent, tileBuffer, scalarType);
+          tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionWithReader(sessionReader.get(), tileExtent, tileBuffer);
           if (!tileSuccess)
           {
-            // Transient read failures have been observed (e.g. store handle
-            // contention, remote hiccup): retry once
-            tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionIntoBuffer(this->FileName.c_str(), request.Level, tileExtent, tileBuffer, scalarType);
+            // Transient read failures have been observed (remote hiccup,
+            // stalled transfer aborted by the low speed limit): retry once
+            tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionWithReader(sessionReader.get(), tileExtent, tileBuffer);
           }
         }
         else
         {
           // j-slab: read into a temporary tile and copy row by row
           vtkNew<vtkImageData> tile;
-          tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(this->FileName.c_str(), request.Level, tileExtent, tile.GetPointer());
+          tile->SetExtent(tileExtent);
+          tile->AllocateScalars(scalarType, 1);
+          tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionWithReader(sessionReader.get(), tileExtent, tile->GetScalarPointer());
           if (!tileSuccess)
           {
-            tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegion(this->FileName.c_str(), request.Level, tileExtent, tile.GetPointer());
+            tileSuccess = vtkITKArchetypeImageSeriesReader::ReadOMEZarrRegionWithReader(sessionReader.get(), tileExtent, tile->GetScalarPointer());
           }
           if (tileSuccess)
           {
