@@ -712,7 +712,7 @@ bool vtkMRMLSliceLayerLogic::ComputeDisplayedRegion(vtkMRMLScalarVolumeNode* sca
 
   // Bounding box of the 8 view-slab corners in level IJK coordinates
   double boundsMin[3] = { VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, VTK_DOUBLE_MAX };
-  double boundsMax[3] = { VTK_DOUBLE_MIN, VTK_DOUBLE_MIN, VTK_DOUBLE_MIN };
+  double boundsMax[3] = { -VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX, -VTK_DOUBLE_MAX };
   for (int cornerIndex = 0; cornerIndex < 8; ++cornerIndex)
   {
     double corner[4] = { (cornerIndex & 1) ? static_cast<double>(dims[0]) : 0.0, //
@@ -733,10 +733,18 @@ bool vtkMRMLSliceLayerLogic::ComputeDisplayedRegion(vtkMRMLScalarVolumeNode* sca
   for (int axis = 0; axis < 3; ++axis)
   {
     // Pad by 25% of the region size (so that small panning does not trigger
-    // a new region request) plus a fixed interpolation margin.
+    // a new region request) plus a fixed interpolation margin, and QUANTIZE
+    // the region to pad-sized blocks: without quantization every small move
+    // (e.g. stepping to the next slice with an arrow key) shifts the padded
+    // extent by one voxel, which is never contained in the previously
+    // fetched region, so the padding would not avoid any re-fetch. With
+    // quantization consecutive small moves map to the SAME region (served
+    // from the cache instantly) and a new fetch happens only when a block
+    // boundary is crossed.
     double pad = 0.25 * (boundsMax[axis] - boundsMin[axis]) + 4.0;
-    int low = static_cast<int>(std::floor(boundsMin[axis] - pad));
-    int high = static_cast<int>(std::ceil(boundsMax[axis] + pad));
+    int quantum = std::max(8, static_cast<int>(pad));
+    int low = static_cast<int>(std::floor((boundsMin[axis] - pad) / quantum)) * quantum;
+    int high = static_cast<int>(std::ceil((boundsMax[axis] + pad + 1) / quantum)) * quantum - 1;
     regionExtent[2 * axis] = std::max(low, levelExtent[2 * axis]);
     regionExtent[2 * axis + 1] = std::min(high, levelExtent[2 * axis + 1]);
     if (regionExtent[2 * axis] > regionExtent[2 * axis + 1])

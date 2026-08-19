@@ -851,20 +851,32 @@ double vtkMRMLOMEZarrActiveRequestProgress(int tilesCompleted,
                                            const std::chrono::steady_clock::time_point& startTime,
                                            double throughputBytesPerSecond)
 {
-  if (tilesTotal > 0)
-  {
-    // Real progress: completed tiles of the tiled region read
-    return std::min(0.98, static_cast<double>(tilesCompleted) / tilesTotal);
-  }
   // Estimate from the request size and the observed retrieval throughput
   double elapsedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
+  double estimate;
   if (throughputBytesPerSecond <= 0.0 || bytes <= 0.0)
   {
     // Unknown speed: fill gradually over ~10 seconds
-    return std::min(0.9, elapsedSeconds / 10.0);
+    estimate = std::min(0.9, elapsedSeconds / 10.0);
   }
-  double expectedSeconds = bytes / throughputBytesPerSecond;
-  return std::max(0.02, std::min(0.95, elapsedSeconds / expectedSeconds));
+  else
+  {
+    double expectedSeconds = bytes / throughputBytesPerSecond;
+    estimate = std::max(0.02, std::min(0.95, elapsedSeconds / expectedSeconds));
+  }
+  if (tilesTotal > 0)
+  {
+    // Tile progress, blended with the time estimate: the download cost is
+    // often very unevenly distributed over the tiles (the tile that first
+    // touches a chunk fetches it, later tiles reuse it from the cache), so
+    // pure tile counting can sit still for a long time during the dominant
+    // transfer and then jump to complete. The time estimate is allowed to
+    // run ahead of the tile count by up to 30%, which keeps the indicator
+    // moving without letting it drift arbitrarily far from real progress.
+    double tileFraction = static_cast<double>(tilesCompleted) / tilesTotal;
+    return std::min(0.98, std::max(tileFraction, std::min(tileFraction + 0.3, estimate)));
+  }
+  return estimate;
 }
 } // namespace
 
