@@ -793,27 +793,41 @@ void vtkMRMLSliceLayerLogic::UpdateVariableResolutionInput(vtkMRMLScalarVolumeNo
       {
         continue;
       }
-      // Voxels (of this level) per screen pixel along the two view axes
-      double minVoxelsPerPixel = VTK_DOUBLE_MAX;
-      for (int viewAxis = 0; viewAxis < 2; ++viewAxis)
+      // A level is accepted when it provides at least ~0.75 voxels per
+      // screen pixel along each view axis. Using a value slightly below 1.0
+      // prefers the coarser of two adjacent levels when the zoom falls
+      // between them (a voxel covering up to ~1.3 screen pixels is visually
+      // near-indistinguishable, while the next finer level would require 2x
+      // the data along each downsampled axis). The displayed image is never
+      // finer than what the zoom level calls for.
+      // A view axis along which refining cannot improve the voxel density
+      // (the finest level provides the same density, e.g. the through-plane
+      // axis of an in-plane-only pyramid) never rejects a level: otherwise
+      // it would veto every level and force the finest one, even though the
+      // other axes only warrant a coarse level.
+      const double acceptableVoxelsPerPixel = 0.75;
+      double finestScale[3] = { 1.0, 1.0, 1.0 };
+      provider->GetLevelScale(0, finestScale);
+      bool acceptable = true;
+      for (int viewAxis = 0; viewAxis < 2 && acceptable; ++viewAxis)
       {
         double lengthSquared = 0.0;
+        double lengthSquaredFinest = 0.0;
         for (int ijkAxis = 0; ijkAxis < 3; ++ijkAxis)
         {
           double component = xyToRefIJK->GetElement(ijkAxis, viewAxis) * referenceScale[ijkAxis] / levelScale[ijkAxis];
           lengthSquared += component * component;
+          double componentFinest = xyToRefIJK->GetElement(ijkAxis, viewAxis) * referenceScale[ijkAxis] / finestScale[ijkAxis];
+          lengthSquaredFinest += componentFinest * componentFinest;
         }
-        minVoxelsPerPixel = std::min(minVoxelsPerPixel, std::sqrt(lengthSquared));
+        double voxelsPerPixel = std::sqrt(lengthSquared);
+        double voxelsPerPixelFinest = std::sqrt(lengthSquaredFinest);
+        if (voxelsPerPixel < acceptableVoxelsPerPixel && voxelsPerPixelFinest > voxelsPerPixel * 1.0001)
+        {
+          acceptable = false;
+        }
       }
-      // A level is accepted when it provides at least this many voxels per
-      // screen pixel. Using a value slightly below 1.0 prefers the coarser
-      // of two adjacent levels when the zoom falls between them (a voxel
-      // covering up to ~1.3 screen pixels is visually near-indistinguishable,
-      // while the next finer level would require 2x the data along each
-      // downsampled axis). The displayed image is never finer than what the
-      // zoom level calls for.
-      const double acceptableVoxelsPerPixel = 0.75;
-      if (minVoxelsPerPixel >= acceptableVoxelsPerPixel)
+      if (acceptable)
       {
         // This level matches the screen resolution: coarser levels would
         // appear blurry, finer levels would be wasteful.

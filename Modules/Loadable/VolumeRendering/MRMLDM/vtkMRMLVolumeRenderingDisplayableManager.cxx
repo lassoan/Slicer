@@ -1150,7 +1150,12 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
 
   // Pick the coarsest level that still provides acceptable voxel density on
   // every axis at the current zoom (same tolerance as slice view LOD).
+  // An axis along which refining cannot improve the density (the finest
+  // level has the same scale, e.g. the through-plane axis of an
+  // in-plane-only pyramid) never rejects a level.
   const double acceptableVoxelsPerPixel = 0.75;
+  double finestScale[3] = { 1.0, 1.0, 1.0 };
+  provider->GetLevelScale(0, finestScale);
   int numberOfLevels = provider->GetNumberOfResolutionLevels();
   level = -1;
   for (int candidateLevel = numberOfLevels - 1; candidateLevel >= 0; candidateLevel--)
@@ -1167,7 +1172,8 @@ bool vtkMRMLVolumeRenderingDisplayableManager::vtkInternal::SelectResolutionLeve
     for (int axis = 0; axis < 3; axis++)
     {
       double levelSpacing = fullResolutionSpacing[axis] * candidateScale[axis];
-      if (pixelSizeWorld / levelSpacing < acceptableVoxelsPerPixel)
+      if (pixelSizeWorld / levelSpacing < acceptableVoxelsPerPixel //
+          && candidateScale[axis] > finestScale[axis] * 1.0001)
       {
         acceptable = false;
         break;
