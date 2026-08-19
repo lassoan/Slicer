@@ -2578,8 +2578,12 @@ bool qSlicerCoreApplication::loadFiles(const QStringList& filePaths, vtkMRMLMess
     qSlicerIO::IOProperties fileProperties;
     // It is important to use absolute file path, as in the scene relative path
     // always relative to the .mrml scene file (while the user specified the path
-    // relative to the current working directory)
-    fileProperties.insert("fileName", file.absoluteFilePath());
+    // relative to the current working directory).
+    // Remote URLs (e.g. an OME-Zarr image streamed from a web server) must be
+    // kept verbatim: converting them to an absolute file path would mangle
+    // them into a path inside the current working directory.
+    bool isRemoteUrl = filePath.contains("://") && !filePath.startsWith("file:", Qt::CaseInsensitive);
+    fileProperties.insert("fileName", isRemoteUrl ? filePath : file.absoluteFilePath());
     if (!ioManager->loadNodes(fileType, fileProperties, nullptr, userMessages))
     {
       success = false;

@@ -498,7 +498,10 @@ void qSlicerMainWindowPrivate::setupRecentlyLoadedMenu(const QList<qSlicerIO::IO
     }
     QAction* action = this->RecentlyLoadedMenu->addAction(fileName, q, SLOT(onFileRecentLoadedActionTriggered()));
     action->setProperty("fileParameters", filePropertie);
-    action->setEnabled(QFile::exists(fileName));
+    // Remote URLs (e.g. an OME-Zarr image streamed from a web server) cannot
+    // be checked for existence; they stay enabled.
+    bool isRemoteUrl = fileName.contains("://") && !fileName.startsWith("file:", Qt::CaseInsensitive);
+    action->setEnabled(isRemoteUrl || QFile::exists(fileName));
   }
 
   // Add separator and clear action
