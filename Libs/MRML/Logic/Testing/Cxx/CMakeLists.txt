@@ -29,6 +29,7 @@ create_test_sourcelist(Tests ${KIT}CxxTests.cxx
   vtkMRMLLayoutLogicCompareTest.cxx
   vtkMRMLLayoutLogicTest1.cxx
   vtkMRMLLayoutLogicTest2.cxx
+  vtkMRMLSliceLayerLogicResolutionTest.cxx
   vtkMRMLSliceLayerLogicTest.cxx
   vtkMRMLSliceLogicTest1.cxx
   vtkMRMLSliceLogicTest2.cxx
@@ -56,6 +57,7 @@ simple_test( vtkMRMLDisplayableHierarchyLogicTest1 )
 simple_test( vtkMRMLLayoutLogicCompareTest )
 simple_test( vtkMRMLLayoutLogicTest1 )
 simple_test( vtkMRMLLayoutLogicTest2 )
+simple_test( vtkMRMLSliceLayerLogicResolutionTest "${CMAKE_BINARY_DIR}/Testing/Temporary" )
 simple_test( vtkMRMLSliceLayerLogicTest )
 simple_test( vtkMRMLSliceLogicTest1 )
 simple_file_test( vtkMRMLSliceLogicTest2 fixed.nrrd)

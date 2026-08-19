@@ -94,9 +94,26 @@ public:
   /// concurrently (several views can stream different regions at the same
   /// time). Default: 4. The pool grows on demand up to this count; reducing
   /// the count takes effect for providers that have not started their
-  /// workers yet.
+  /// workers yet. Setting 0 (before the first request) disables background
+  /// execution entirely: requests stay queued and only the synchronously
+  /// published placeholders serve the views - intended for tests that need
+  /// deterministic intermediate states.
   void SetNumberOfWorkerThreads(int numberOfThreads);
   int GetNumberOfWorkerThreads() { return this->NumberOfWorkerThreads; }
+  //@}
+
+  /// Total number of voxels read from the backing store so far (excluding
+  /// voxels served from the caches). Diagnostic/testing aid: panning a view
+  /// must only fetch the newly revealed part of its region, which this
+  /// counter makes measurable.
+  long long GetTotalFetchedVoxels();
+
+  //@{
+  /// Largest level (bytes) that is loaded and cached whole instead of
+  /// serving chunk-granular region reads. Default: 512 MB. Tests lower it
+  /// to exercise the region streaming machinery on small images.
+  void SetWholeLevelPreferredBytes(long long bytes) { this->WholeLevelPreferredBytes = bytes; }
+  long long GetWholeLevelPreferredBytes() { return this->WholeLevelPreferredBytes; }
   //@}
 
   //@{
@@ -213,16 +230,21 @@ protected:
   /// The caller must hold Mutex.
   CachedRegion* FindCoveringCachedRegion(const int extent[6], int level, bool requireComplete = false);
 
-  /// Create the progressive placeholder for a region request: the best
-  /// cached coarser level resampled to the requested level's grid, published
+  /// Create the progressive placeholder for a region request and publish it
   /// to the region cache (marked incomplete) so that views can display it
-  /// immediately while the real data is streamed in tiles.
-  /// Returns the published image (nullptr if no coarser data is cached).
+  /// immediately while the real data is fetched. The placeholder is composed
+  /// from ALL cached data, so that swapping to it never shows lower
+  /// resolution than what is already on screen: the finest cached whole
+  /// level as the base (covers the full region), overlaid with complete
+  /// cached regions of other levels resampled into their overlap (applied
+  /// coarsest to finest so the best data wins), overlaid with exact copies
+  /// from complete same-level cached regions.
+  /// Returns the published image (nullptr if no whole level is cached).
   vtkSmartPointer<vtkImageData> PublishPlaceholderRegion(const int extent[6], int level);
 
   /// Largest level (bytes) that is loaded and cached whole instead of
-  /// serving chunk-granular region reads
-  static constexpr long long WholeLevelPreferredBytes = 512LL * 1024LL * 1024LL;
+  /// serving chunk-granular region reads (see SetWholeLevelPreferredBytes)
+  long long WholeLevelPreferredBytes{ 512LL * 1024LL * 1024LL };
   /// Hard cap on the number of cached regions (the effective limit is the
   /// byte budget in TrimRegionCache: several views each keep their own
   /// display regions cached, and evicting a region that a view still shows
@@ -279,6 +301,9 @@ protected:
   std::vector<int> CompletedLevels;
   /// Exponential moving average of the observed retrieval throughput
   double ThroughputBytesPerSecond{ 0.0 };
+  /// Total voxels read from the store (cache hits excluded); see
+  /// GetTotalFetchedVoxels()
+  long long FetchedVoxelCount{ 0 };
 };
 
 #endif
