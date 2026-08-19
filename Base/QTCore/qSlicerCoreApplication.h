@@ -619,11 +619,11 @@ public:
   Q_INVOKABLE void showConsoleMessage(QString message, bool error = true) const;
 
   /// Converts relative path to absolute path using slicerHome directory.
-  /// Returns absolute path unchanged.
+  /// Returns absolute paths and remote URLs unchanged.
   Q_INVOKABLE QString toSlicerHomeAbsolutePath(const QString& path) const;
 
   /// Converts paths within slicerHome directory to relative paths.
-  /// Leaves other paths unchanged.
+  /// Leaves other paths and remote URLs unchanged.
   Q_INVOKABLE QString toSlicerHomeRelativePath(const QString& path) const;
 
   /// Converts relative path to absolute path using slicerHome directory.

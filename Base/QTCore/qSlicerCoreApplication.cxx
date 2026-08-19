@@ -2448,9 +2448,27 @@ void qSlicerCoreApplication::showConsoleMessage(QString message, bool error /*=t
 }
 
 // --------------------------------------------------------------------------
+namespace
+{
+// Remote URLs (e.g. an OME-Zarr image streamed from a web server) are not
+// file paths and must never be rebased onto the application home folder
+// (converting one to an "absolute path" would prepend the home folder,
+// which is how remote entries of the recently loaded files list used to
+// get corrupted when the application was restarted).
+bool isRemoteUrl(const QString& path)
+{
+  return path.contains("://") && !path.startsWith("file:", Qt::CaseInsensitive);
+}
+} // namespace
+
+// --------------------------------------------------------------------------
 QString qSlicerCoreApplication::toSlicerHomeAbsolutePath(const QString& path) const
 {
   Q_D(const qSlicerCoreApplication);
+  if (isRemoteUrl(path))
+  {
+    return path;
+  }
   return ctk::absolutePathFromInternal(path, d->SlicerHome);
 }
 
@@ -2458,6 +2476,10 @@ QString qSlicerCoreApplication::toSlicerHomeAbsolutePath(const QString& path) co
 QString qSlicerCoreApplication::toSlicerHomeRelativePath(const QString& path) const
 {
   Q_D(const qSlicerCoreApplication);
+  if (isRemoteUrl(path))
+  {
+    return path;
+  }
   return ctk::internalPathFromAbsolute(path, d->SlicerHome);
 }
 
