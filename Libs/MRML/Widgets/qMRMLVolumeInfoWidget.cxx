@@ -475,12 +475,43 @@ void qMRMLVolumeInfoWidget::setResolutionLevel(int index)
     return;
   }
   storageNode->SetPreferredResolutionLevel(level);
+  // Capture the node's current geometry and the inter-level mapping BEFORE
+  // the reload: reloading re-derives the geometry from the file metadata,
+  // which would discard adjustments the user made in this panel (e.g. a
+  // corrected spacing when the file carries no physical pixel size). The
+  // new grid's geometry is derived from the CURRENT node geometry instead,
+  // using the level mapping
+  //   oldLevelIJK = (newOffset - oldOffset) / oldScale + newLevelIJK * newScale / oldScale
+  // which gives the same result as the file metadata when nothing was
+  // edited, and keeps the volume in the same physical position (with the
+  // user's voxel size) when it was.
+  int oldLevel = provider->GetReferenceResolutionLevel();
+  double oldScale[3] = { 1.0, 1.0, 1.0 };
+  double newScale[3] = { 1.0, 1.0, 1.0 };
+  double oldOffset[3] = { 0.0, 0.0, 0.0 };
+  double newOffset[3] = { 0.0, 0.0, 0.0 };
+  bool preserveGeometry = provider->GetLevelScale(oldLevel, oldScale) && provider->GetLevelScale(level, newScale) //
+                          && provider->GetLevelOffset(oldLevel, oldOffset) && provider->GetLevelOffset(level, newOffset);
+  vtkNew<vtkMatrix4x4> oldIJKToRAS;
+  scalarVolumeNode->GetIJKToRASMatrix(oldIJKToRAS.GetPointer());
   QApplication::setOverrideCursor(Qt::WaitCursor);
   bool success = storageNode->ReadData(scalarVolumeNode);
   QApplication::restoreOverrideCursor();
   if (!success)
   {
     qWarning() << Q_FUNC_INFO << "failed to reload volume at resolution level" << level;
+  }
+  else if (preserveGeometry)
+  {
+    vtkNew<vtkMatrix4x4> newLevelToOldLevel;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+      newLevelToOldLevel->SetElement(axis, axis, newScale[axis] / oldScale[axis]);
+      newLevelToOldLevel->SetElement(axis, 3, (newOffset[axis] - oldOffset[axis]) / oldScale[axis]);
+    }
+    vtkNew<vtkMatrix4x4> newIJKToRAS;
+    vtkMatrix4x4::Multiply4x4(oldIJKToRAS.GetPointer(), newLevelToOldLevel.GetPointer(), newIJKToRAS.GetPointer());
+    scalarVolumeNode->SetIJKToRASMatrix(newIJKToRAS.GetPointer());
   }
   this->updateWidgetFromMRML();
 }
