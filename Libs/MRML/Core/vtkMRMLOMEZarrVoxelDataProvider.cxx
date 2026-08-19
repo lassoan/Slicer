@@ -71,6 +71,40 @@ std::string ProviderTraceExtent(const int extent[6], int level)
 }
 
 //----------------------------------------------------------------------------
+// Merge `box` into `target` if they are identical along all axes except one
+// where they are adjacent or overlapping (e.g. consecutive tile strips).
+// Returns true if merged. Keeping valid-extent lists coalesced matters:
+// resampling a box to a coarser level shrinks it by up to one source voxel
+// per side, so many thin strips would individually vanish while their union
+// survives.
+bool MergeAdjacentBoxes(std::array<int, 6>& target, const std::array<int, 6>& box)
+{
+  int mergeAxis = -1;
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    if (target[2 * axis] == box[2 * axis] && target[2 * axis + 1] == box[2 * axis + 1])
+    {
+      continue;
+    }
+    bool touches = (box[2 * axis] <= target[2 * axis + 1] + 1 && target[2 * axis] <= box[2 * axis + 1] + 1);
+    if (mergeAxis < 0 && touches)
+    {
+      mergeAxis = axis;
+    }
+    else
+    {
+      return false;
+    }
+  }
+  if (mergeAxis >= 0)
+  {
+    target[2 * mergeAxis] = std::min(target[2 * mergeAxis], box[2 * mergeAxis]);
+    target[2 * mergeAxis + 1] = std::max(target[2 * mergeAxis + 1], box[2 * mergeAxis + 1]);
+  }
+  return true;
+}
+
+//----------------------------------------------------------------------------
 bool ReadJsonDocument(const std::string& filePath, rapidjson::Document& document)
 {
   std::ifstream jsonFile(filePath, std::ios::binary);
@@ -927,7 +961,10 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
                                * static_cast<long long>(extent[3] - extent[2] + 1) //
                                * static_cast<long long>(extent[5] - extent[4] + 1);
     long long bytesPerVoxel = vtkDataArray::GetDataTypeSize(this->ScalarType) * this->NumberOfComponents;
-    const long long maximumSynchronousPlaceholderBytes = 64LL * 1024LL * 1024LL;
+    // Sized so that ordinary slice view regions (including deep zoom-outs)
+    // always take the synchronous path; the reslice work is parallelized
+    // and takes well under the time a visible coarse flash would last
+    const long long maximumSynchronousPlaceholderBytes = 256LL * 1024LL * 1024LL;
     if (numberOfVoxels * bytesPerVoxel <= maximumSynchronousPlaceholderBytes)
     {
       this->PublishPlaceholderRegion(extent, resolutionLevel);
@@ -1150,6 +1187,20 @@ void vtkMRMLOMEZarrVoxelDataProvider::ProcessPendingRegionRequests()
         long long bytesPerVoxel = active->PrivateImage->GetScalarSize() * active->PrivateImage->GetNumberOfScalarComponents();
         const int* privateExtent = active->PrivateImage->GetExtent();
         long long rowBytes = static_cast<long long>(privateExtent[1] - privateExtent[0] + 1) * bytesPerVoxel;
+        // The published tiles are recorded on the cached region as valid
+        // (real data) sub-boxes: if the stream is later interrupted, the
+        // parts that were already displayed still contribute real data to
+        // placeholders composed for other regions/levels (already displayed
+        // data must never be downgraded).
+        CachedRegion* publishedRegion = nullptr;
+        for (CachedRegion& cachedRegion : this->RegionCache)
+        {
+          if (cachedRegion.Image == active->PublishedImage)
+          {
+            publishedRegion = &cachedRegion;
+            break;
+          }
+        }
         for (const std::array<int, 6>& tileExtent : active->CompletedTileExtents)
         {
           for (int k = tileExtent[4]; k <= tileExtent[5]; ++k)
@@ -1159,6 +1210,22 @@ void vtkMRMLOMEZarrVoxelDataProvider::ProcessPendingRegionRequests()
               memcpy(active->PublishedImage->GetScalarPointer(privateExtent[0], j, k), //
                      active->PrivateImage->GetScalarPointer(privateExtent[0], j, k),
                      rowBytes);
+            }
+          }
+          if (publishedRegion && !publishedRegion->Complete)
+          {
+            bool merged = false;
+            for (std::array<int, 6>& validExtent : publishedRegion->ValidExtents)
+            {
+              if (MergeAdjacentBoxes(validExtent, tileExtent))
+              {
+                merged = true;
+                break;
+              }
+            }
+            if (!merged)
+            {
+              publishedRegion->ValidExtents.push_back(tileExtent);
             }
           }
           this->CompletedLevels.push_back(active->Request.Level);
@@ -1178,6 +1245,8 @@ void vtkMRMLOMEZarrVoxelDataProvider::ProcessPendingRegionRequests()
             if (cachedRegion.Image == active->PublishedImage)
             {
               cachedRegion.Complete = true;
+              // The whole extent is valid now
+              cachedRegion.ValidExtents.clear();
             }
           }
         }
@@ -1304,19 +1373,40 @@ vtkSmartPointer<vtkImageData> vtkMRMLOMEZarrVoxelDataProvider::PublishPlaceholde
     }
     for (CachedRegion& cachedRegion : this->RegionCache)
     {
-      if (cachedRegion.Level == level || !cachedRegion.Complete || !cachedRegion.Image)
+      if (cachedRegion.Level == level || !cachedRegion.Image)
       {
         continue;
       }
-      PlaceholderSource source;
-      source.Level = cachedRegion.Level;
-      for (int i = 0; i < 6; ++i)
+      if (cachedRegion.Complete)
       {
-        source.Extent[i] = cachedRegion.Extent[i];
+        PlaceholderSource source;
+        source.Level = cachedRegion.Level;
+        for (int i = 0; i < 6; ++i)
+        {
+          source.Extent[i] = cachedRegion.Extent[i];
+        }
+        source.Image = cachedRegion.Image;
+        source.VoxelVolume = levelVoxelVolume(cachedRegion.Level);
+        overlays.push_back(source);
       }
-      source.Image = cachedRegion.Image;
-      source.VoxelVolume = levelVoxelVolume(cachedRegion.Level);
-      overlays.push_back(source);
+      else
+      {
+        // An incomplete region still contributes the sub-boxes that hold
+        // real data (the tiles published before its stream was interrupted):
+        // data that was already displayed is never downgraded.
+        for (const std::array<int, 6>& validExtent : cachedRegion.ValidExtents)
+        {
+          PlaceholderSource source;
+          source.Level = cachedRegion.Level;
+          for (int i = 0; i < 6; ++i)
+          {
+            source.Extent[i] = validExtent[i];
+          }
+          source.Image = cachedRegion.Image;
+          source.VoxelVolume = levelVoxelVolume(cachedRegion.Level);
+          overlays.push_back(source);
+        }
+      }
     }
   }
   if (!baseImage)
@@ -1410,25 +1500,23 @@ vtkSmartPointer<vtkImageData> vtkMRMLOMEZarrVoxelDataProvider::PublishPlaceholde
     // Seed the placeholder with real data already cached for overlapping
     // regions of the same level (e.g. the previous pan position): the
     // overlapping parts appear at full quality immediately instead of
-    // dropping back to the upsampled coarse level.
+    // dropping back to the upsampled coarse level. Incomplete regions
+    // contribute the sub-boxes that hold real data (published tiles of an
+    // interrupted stream).
     long long bytesPerVoxel = placeholder->GetScalarSize() * placeholder->GetNumberOfScalarComponents();
-    for (CachedRegion& sourceRegion : this->RegionCache)
+    auto seedFromBox = [&](const CachedRegion& sourceRegion, const int* sourceBox)
     {
-      if (sourceRegion.Level != level || !sourceRegion.Complete || !sourceRegion.Image)
-      {
-        continue;
-      }
       int overlap[6];
       bool overlaps = true;
       for (int axis = 0; axis < 3 && overlaps; ++axis)
       {
-        overlap[2 * axis] = std::max(extent[2 * axis], sourceRegion.Extent[2 * axis]);
-        overlap[2 * axis + 1] = std::min(extent[2 * axis + 1], sourceRegion.Extent[2 * axis + 1]);
+        overlap[2 * axis] = std::max(extent[2 * axis], sourceBox[2 * axis]);
+        overlap[2 * axis + 1] = std::min(extent[2 * axis + 1], sourceBox[2 * axis + 1]);
         overlaps = (overlap[2 * axis] <= overlap[2 * axis + 1]);
       }
       if (!overlaps || sourceRegion.Image->GetScalarType() != placeholder->GetScalarType())
       {
-        continue;
+        return;
       }
       long long rowBytes = static_cast<long long>(overlap[1] - overlap[0] + 1) * bytesPerVoxel;
       for (int k = overlap[4]; k <= overlap[5]; ++k)
@@ -1436,6 +1524,24 @@ vtkSmartPointer<vtkImageData> vtkMRMLOMEZarrVoxelDataProvider::PublishPlaceholde
         for (int j = overlap[2]; j <= overlap[3]; ++j)
         {
           memcpy(placeholder->GetScalarPointer(overlap[0], j, k), sourceRegion.Image->GetScalarPointer(overlap[0], j, k), rowBytes);
+        }
+      }
+    };
+    for (CachedRegion& sourceRegion : this->RegionCache)
+    {
+      if (sourceRegion.Level != level || !sourceRegion.Image)
+      {
+        continue;
+      }
+      if (sourceRegion.Complete)
+      {
+        seedFromBox(sourceRegion, sourceRegion.Extent);
+      }
+      else
+      {
+        for (const std::array<int, 6>& validExtent : sourceRegion.ValidExtents)
+        {
+          seedFromBox(sourceRegion, validExtent.data());
         }
       }
     }
@@ -1621,7 +1727,7 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
       // buffer. ~4 MB per tile; chunks shared between tiles (e.g. j-strips
       // crossing the same chunk row) are served from the session's chunk
       // cache, not re-fetched.
-      const long long tileTargetBytes = 4LL * 1024LL * 1024LL;
+      const long long tileTargetBytes = this->TileTargetBytes;
       int xDim = regionExtent[1] - regionExtent[0] + 1;
       int yDim = regionExtent[3] - regionExtent[2] + 1;
       int zDim = regionExtent[5] - regionExtent[4] + 1;
@@ -1673,6 +1779,10 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
         if (abandoned)
         {
           break;
+        }
+        if (this->InterTileDelayMilliseconds > 0)
+        {
+          std::this_thread::sleep_for(std::chrono::milliseconds(this->InterTileDelayMilliseconds));
         }
         int tileExtent[6];
         for (int i = 0; i < 6; ++i)

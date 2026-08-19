@@ -117,6 +117,24 @@ public:
   //@}
 
   //@{
+  /// Approximate size (bytes) of the tiles that a region is read in
+  /// (progress granularity and progressive display granularity).
+  /// Default: 4 MB. Tests lower it to create multi-tile requests on small
+  /// images.
+  void SetTileTargetBytes(long long bytes) { this->TileTargetBytes = bytes; }
+  long long GetTileTargetBytes() { return this->TileTargetBytes; }
+  //@}
+
+  //@{
+  /// Pause between tile reads of a background request (milliseconds).
+  /// Default: 0. Can be used to throttle background bandwidth/IO use;
+  /// tests use it to observe and interrupt mid-stream states
+  /// deterministically.
+  void SetInterTileDelayMilliseconds(int milliseconds) { this->InterTileDelayMilliseconds = milliseconds; }
+  int GetInterTileDelayMilliseconds() { return this->InterTileDelayMilliseconds; }
+  //@}
+
+  //@{
   /// vtkMRMLVoxelDataProvider interface
   int GetNumberOfResolutionLevels() override;
   bool GetLevelScale(int resolutionLevel, double scale[3]) override;
@@ -211,6 +229,13 @@ protected:
     /// as an upsampled placeholder computed from a coarser level and tiles
     /// of real data replace it progressively.
     bool Complete{ true };
+    /// Sub-boxes of an INCOMPLETE region that already hold real data (the
+    /// tiles published so far). Data that was already displayed must never
+    /// be downgraded: when a placeholder for another region is composed,
+    /// these boxes contribute real data even if the stream that produced
+    /// them was interrupted (e.g. abandoned because the user zoomed out).
+    /// Empty for complete regions (the whole extent is valid).
+    std::vector<std::array<int, 6>> ValidExtents;
   };
 
   /// Returns true if some requester is still interested in the request:
@@ -245,6 +270,10 @@ protected:
   /// Largest level (bytes) that is loaded and cached whole instead of
   /// serving chunk-granular region reads (see SetWholeLevelPreferredBytes)
   long long WholeLevelPreferredBytes{ 512LL * 1024LL * 1024LL };
+  /// Approximate tile size of region reads (see SetTileTargetBytes)
+  long long TileTargetBytes{ 4LL * 1024LL * 1024LL };
+  /// Pause between tile reads (see SetInterTileDelayMilliseconds)
+  int InterTileDelayMilliseconds{ 0 };
   /// Hard cap on the number of cached regions (the effective limit is the
   /// byte budget in TrimRegionCache: several views each keep their own
   /// display regions cached, and evicting a region that a view still shows

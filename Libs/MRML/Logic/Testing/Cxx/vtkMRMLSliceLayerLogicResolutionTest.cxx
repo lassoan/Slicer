@@ -382,6 +382,10 @@ bool WaitForRegionComplete(vtkMRMLOMEZarrVoxelDataProvider* provider, const int 
 //----------------------------------------------------------------------------
 void UpdateView(vtkMRMLSliceNode* sliceNode, vtkMRMLSliceLayerLogic* layer, double fieldOfView, double centerRAS[3])
 {
+  // Batch the geometry change into a single modification, so that no
+  // intermediate view state (new zoom with the old center) triggers a
+  // region request of its own
+  int wasModifying = sliceNode->StartModify();
   sliceNode->SetFieldOfView(fieldOfView, fieldOfView, 4.0);
   vtkMatrix4x4* sliceToRAS = sliceNode->GetSliceToRAS();
   sliceToRAS->Identity();
@@ -389,6 +393,7 @@ void UpdateView(vtkMRMLSliceNode* sliceNode, vtkMRMLSliceLayerLogic* layer, doub
   sliceToRAS->SetElement(1, 3, centerRAS[1]);
   sliceToRAS->SetElement(2, 3, centerRAS[2]);
   sliceNode->UpdateMatrices();
+  sliceNode->EndModify(wasModifying);
   layer->UpdateTransforms();
   layer->UpdateImageDisplay();
 }
@@ -625,6 +630,92 @@ int vtkMRMLSliceLayerLogicResolutionTest(int argc, char* argv[])
   CHECK_BOOL(WaitForRegionComplete(provider.GetPointer(), zoomedOutExtent, 1, 30.0), true);
   layer->UpdateImageDisplay();
   CHECK_INT(static_cast<int>(CountBoxMismatches(DisplayedImage(layer), truth[1], zoomedOutExtent, zoomedOutExtent, 0, "D: converged level 1")), 0);
+
+  //--------------------------------------------------------------------------
+  // Phase E (zoom out DURING loading): zoom into a fresh area, let the fine
+  // stream publish only its first strips (small tiles + inter-tile delay),
+  // then zoom out while the stream is still running (which abandons it).
+  // The strips that were already displayed at full resolution must survive
+  // in the zoomed-out view - already displayed data is never downgraded,
+  // even though the rest of the region is not available at high resolution.
+  provider->SetTileTargetBytes(4096);
+  provider->SetInterTileDelayMilliseconds(30);
+  double freshCenter[3] = { 230.0, 62.0, 4.0 };
+  UpdateView(sliceNode, layer, 44.0, freshCenter);
+  CHECK_INT(layer->GetTargetResolutionLevel(), 0);
+  CHECK_INT(layer->GetDisplayedResolutionLevel(), 0);
+  int streamedExtent[6];
+  layer->GetTargetRegionExtent(streamedExtent);
+  // Pump until at least a few full-resolution strips are displayed: a row is
+  // "arrived" when it matches the level 0 truth across the full region width
+  auto rowIsFullResolution = [&](int y) -> bool
+  {
+    vtkImageData* displayed = DisplayedImage(layer);
+    for (int z = streamedExtent[4]; z <= streamedExtent[5]; ++z)
+    {
+      for (int x = streamedExtent[0]; x <= streamedExtent[1]; ++x)
+      {
+        if (VoxelAt(displayed, x, y, z) != VoxelAt(truth[0], x, y, z))
+        {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  int arrivedY = streamedExtent[2] - 1;
+  {
+    auto start = std::chrono::steady_clock::now();
+    while (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < 30.0)
+    {
+      provider->ProcessPendingRegionRequests();
+      while (arrivedY + 1 <= streamedExtent[3] && rowIsFullResolution(arrivedY + 1))
+      {
+        ++arrivedY;
+      }
+      if (arrivedY >= streamedExtent[2] + 23)
+      {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+  }
+  CHECK_BOOL(arrivedY >= streamedExtent[2] + 23, true);
+  // The stream must still be mid-flight (that is the scenario under test)
+  CHECK_BOOL(provider->IsRegionComplete(streamedExtent, 0), false);
+
+  // Zoom out NOW: the layer's interest moves to the coarser target, which
+  // abandons the running fine stream - but its already displayed strips
+  // must be preserved in the composed zoomed-out view
+  UpdateView(sliceNode, layer, 120.0, freshCenter);
+  CHECK_INT(layer->GetTargetResolutionLevel(), 1);
+  CHECK_INT(layer->GetDisplayedResolutionLevel(), 1);
+  int interruptedExtent[6];
+  layer->GetTargetRegionExtent(interruptedExtent);
+  vtkSmartPointer<vtkImageData> level0onInterrupted = ResampleLevel(provider.GetPointer(), truth[0], 0, 1, interruptedExtent);
+  vtkSmartPointer<vtkImageData> level2onInterrupted = ResampleLevel(provider.GetPointer(), truth[2], 2, 1, interruptedExtent);
+  int arrivedBox[6] = { streamedExtent[0], streamedExtent[1], streamedExtent[2], arrivedY, streamedExtent[4], streamedExtent[5] };
+  int arrivedBoxOn1[6];
+  MapBoxToLevel(provider.GetPointer(), arrivedBox, 0, 1, arrivedBoxOn1);
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    arrivedBoxOn1[2 * axis] = std::max(arrivedBoxOn1[2 * axis], interruptedExtent[2 * axis]);
+    arrivedBoxOn1[2 * axis + 1] = std::min(arrivedBoxOn1[2 * axis + 1], interruptedExtent[2 * axis + 1]);
+  }
+  // Stay clear of the completed level 1 regions (phases A and D): canonical
+  // same-level data is preferred where it exists
+  arrivedBoxOn1[0] = std::max(arrivedBoxOn1[0], std::max(level1Extent[1], zoomedOutExtent[1]) + 1 + margin);
+  CHECK_INT(static_cast<int>(CountBoxMismatches(DisplayedImage(layer), level0onInterrupted, interruptedExtent, arrivedBoxOn1, margin, //
+                                                "E: interrupted stream data survives zoom-out")),
+            0);
+  {
+    std::vector<vtkImageData*> candidates = { level0onInterrupted.GetPointer(), truth[1].GetPointer(), level2onInterrupted.GetPointer() };
+    CHECK_INT(static_cast<int>(CountNonMembers(DisplayedImage(layer), candidates, interruptedExtent, "E: zoom-out membership")), 0);
+  }
+  provider->SetInterTileDelayMilliseconds(0);
+  CHECK_BOOL(WaitForRegionComplete(provider.GetPointer(), interruptedExtent, 1, 30.0), true);
+  layer->UpdateImageDisplay();
+  CHECK_INT(static_cast<int>(CountBoxMismatches(DisplayedImage(layer), truth[1], interruptedExtent, interruptedExtent, 0, "E: converged level 1")), 0);
 
   // The scene owns the nodes; disconnect the layer before teardown
   layer->SetVolumeNode(nullptr);
