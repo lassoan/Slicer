@@ -823,9 +823,12 @@ bool vtkMRMLOMEZarrVoxelDataProvider::RequestRegionAsync(const int extent[6], in
       request.Extent[i] = extent[i];
     }
     this->PendingRequests.push_back(request);
-    // Bound the queue: the oldest requests are superseded (their requesters
-    // re-request on every update while unserved)
-    const size_t maximumQueuedRequests = 16;
+    // Keep the queue SHORT (worker count): every live consumer re-requests
+    // its target on each update, so a dropped stale entry costs at most one
+    // event cycle, while a long queue of stale requests keeps the worker
+    // pool busy (and the oldest-active preemption firing) long after the
+    // interaction that created them has moved on.
+    const size_t maximumQueuedRequests = 4;
     while (this->PendingRequests.size() > maximumQueuedRequests)
     {
       this->PendingRequests.pop_front();
@@ -1310,7 +1313,15 @@ void vtkMRMLOMEZarrVoxelDataProvider::WorkerLoop()
           // completion (abandoning unconditionally is a proven livelock).
           // Abandoned requests notify their requesters, which re-request if
           // still interested.
-          if (!this->PendingRequests.empty() && this->ActiveRequests.size() >= static_cast<size_t>(this->NumberOfWorkerThreads) && this->ActiveRequests.size() > 1)
+          // Additional guards: a request that is already half done is
+          // cheaper to finish than to re-fetch (abandoning it near
+          // completion is what users perceive as "progress restarting from
+          // zero"), and a request younger than a few seconds is likely
+          // serving the CURRENT view (it would immediately be re-requested).
+          double ageSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - active->StartTime).count();
+          bool worthFinishing = (active->TilesTotal > 0 && active->TilesCompleted * 2 >= active->TilesTotal) || ageSeconds < 3.0;
+          if (!worthFinishing && !this->PendingRequests.empty() //
+              && this->ActiveRequests.size() >= static_cast<size_t>(this->NumberOfWorkerThreads) && this->ActiveRequests.size() > 1)
           {
             bool isOldest = true;
             bool isNewest = true;
