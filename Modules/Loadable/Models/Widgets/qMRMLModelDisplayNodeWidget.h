@@ -125,6 +125,9 @@ public slots:
 protected slots:
   void updateWidgetFromMRML();
   void updateDisplayNodesFromProperty();
+  /// Create a vtkMRMLGlyphDisplayNode for the current model node (if not already present)
+  /// and show it in the Glyphs section when that section is expanded.
+  void onGlyphsGroupBoxToggled(bool toggled);
 
 protected:
   QScopedPointer<qMRMLModelDisplayNodeWidgetPrivate> d_ptr;

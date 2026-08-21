@@ -487,6 +487,24 @@
      </layout>
     </widget>
    </item>
+   <item row="4" column="0">
+    <widget class="ctkCollapsibleGroupBox" name="GlyphsGroupBox">
+     <property name="title">
+      <string>Glyphs</string>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+     <property name="collapsed">
+      <bool>true</bool>
+     </property>
+     <layout class="QGridLayout" name="gridLayout_4" columnstretch="0,0">
+      <item row="0" column="0" colspan="2">
+       <widget class="qMRMLGlyphDisplayWidget" name="GlyphDisplayWidget"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
    <item row="0" column="0">
     <widget class="ctkCollapsibleGroupBox" name="CollapsibleGroupBox">
      <property name="title">
@@ -581,6 +599,11 @@
    <extends>qMRMLCheckableNodeComboBox</extends>
    <header>qMRMLDisplayNodeViewComboBox.h</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLGlyphDisplayWidget</class>
+   <extends>qMRMLWidget</extends>
+   <header>qMRMLGlyphDisplayWidget.h</header>
   </customwidget>
   <customwidget>
    <class>qMRMLNodeComboBox</class>

@@ -174,6 +174,7 @@ set(MRMLCore_SRCS
   vtkMRMLFolderDisplayNode.cxx
   vtkMRMLGlyphableVolumeDisplayNode.cxx
   vtkMRMLGlyphableVolumeSliceDisplayNode.cxx
+  vtkMRMLGlyphDisplayNode.cxx
   vtkMRMLGridTransformNode.cxx
   vtkMRMLHierarchyNode.cxx
   vtkMRMLHierarchyStorageNode.cxx
