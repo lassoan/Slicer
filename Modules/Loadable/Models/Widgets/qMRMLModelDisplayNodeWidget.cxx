@@ -34,6 +34,7 @@
 
 // MRML include
 #include <vtkMRMLColorTableNode.h>
+#include <vtkMRMLGlyphDisplayNode.h>
 #include <vtkMRMLModelDisplayNode.h>
 #include <vtkMRMLModelNode.h>
 #include <vtkMRMLScene.h>
@@ -41,6 +42,7 @@
 
 // VTK includes
 #include <vtkDataArray.h>
+#include <vtkNew.h>
 #include <vtkPointData.h>
 #include <vtkPointSet.h>
 #include <vtkProperty.h>
@@ -69,6 +71,10 @@ public:
 
   QList<vtkMRMLModelDisplayNode*> modelDisplayNodesFromSelection() const;
   QList<vtkMRMLDisplayNode*> displayNodesFromSelection() const;
+
+  /// Return the model node's existing vtkMRMLGlyphDisplayNode, if any.
+  /// If none exists and createIfMissing is true, a new one is added to the model node's scene and returned.
+  vtkMRMLGlyphDisplayNode* glyphDisplayNodeForModel(vtkMRMLModelNode* modelNode, bool createIfMissing) const;
 
   // Current display nodes, used to display the current display properties in the widget.
   // They are the first display node that belong to the first current subject hierarchy item.
@@ -130,6 +136,8 @@ void qMRMLModelDisplayNodeWidgetPrivate::init()
              q,
              SIGNAL(scalarRangeModeValueChanged(vtkMRMLDisplayNode::ScalarRangeFlagType)));
   q->connect(this->ScalarsDisplayWidget, SIGNAL(displayNodeChanged()), q, SIGNAL(displayNodeChanged()));
+
+  q->connect(this->GlyphsGroupBox, SIGNAL(toggled(bool)), q, SLOT(onGlyphsGroupBoxToggled(bool)));
 
   if (this->CurrentModelDisplayNode.GetPointer())
   {
@@ -205,6 +213,32 @@ QList<vtkMRMLDisplayNode*> qMRMLModelDisplayNodeWidgetPrivate::displayNodesFromS
     }
   }
   return displayNodes;
+}
+
+//------------------------------------------------------------------------------
+vtkMRMLGlyphDisplayNode* qMRMLModelDisplayNodeWidgetPrivate::glyphDisplayNodeForModel(vtkMRMLModelNode* modelNode, bool createIfMissing) const
+{
+  if (!modelNode)
+  {
+    return nullptr;
+  }
+  int numberOfDisplayNodes = modelNode->GetNumberOfDisplayNodes();
+  for (int i = 0; i < numberOfDisplayNodes; ++i)
+  {
+    vtkMRMLGlyphDisplayNode* glyphDisplayNode = vtkMRMLGlyphDisplayNode::SafeDownCast(modelNode->GetNthDisplayNode(i));
+    if (glyphDisplayNode)
+    {
+      return glyphDisplayNode;
+    }
+  }
+  if (!createIfMissing || !modelNode->GetScene())
+  {
+    return nullptr;
+  }
+  vtkNew<vtkMRMLGlyphDisplayNode> newGlyphDisplayNode;
+  modelNode->GetScene()->AddNode(newGlyphDisplayNode.GetPointer());
+  modelNode->AddAndObserveDisplayNodeID(newGlyphDisplayNode->GetID());
+  return newGlyphDisplayNode.GetPointer();
 }
 
 //------------------------------------------------------------------------------
@@ -362,7 +396,32 @@ void qMRMLModelDisplayNodeWidget::setMRMLDisplayNode(vtkMRMLDisplayNode* display
   // Set display node to scalars display widget
   d->ScalarsDisplayWidget->setMRMLDisplayNode(displayNode);
 
+  // Show the glyph display node of the current model, if any. A new one is only
+  // created here if the Glyphs section happens to already be expanded (e.g. the user
+  // switched to another model while the section was open); otherwise a new one is
+  // created only when the section is expanded, see onGlyphsGroupBoxToggled().
+  vtkMRMLModelNode* modelNode = vtkMRMLModelNode::SafeDownCast(displayNode ? displayNode->GetDisplayableNode() : nullptr);
+  bool createGlyphDisplayNodeIfMissing = (modelNode != nullptr) && !d->GlyphsGroupBox->collapsed();
+  vtkMRMLGlyphDisplayNode* glyphDisplayNode = d->glyphDisplayNodeForModel(modelNode, createGlyphDisplayNodeIfMissing);
+  d->GlyphDisplayWidget->setMRMLGlyphDisplayNode(glyphDisplayNode);
+
   this->updateWidgetFromMRML();
+}
+
+//------------------------------------------------------------------------------
+void qMRMLModelDisplayNodeWidget::onGlyphsGroupBoxToggled(bool toggled)
+{
+  Q_D(qMRMLModelDisplayNodeWidget);
+
+  // Make sure a glyph display node exists for the current model if the Glyphs section is opened
+  if (!toggled)
+  {
+    return;
+  }
+
+  vtkMRMLModelNode* modelNode = vtkMRMLModelNode::SafeDownCast(d->CurrentDisplayNode.GetPointer() ? d->CurrentDisplayNode->GetDisplayableNode() : nullptr);
+  vtkMRMLGlyphDisplayNode* glyphDisplayNode = d->glyphDisplayNodeForModel(modelNode, /*createIfMissing=*/true);
+  d->GlyphDisplayWidget->setMRMLGlyphDisplayNode(glyphDisplayNode);
 }
 
 //------------------------------------------------------------------------------

@@ -30,6 +30,7 @@ Version:   $Revision: 1.18 $
 #include "vtkMRMLDiffusionWeightedVolumeNode.h"
 #include "vtkMRMLDisplayableHierarchyNode.h"
 #include "vtkMRMLFolderDisplayNode.h"
+#include "vtkMRMLGlyphDisplayNode.h"
 #include "vtkMRMLGridTransformNode.h"
 #include "vtkMRMLHierarchyNode.h"
 #include "vtkMRMLHierarchyStorageNode.h"
@@ -203,6 +204,7 @@ vtkMRMLScene::vtkMRMLScene()
   this->RegisterNodeClass(vtkSmartPointer<vtkMRMLDiffusionWeightedVolumeNode>::New());
   this->RegisterNodeClass(vtkSmartPointer<vtkMRMLDisplayableHierarchyNode>::New());
   this->RegisterNodeClass(vtkSmartPointer<vtkMRMLFolderDisplayNode>::New());
+  this->RegisterNodeClass(vtkSmartPointer<vtkMRMLGlyphDisplayNode>::New());
   this->RegisterNodeClass(vtkSmartPointer<vtkMRMLGridTransformNode>::New());
   this->RegisterNodeClass(vtkSmartPointer<vtkMRMLHierarchyNode>::New());
   this->RegisterNodeClass(vtkSmartPointer<vtkMRMLHierarchyStorageNode>::New());
