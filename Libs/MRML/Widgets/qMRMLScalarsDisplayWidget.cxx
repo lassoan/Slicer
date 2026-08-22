@@ -30,6 +30,7 @@
 #include <vtkMRMLColorTableNode.h>
 #include <vtkMRMLDisplayableNode.h>
 #include <vtkMRMLDisplayNode.h>
+#include <vtkMRMLVectorFieldDisplayNode.h>
 #include <vtkMRMLModelDisplayNode.h>
 
 // VTK includes
@@ -47,7 +48,13 @@ public:
   qMRMLScalarsDisplayWidgetPrivate(qMRMLScalarsDisplayWidget& object);
   void init();
 
-  QList<vtkMRMLModelDisplayNode*> currentModelDisplayNodes() const;
+  /// Thresholding helpers that work with any display node type that supports it
+  /// (model and glyph display nodes).
+  static bool isThresholdSupported(vtkMRMLDisplayNode* displayNode);
+  static bool thresholdEnabled(vtkMRMLDisplayNode* displayNode);
+  static void setThresholdEnabled(vtkMRMLDisplayNode* displayNode, bool enabled);
+  static void thresholdRange(vtkMRMLDisplayNode* displayNode, double range[2]);
+  static void setThresholdRange(vtkMRMLDisplayNode* displayNode, double min, double max);
 
 public:
   QList<vtkWeakPointer<vtkMRMLDisplayNode>> CurrentDisplayNodes;
@@ -91,18 +98,87 @@ void qMRMLScalarsDisplayWidgetPrivate::init()
 }
 
 //------------------------------------------------------------------------------
-QList<vtkMRMLModelDisplayNode*> qMRMLScalarsDisplayWidgetPrivate::currentModelDisplayNodes() const
+// Thresholding is implemented by model and glyph display nodes, using the same
+// method names, but there is no common base class that declares them, therefore
+// these helpers dispatch on the actual node type.
+
+//------------------------------------------------------------------------------
+bool qMRMLScalarsDisplayWidgetPrivate::isThresholdSupported(vtkMRMLDisplayNode* displayNode)
 {
-  QList<vtkMRMLModelDisplayNode*> modelDisplayNodes;
-  for (vtkMRMLDisplayNode* const displayNode : this->CurrentDisplayNodes)
+  return vtkMRMLModelDisplayNode::SafeDownCast(displayNode) != nullptr //
+         || vtkMRMLVectorFieldDisplayNode::SafeDownCast(displayNode) != nullptr;
+}
+
+//------------------------------------------------------------------------------
+bool qMRMLScalarsDisplayWidgetPrivate::thresholdEnabled(vtkMRMLDisplayNode* displayNode)
+{
+  vtkMRMLModelDisplayNode* modelDisplayNode = vtkMRMLModelDisplayNode::SafeDownCast(displayNode);
+  if (modelDisplayNode)
   {
-    vtkMRMLModelDisplayNode* modelDisplayNode = vtkMRMLModelDisplayNode::SafeDownCast(displayNode);
-    if (modelDisplayNode)
-    {
-      modelDisplayNodes << modelDisplayNode;
-    }
+    return modelDisplayNode->GetThresholdEnabled();
   }
-  return modelDisplayNodes;
+  vtkMRMLVectorFieldDisplayNode* glyphDisplayNode = vtkMRMLVectorFieldDisplayNode::SafeDownCast(displayNode);
+  if (glyphDisplayNode)
+  {
+    return glyphDisplayNode->GetThresholdEnabled();
+  }
+  return false;
+}
+
+//------------------------------------------------------------------------------
+void qMRMLScalarsDisplayWidgetPrivate::setThresholdEnabled(vtkMRMLDisplayNode* displayNode, bool enabled)
+{
+  vtkMRMLModelDisplayNode* modelDisplayNode = vtkMRMLModelDisplayNode::SafeDownCast(displayNode);
+  if (modelDisplayNode)
+  {
+    modelDisplayNode->SetThresholdEnabled(enabled);
+    return;
+  }
+  vtkMRMLVectorFieldDisplayNode* glyphDisplayNode = vtkMRMLVectorFieldDisplayNode::SafeDownCast(displayNode);
+  if (glyphDisplayNode)
+  {
+    glyphDisplayNode->SetThresholdEnabled(enabled);
+  }
+}
+
+//------------------------------------------------------------------------------
+void qMRMLScalarsDisplayWidgetPrivate::thresholdRange(vtkMRMLDisplayNode* displayNode, double range[2])
+{
+  range[0] = 0.0;
+  range[1] = -1.0; // invalid range
+  vtkMRMLModelDisplayNode* modelDisplayNode = vtkMRMLModelDisplayNode::SafeDownCast(displayNode);
+  if (modelDisplayNode)
+  {
+    modelDisplayNode->GetThresholdRange(range);
+    return;
+  }
+  vtkMRMLVectorFieldDisplayNode* glyphDisplayNode = vtkMRMLVectorFieldDisplayNode::SafeDownCast(displayNode);
+  if (glyphDisplayNode)
+  {
+    glyphDisplayNode->GetThresholdRange(range);
+  }
+}
+
+//------------------------------------------------------------------------------
+void qMRMLScalarsDisplayWidgetPrivate::setThresholdRange(vtkMRMLDisplayNode* displayNode, double min, double max)
+{
+  double oldRange[2] = { 0.0, -1.0 };
+  qMRMLScalarsDisplayWidgetPrivate::thresholdRange(displayNode, oldRange);
+  if (oldRange[0] == min && oldRange[1] == max)
+  {
+    return;
+  }
+  vtkMRMLModelDisplayNode* modelDisplayNode = vtkMRMLModelDisplayNode::SafeDownCast(displayNode);
+  if (modelDisplayNode)
+  {
+    modelDisplayNode->SetThresholdRange(min, max);
+    return;
+  }
+  vtkMRMLVectorFieldDisplayNode* glyphDisplayNode = vtkMRMLVectorFieldDisplayNode::SafeDownCast(displayNode);
+  if (glyphDisplayNode)
+  {
+    glyphDisplayNode->SetThresholdRange(min, max);
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -374,10 +450,9 @@ void qMRMLScalarsDisplayWidget::setTresholdEnabled(bool b)
 {
   Q_D(qMRMLScalarsDisplayWidget);
 
-  QList<vtkMRMLModelDisplayNode*> currentModelDisplayNodes = d->currentModelDisplayNodes();
-  for (vtkMRMLModelDisplayNode* const modelDisplayNode : currentModelDisplayNodes)
+  for (vtkMRMLDisplayNode* const displayNode : d->CurrentDisplayNodes)
   {
-    modelDisplayNode->SetThresholdEnabled(b);
+    qMRMLScalarsDisplayWidgetPrivate::setThresholdEnabled(displayNode, b);
   }
 }
 
@@ -386,16 +461,9 @@ void qMRMLScalarsDisplayWidget::setThresholdRange(double min, double max)
 {
   Q_D(qMRMLScalarsDisplayWidget);
 
-  QList<vtkMRMLModelDisplayNode*> currentModelDisplayNodes = d->currentModelDisplayNodes();
-  for (vtkMRMLModelDisplayNode* const modelDisplayNode : currentModelDisplayNodes)
+  for (vtkMRMLDisplayNode* const displayNode : d->CurrentDisplayNodes)
   {
-    double oldMin = modelDisplayNode->GetThresholdMin();
-    double oldMax = modelDisplayNode->GetThresholdMax();
-    if (oldMin == min && oldMax == max)
-    {
-      return;
-    }
-    modelDisplayNode->SetThresholdRange(min, max);
+    qMRMLScalarsDisplayWidgetPrivate::setThresholdRange(displayNode, min, max);
   }
 }
 
@@ -447,12 +515,11 @@ void qMRMLScalarsDisplayWidget::updateWidgetFromMRML()
   Q_D(qMRMLScalarsDisplayWidget);
 
   vtkMRMLDisplayNode* firstDisplayNode = (d->CurrentDisplayNodes.size() > 0 ? d->CurrentDisplayNodes[0] : nullptr);
-  vtkMRMLModelDisplayNode* firstModelDisplayNode = vtkMRMLModelDisplayNode::SafeDownCast(firstDisplayNode);
-
-  // The Threshold section is only available for models
-  d->ThresholdLabel->setVisible(firstModelDisplayNode != nullptr);
-  d->ThresholdCheckBox->setVisible(firstModelDisplayNode != nullptr);
-  d->ThresholdRangeWidget->setVisible(firstModelDisplayNode != nullptr);
+  // The Threshold section is only available for display nodes that support thresholding
+  bool thresholdSupported = qMRMLScalarsDisplayWidgetPrivate::isThresholdSupported(firstDisplayNode);
+  d->ThresholdLabel->setVisible(thresholdSupported);
+  d->ThresholdCheckBox->setVisible(thresholdSupported);
+  d->ThresholdRangeWidget->setVisible(thresholdSupported);
 
   this->setEnabled(firstDisplayNode != nullptr);
   if (!firstDisplayNode)
@@ -545,13 +612,14 @@ void qMRMLScalarsDisplayWidget::updateWidgetFromMRML()
   d->DisplayedScalarRangeWidget->blockSignals(wasBlocking);
 
   double thresholdRange[2] = { 0.0, 0.0 };
-  if (firstModelDisplayNode)
+  if (thresholdSupported)
   {
-    firstModelDisplayNode->GetThresholdRange(thresholdRange);
+    qMRMLScalarsDisplayWidgetPrivate::thresholdRange(firstDisplayNode, thresholdRange);
   }
+  bool isThresholdEnabled = thresholdSupported && qMRMLScalarsDisplayWidgetPrivate::thresholdEnabled(firstDisplayNode);
 
   wasBlocking = d->ThresholdRangeWidget->blockSignals(true);
-  d->ThresholdRangeWidget->setEnabled(firstModelDisplayNode && firstModelDisplayNode->GetThresholdEnabled());
+  d->ThresholdRangeWidget->setEnabled(isThresholdEnabled);
   d->ThresholdRangeWidget->setRange(dataRange[0] - precision, dataRange[1] + precision);
   if (thresholdRange[0] <= thresholdRange[1])
   {
@@ -571,8 +639,8 @@ void qMRMLScalarsDisplayWidget::updateWidgetFromMRML()
   d->ThresholdRangeWidget->blockSignals(wasBlocking);
 
   wasBlocking = d->ThresholdCheckBox->blockSignals(true);
-  d->ThresholdCheckBox->setEnabled(firstModelDisplayNode);
-  d->ThresholdCheckBox->setChecked(firstModelDisplayNode && firstModelDisplayNode->GetThresholdEnabled());
+  d->ThresholdCheckBox->setEnabled(thresholdSupported);
+  d->ThresholdCheckBox->setChecked(isThresholdEnabled);
   d->ThresholdCheckBox->blockSignals(wasBlocking);
 
   wasBlocking = d->DisplayedScalarRangeModeComboBox->blockSignals(true);

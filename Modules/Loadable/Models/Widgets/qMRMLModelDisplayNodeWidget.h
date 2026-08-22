@@ -122,12 +122,19 @@ public slots:
   /// Show/hide "Configure..." button for clipping
   void setClippingConfigurationButtonVisible(bool);
 
+public slots:
+  /// Add a new glyph display to the current model node and select it in the Glyphs section.
+  void addGlyphDisplayNode();
+  /// Remove the glyph display that is selected in the Glyphs section from the current model node.
+  void removeGlyphDisplayNode();
+
 protected slots:
   void updateWidgetFromMRML();
   void updateDisplayNodesFromProperty();
-  /// Create a vtkMRMLGlyphDisplayNode for the current model node (if not already present)
-  /// and show it in the Glyphs section when that section is expanded.
-  void onGlyphsGroupBoxToggled(bool toggled);
+  /// Refresh the list of the current model node's glyph displays in the Glyphs section.
+  void updateGlyphDisplayNodesList();
+  /// Show the properties of the glyph display selected in the Glyphs section.
+  void onGlyphDisplayNodeSelectionChanged();
 
 protected:
   QScopedPointer<qMRMLModelDisplayNodeWidgetPrivate> d_ptr;

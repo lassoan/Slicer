@@ -135,6 +135,7 @@ void qMRMLSliceViewPrivate::initDisplayableManagers()
   QStringList displayableManagers;
   displayableManagers << "vtkMRMLVolumeGlyphSliceDisplayableManager";
   displayableManagers << "vtkMRMLModelSliceDisplayableManager";
+  displayableManagers << "vtkMRMLVectorFieldSliceDisplayableManager";
   displayableManagers << "vtkMRMLCrosshairDisplayableManager";
   displayableManagers << "vtkMRMLOrientationMarkerDisplayableManager";
   displayableManagers << "vtkMRMLRulerDisplayableManager";

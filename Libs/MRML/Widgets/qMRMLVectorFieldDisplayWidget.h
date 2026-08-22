@@ -15,8 +15,8 @@
 
 ==============================================================================*/
 
-#ifndef __qMRMLGlyphDisplayWidget_h
-#define __qMRMLGlyphDisplayWidget_h
+#ifndef __qMRMLVectorFieldDisplayWidget_h
+#define __qMRMLVectorFieldDisplayWidget_h
 
 // MRMLWidgets includes
 #include "qMRMLWidget.h"
@@ -25,35 +25,36 @@
 #include <ctkVTKObject.h>
 
 // qMRML includes
-#include "qSlicerModelsModuleWidgetsExport.h"
+#include "qMRMLWidgetsExport.h"
 
-class qMRMLGlyphDisplayWidgetPrivate;
-class vtkMRMLGlyphDisplayNode;
+class qMRMLVectorFieldDisplayWidgetPrivate;
+class vtkMRMLVectorFieldDisplayNode;
 class vtkMRMLNode;
 
-/// \brief Widget to edit the properties of a vtkMRMLGlyphDisplayNode.
-class Q_SLICER_QTMODULES_MODELS_WIDGETS_EXPORT qMRMLGlyphDisplayWidget : public qMRMLWidget
+/// \brief Widget to edit the properties of a vtkMRMLVectorFieldDisplayNode.
+class QMRML_WIDGETS_EXPORT qMRMLVectorFieldDisplayWidget : public qMRMLWidget
 {
   Q_OBJECT
   QVTK_OBJECT
 
 public:
   typedef qMRMLWidget Superclass;
-  qMRMLGlyphDisplayWidget(QWidget* parent = nullptr);
-  ~qMRMLGlyphDisplayWidget() override;
+  qMRMLVectorFieldDisplayWidget(QWidget* parent = nullptr);
+  ~qMRMLVectorFieldDisplayWidget() override;
 
   /// Get the glyph display node currently shown/edited by this widget.
-  vtkMRMLGlyphDisplayNode* mrmlGlyphDisplayNode() const;
+  vtkMRMLVectorFieldDisplayNode* mrmlVectorFieldDisplayNode() const;
 
 public slots:
   /// Set the glyph display node shown/edited by this widget.
-  void setMRMLGlyphDisplayNode(vtkMRMLGlyphDisplayNode* glyphDisplayNode);
+  void setMRMLVectorFieldDisplayNode(vtkMRMLVectorFieldDisplayNode* glyphDisplayNode);
   /// Utility function to be connected with generic signals.
-  void setMRMLGlyphDisplayNode(vtkMRMLNode* node);
+  void setMRMLVectorFieldDisplayNode(vtkMRMLNode* node);
 
 protected slots:
   void updateWidgetFromMRML();
 
+  void onVisibilityToggled(bool visible);
   void onGlyphTypeChanged(int index);
   void onOrientationArrayChanged(int index);
   void onScaleArrayChanged(int index);
@@ -63,12 +64,25 @@ protected slots:
   void onMaskingNthPointChanged(int value);
   void onMaskingPointsNumberChanged(int value);
 
+  /// Convert the selected orientation array between the RAS and LPS coordinate
+  /// systems by inverting the sign of the first two components of each vector.
+  void swapOrientationArrayCoordinateSystem();
+
+  void onVisibility3DToggled(bool visible);
+  void onColorChanged(const QColor& color);
+  void onOpacityChanged(double opacity);
+
+  void onVisibility2DToggled(bool visible);
+  void onSliceSlabThicknessChanged(double value);
+  void onSliceGlyphScaleChanged(double value);
+  void onSliceLineWidthChanged(int value);
+
 protected:
-  QScopedPointer<qMRMLGlyphDisplayWidgetPrivate> d_ptr;
+  QScopedPointer<qMRMLVectorFieldDisplayWidgetPrivate> d_ptr;
 
 private:
-  Q_DECLARE_PRIVATE(qMRMLGlyphDisplayWidget);
-  Q_DISABLE_COPY(qMRMLGlyphDisplayWidget);
+  Q_DECLARE_PRIVATE(qMRMLVectorFieldDisplayWidget);
+  Q_DISABLE_COPY(qMRMLVectorFieldDisplayWidget);
 };
 
 #endif
