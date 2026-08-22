@@ -142,11 +142,9 @@ protected:
   void UpdateModelsFromMRML();
   void UpdateModel(vtkMRMLDisplayableNode* model);
   void UpdateModelMesh(vtkMRMLDisplayableNode* model);
-  void UpdateModelGlyphs(vtkMRMLDisplayableNode* model);
   void UpdateModifiedModel(vtkMRMLDisplayableNode* model);
 
   void SetModelDisplayProperty(vtkMRMLDisplayableNode* model);
-  void SetGlyphDisplayProperty(vtkMRMLDisplayableNode* model);
   int GetDisplayedModelsVisibility(vtkMRMLDisplayNode* displayNode);
 
   const char* GetActiveScalarName(vtkMRMLDisplayNode* displayNode, vtkMRMLModelNode* model = nullptr);

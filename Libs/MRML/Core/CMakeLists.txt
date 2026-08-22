@@ -174,7 +174,6 @@ set(MRMLCore_SRCS
   vtkMRMLFolderDisplayNode.cxx
   vtkMRMLGlyphableVolumeDisplayNode.cxx
   vtkMRMLGlyphableVolumeSliceDisplayNode.cxx
-  vtkMRMLGlyphDisplayNode.cxx
   vtkMRMLGridTransformNode.cxx
   vtkMRMLHierarchyNode.cxx
   vtkMRMLHierarchyStorageNode.cxx
@@ -182,6 +181,7 @@ set(MRMLCore_SRCS
   vtkMRMLI18N.h
   vtkMRMLInteractionEventData.cxx
   vtkMRMLInteractionEventData.h
+  vtkMRMLImageFieldSampler.cxx
   vtkMRMLInteractionNode.cxx
   vtkMRMLJsonElement.cxx
   vtkMRMLLabelMapVolumeDisplayNode.cxx
@@ -285,6 +285,9 @@ set(MRMLCore_SRCS
   vtkMRMLTransformableNode.cxx
   vtkMRMLTranslator.h
   vtkMRMLUnitNode.cxx
+  vtkMRMLVectorFieldDisplayNode.cxx
+  vtkMRMLVectorFieldModePipeline.cxx
+  vtkMRMLVectorFieldSampler.cxx
   vtkMRMLVectorVolumeDisplayNode.cxx
   vtkMRMLViewNode.cxx
   vtkMRMLVolumeArchetypeStorageNode.cxx
@@ -299,6 +302,8 @@ set(MRMLCore_SRCS
   vtkPermissionPrompter.cxx
   vtkProjectMarkupsCurvePointsFilter.cxx
   vtkProjectMarkupsCurvePointsFilter.h
+  vtkProjectVectorsToPlane.cxx
+  vtkProjectVectorsToPlane.h
   vtkTagTable.cxx
   vtkTagTableCollection.cxx
   vtkURIHandler.cxx

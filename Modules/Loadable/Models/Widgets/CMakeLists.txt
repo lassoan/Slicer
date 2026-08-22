@@ -9,14 +9,11 @@ set(${KIT}_INCLUDE_DIRECTORIES
   )
 
 set(${KIT}_SRCS
-  qMRMLGlyphDisplayWidget.cxx
-  qMRMLGlyphDisplayWidget.h
   qMRMLModelDisplayNodeWidget.cxx
   qMRMLModelDisplayNodeWidget.h
   )
 
 set(${KIT}_UI_SRCS
-  Resources/UI/qMRMLGlyphDisplayWidget.ui
   Resources/UI/qMRMLModelDisplayNodeWidget.ui
   )
 

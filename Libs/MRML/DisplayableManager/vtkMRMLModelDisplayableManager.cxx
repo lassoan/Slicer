@@ -19,7 +19,6 @@
 #include <vtkMRMLDisplayNode.h>
 #include <vtkMRMLDisplayableNode.h>
 #include <vtkMRMLFolderDisplayNode.h>
-#include <vtkMRMLGlyphDisplayNode.h>
 #include <vtkMRMLInteractionNode.h>
 #include <vtkMRMLModelDisplayNode.h>
 #include <vtkMRMLModelNode.h>
@@ -37,7 +36,6 @@
 #include <vtkActor.h>
 #include <vtkAlgorithm.h>
 #include <vtkAlgorithmOutput.h>
-#include <vtkArrowSource.h>
 #include <vtkAssignAttribute.h>
 #include <vtkCapPolyData.h>
 #include <vtkCallbackCommand.h>
@@ -45,26 +43,19 @@
 #include <vtkClipDataSet.h>
 #include <vtkClipPolyData.h>
 #include <vtkColorTransferFunction.h>
-#include <vtkConeSource.h>
-#include <vtkCubeSource.h>
-#include <vtkCylinderSource.h>
 #include <vtkDataSetAttributes.h>
 #include <vtkDataSetMapper.h>
 #include <vtkExtractCells.h>
 #include <vtkExtractGeometry.h>
 #include <vtkExtractPolyDataGeometry.h>
 #include <vtkGeneralTransform.h>
-#include <vtkGeometryFilter.h>
-#include <vtkGlyph3DMapper.h>
 #include <vtkImageActor.h>
 #include <vtkImageData.h>
 #include <vtkImageMapper3D.h>
 #include <vtkImplicitBoolean.h>
 #include <vtkImplicitFunction.h>
 #include <vtkImplicitFunctionCollection.h>
-#include <vtkLineSource.h>
 #include <vtkLookupTable.h>
-#include <vtkMaskPoints.h>
 #include <vtkMatrix4x4.h>
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
@@ -72,13 +63,11 @@
 #include <vtkPlaneCollection.h>
 #include <vtkPointData.h>
 #include <vtkPointSet.h>
-#include <vtkPolyDataAlgorithm.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProp3DCollection.h>
 #include <vtkProperty.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkSmartPointer.h>
-#include <vtkSphereSource.h>
 #include <vtkTexture.h>
 #include <vtkTransform.h>
 #include <vtkTransformFilter.h>
@@ -128,12 +117,6 @@ public:
   std::map<std::string, vtkSmartPointer<vtkProp3D>>             DisplayedCapActors;
   std::map<std::string, vtkSmartPointer<vtkTransformFilter>>    DisplayNodeCapTransformFilters;
 
-  // Glyph display pipeline, keyed by vtkMRMLGlyphDisplayNode ID.
-  std::map<std::string, vtkSmartPointer<vtkActor>>              DisplayedGlyphActors;
-  std::map<std::string, vtkSmartPointer<vtkMaskPoints>>         GlyphMaskFilters;
-  std::map<std::string, vtkSmartPointer<vtkGlyph3DMapper>>      GlyphMappers;
-  std::map<std::string, vtkSmartPointer<vtkTransformFilter>>    GlyphTransformFilters;
-  std::map<std::string, vtkSmartPointer<vtkGeometryFilter>>     GlyphSurfaceFilters;
   // clang-format on
 
   bool IsUpdatingModelsFromMRML;
@@ -673,7 +656,6 @@ void vtkMRMLModelDisplayableManager::UpdateModelsFromMRML()
       }
     }
     this->SetModelDisplayProperty(model);
-    this->SetGlyphDisplayProperty(model);
   }
 
   // render the rest of the models
@@ -722,29 +704,6 @@ void vtkMRMLModelDisplayableManager::ClearDisplayMaps()
     transformFilter->SetTransform(nullptr);
   }
   this->Internal->DisplayNodeCapTransformFilters.clear();
-
-  if (this->GetRenderer())
-  {
-    for (auto iter = this->Internal->DisplayedGlyphActors.begin(); iter != this->Internal->DisplayedGlyphActors.end(); iter++)
-    {
-      this->GetRenderer()->RemoveViewProp(iter->second);
-    }
-  }
-  this->Internal->DisplayedGlyphActors.clear();
-  this->Internal->GlyphMaskFilters.clear();
-  this->Internal->GlyphMappers.clear();
-  for (auto iter = this->Internal->GlyphTransformFilters.begin(); iter != this->Internal->GlyphTransformFilters.end(); iter++)
-  {
-    vtkTransformFilter* transformFilter = iter->second;
-    transformFilter->SetInputConnection(nullptr);
-    transformFilter->SetTransform(nullptr);
-  }
-  this->Internal->GlyphTransformFilters.clear();
-  for (auto iter = this->Internal->GlyphSurfaceFilters.begin(); iter != this->Internal->GlyphSurfaceFilters.end(); iter++)
-  {
-    iter->second->SetInputConnection(nullptr);
-  }
-  this->Internal->GlyphSurfaceFilters.clear();
 }
 
 //---------------------------------------------------------------------------
@@ -752,7 +711,6 @@ void vtkMRMLModelDisplayableManager::UpdateModifiedModel(vtkMRMLDisplayableNode*
 {
   this->UpdateModel(model);
   this->SetModelDisplayProperty(model);
-  this->SetGlyphDisplayProperty(model);
 }
 
 //---------------------------------------------------------------------------
@@ -1089,318 +1047,9 @@ void vtkMRMLModelDisplayableManager::UpdateModelMesh(vtkMRMLDisplayableNode* dis
 }
 
 //---------------------------------------------------------------------------
-namespace
-{
-// Build a glyph source for the given glyph type. The output geometry's "long axis"
-// points along +X, consistent with vtkGlyph3DMapper's DIRECTION orientation mode,
-// which aligns +X of the glyph source with the orientation array vector.
-vtkSmartPointer<vtkPolyDataAlgorithm> vtkMRMLModelDisplayableManagerCreateGlyphSource(int glyphType)
-{
-  switch (glyphType)
-  {
-    case vtkMRMLGlyphDisplayNode::GlyphTypeCone:
-    {
-      vtkNew<vtkConeSource> coneSource;
-      coneSource->SetResolution(16);
-      return coneSource.GetPointer();
-    }
-    case vtkMRMLGlyphDisplayNode::GlyphTypeBox:
-    {
-      vtkNew<vtkCubeSource> cubeSource;
-      return cubeSource.GetPointer();
-    }
-    case vtkMRMLGlyphDisplayNode::GlyphTypeCylinder:
-    {
-      // vtkCylinderSource generates a cylinder with its axis along Y by default.
-      // Rotate it so that its axis is along X, to be consistent with the other glyph sources.
-      vtkNew<vtkCylinderSource> cylinderSource;
-      cylinderSource->SetResolution(16);
-      vtkNew<vtkTransform> cylinderTransform;
-      cylinderTransform->RotateZ(90.0);
-      vtkNew<vtkTransformPolyDataFilter> cylinderTransformFilter;
-      cylinderTransformFilter->SetTransform(cylinderTransform);
-      cylinderTransformFilter->SetInputConnection(cylinderSource->GetOutputPort());
-      return cylinderTransformFilter.GetPointer();
-    }
-    case vtkMRMLGlyphDisplayNode::GlyphTypeLine:
-    {
-      vtkNew<vtkLineSource> lineSource;
-      return lineSource.GetPointer();
-    }
-    case vtkMRMLGlyphDisplayNode::GlyphTypeSphere:
-    {
-      vtkNew<vtkSphereSource> sphereSource;
-      sphereSource->SetThetaResolution(16);
-      sphereSource->SetPhiResolution(16);
-      return sphereSource.GetPointer();
-    }
-    case vtkMRMLGlyphDisplayNode::GlyphTypeArrow:
-    default:
-    {
-      vtkNew<vtkArrowSource> arrowSource;
-      arrowSource->SetTipResolution(16);
-      arrowSource->SetShaftResolution(16);
-      return arrowSource.GetPointer();
-    }
-  }
-}
-} // namespace
-
-//---------------------------------------------------------------------------
-void vtkMRMLModelDisplayableManager::UpdateModelGlyphs(vtkMRMLDisplayableNode* displayableNode)
-{
-  vtkMRMLModelNode* modelNode = vtkMRMLModelNode::SafeDownCast(displayableNode);
-  if (!modelNode)
-  {
-    return;
-  }
-
-  bool hasNonLinearTransform = false;
-  vtkMRMLTransformNode* tnode = displayableNode->GetParentTransformNode();
-  vtkSmartPointer<vtkGeneralTransform> worldTransform = vtkSmartPointer<vtkGeneralTransform>::New();
-  worldTransform->Identity();
-  if (tnode != nullptr && !tnode->IsTransformToWorldLinear())
-  {
-    hasNonLinearTransform = true;
-    tnode->GetTransformToWorld(worldTransform);
-  }
-
-  int ndnodes = displayableNode->GetNumberOfDisplayNodes();
-  for (int i = 0; i < ndnodes; i++)
-  {
-    vtkMRMLGlyphDisplayNode* glyphDisplayNode = vtkMRMLGlyphDisplayNode::SafeDownCast(displayableNode->GetNthDisplayNode(i));
-    if (!glyphDisplayNode)
-    {
-      continue;
-    }
-
-    vtkAlgorithmOutput* meshConnection = modelNode->GetMeshConnection();
-    if (!meshConnection)
-    {
-      this->RemoveDisplayedID(glyphDisplayNode->GetID());
-      continue;
-    }
-
-    auto actorIt = this->Internal->DisplayedGlyphActors.find(glyphDisplayNode->GetID());
-    vtkSmartPointer<vtkActor> actor;
-    vtkSmartPointer<vtkGlyph3DMapper> glyphMapper;
-    vtkSmartPointer<vtkMaskPoints> maskPoints;
-    if (actorIt == this->Internal->DisplayedGlyphActors.end())
-    {
-      actor = vtkSmartPointer<vtkActor>::New();
-      glyphMapper = vtkSmartPointer<vtkGlyph3DMapper>::New();
-      // Glyphs are colored by the display node's solid Color property (see SetGlyphDisplayProperty()),
-      // not by point data; vtkMapper::ScalarVisibility defaults to on, which would otherwise make the
-      // mapper try to color by whatever point data array happens to be picked up through masking.
-      glyphMapper->ScalarVisibilityOff();
-      maskPoints = vtkSmartPointer<vtkMaskPoints>::New();
-      maskPoints->GenerateVerticesOff();
-      glyphMapper->SetInputConnection(maskPoints->GetOutputPort());
-      actor->SetMapper(glyphMapper);
-      this->Internal->DisplayedGlyphActors[glyphDisplayNode->GetID()] = actor;
-      this->Internal->GlyphMappers[glyphDisplayNode->GetID()] = glyphMapper;
-      this->Internal->GlyphMaskFilters[glyphDisplayNode->GetID()] = maskPoints;
-      this->GetRenderer()->AddViewProp(actor);
-    }
-    else
-    {
-      actor = vtkActor::SafeDownCast(actorIt->second);
-      glyphMapper = this->Internal->GlyphMappers[glyphDisplayNode->GetID()];
-      maskPoints = this->Internal->GlyphMaskFilters[glyphDisplayNode->GetID()];
-    }
-
-    // Non-linear transform: bake it into the points upstream of masking.
-    // (Linear transforms are applied to the actor itself, see SetGlyphDisplayProperty().)
-    vtkAlgorithmOutput* glyphInputConnection = meshConnection;
-    auto transformFilterIt = this->Internal->GlyphTransformFilters.find(glyphDisplayNode->GetID());
-    if (hasNonLinearTransform)
-    {
-      vtkSmartPointer<vtkTransformFilter> transformFilter;
-      if (transformFilterIt == this->Internal->GlyphTransformFilters.end())
-      {
-        transformFilter = vtkSmartPointer<vtkTransformFilter>::New();
-        this->Internal->GlyphTransformFilters[glyphDisplayNode->GetID()] = transformFilter;
-      }
-      else
-      {
-        transformFilter = transformFilterIt->second;
-      }
-      transformFilter->SetInputConnection(meshConnection);
-      transformFilter->SetTransform(worldTransform);
-      glyphInputConnection = transformFilter->GetOutputPort();
-    }
-    else if (transformFilterIt != this->Internal->GlyphTransformFilters.end())
-    {
-      transformFilterIt->second->SetInputConnection(nullptr);
-      transformFilterIt->second->SetTransform(nullptr);
-      this->Internal->GlyphTransformFilters.erase(transformFilterIt);
-    }
-    // Surface-sampling masking needs 2D (surface) cells to sample from; volumetric meshes (e.g.
-    // tetrahedral solid meshes) typically only have 3D cells, so extract the boundary surface first.
-    vtkAlgorithmOutput* maskInputConnection = glyphInputConnection;
-    auto surfaceFilterIt = this->Internal->GlyphSurfaceFilters.find(glyphDisplayNode->GetID());
-    if (glyphDisplayNode->GetMaskingMode() == vtkMRMLGlyphDisplayNode::MaskingModeUniformSurface)
-    {
-      vtkSmartPointer<vtkGeometryFilter> surfaceFilter;
-      if (surfaceFilterIt == this->Internal->GlyphSurfaceFilters.end())
-      {
-        surfaceFilter = vtkSmartPointer<vtkGeometryFilter>::New();
-        this->Internal->GlyphSurfaceFilters[glyphDisplayNode->GetID()] = surfaceFilter;
-      }
-      else
-      {
-        surfaceFilter = surfaceFilterIt->second;
-      }
-      surfaceFilter->SetInputConnection(glyphInputConnection);
-      maskInputConnection = surfaceFilter->GetOutputPort();
-    }
-    else if (surfaceFilterIt != this->Internal->GlyphSurfaceFilters.end())
-    {
-      surfaceFilterIt->second->SetInputConnection(nullptr);
-      this->Internal->GlyphSurfaceFilters.erase(surfaceFilterIt);
-    }
-    maskPoints->SetInputConnection(maskInputConnection);
-
-    // Masking: which mesh points get a glyph.
-    switch (glyphDisplayNode->GetMaskingMode())
-    {
-      case vtkMRMLGlyphDisplayNode::MaskingModeEveryNthPoint:
-        maskPoints->RandomModeOff();
-        maskPoints->SetOnRatio(glyphDisplayNode->GetMaskingNthPoint());
-        break;
-      case vtkMRMLGlyphDisplayNode::MaskingModeUniformBounds:
-        maskPoints->RandomModeOn();
-        maskPoints->SetRandomModeType(vtkMaskPoints::UNIFORM_SPATIAL_BOUNDS);
-        maskPoints->SetMaximumNumberOfPoints(glyphDisplayNode->GetMaskingPointsNumber());
-        break;
-      case vtkMRMLGlyphDisplayNode::MaskingModeUniformSurface:
-        maskPoints->RandomModeOn();
-        maskPoints->SetRandomModeType(vtkMaskPoints::UNIFORM_SPATIAL_SURFACE);
-        maskPoints->SetMaximumNumberOfPoints(glyphDisplayNode->GetMaskingPointsNumber());
-        break;
-      case vtkMRMLGlyphDisplayNode::MaskingModeUniformVolume:
-        maskPoints->RandomModeOn();
-        maskPoints->SetRandomModeType(vtkMaskPoints::UNIFORM_SPATIAL_VOLUME);
-        maskPoints->SetMaximumNumberOfPoints(glyphDisplayNode->GetMaskingPointsNumber());
-        break;
-      case vtkMRMLGlyphDisplayNode::MaskingModeAllPoints:
-      default:
-        maskPoints->RandomModeOff();
-        maskPoints->SetOnRatio(1);
-        break;
-    }
-
-    // Glyph geometry
-    vtkSmartPointer<vtkPolyDataAlgorithm> glyphSource = vtkMRMLModelDisplayableManagerCreateGlyphSource(glyphDisplayNode->GetGlyphType());
-    glyphMapper->SetSourceConnection(glyphSource->GetOutputPort());
-
-    // Orientation
-    const char* orientationArrayName = glyphDisplayNode->GetOrientationArrayName();
-    if (orientationArrayName && orientationArrayName[0] != '\0')
-    {
-      glyphMapper->OrientOn();
-      glyphMapper->SetOrientationModeToDirection();
-      glyphMapper->SetOrientationArray(orientationArrayName);
-    }
-    else
-    {
-      glyphMapper->OrientOff();
-    }
-
-    // Scale
-    glyphMapper->ScalingOn();
-    glyphMapper->SetScaleFactor(glyphDisplayNode->GetScaleFactor());
-    const char* scaleArrayName = glyphDisplayNode->GetScaleArrayName();
-    if (scaleArrayName && scaleArrayName[0] != '\0')
-    {
-      glyphMapper->SetScaleArray(scaleArrayName);
-      vtkDataArray* scaleArray = glyphDisplayNode->GetScaleArray();
-      bool scaleByComponents = (scaleArray && scaleArray->GetNumberOfComponents() == 3 &&
-                                glyphDisplayNode->GetVectorScaleMode() == vtkMRMLGlyphDisplayNode::VectorScaleModeByComponents);
-      glyphMapper->SetScaleMode(scaleByComponents ? vtkGlyph3DMapper::SCALE_BY_COMPONENTS : vtkGlyph3DMapper::SCALE_BY_MAGNITUDE);
-    }
-    else
-    {
-      glyphMapper->SetScaleModeToNoDataScaling();
-    }
-  }
-}
-
-//---------------------------------------------------------------------------
-void vtkMRMLModelDisplayableManager::SetGlyphDisplayProperty(vtkMRMLDisplayableNode* model)
-{
-  // Get transformation applied on model
-  vtkMRMLTransformNode* transformNode = model->GetParentTransformNode();
-  vtkNew<vtkMatrix4x4> matrixTransformToWorld;
-  if (transformNode != nullptr && transformNode->IsTransformToWorldLinear())
-  {
-    transformNode->GetMatrixTransformToWorld(matrixTransformToWorld.GetPointer());
-  }
-
-  vtkMRMLDisplayNode* overrideHierarchyDisplayNode = vtkMRMLFolderDisplayNode::GetOverridingHierarchyDisplayNode(model);
-
-  int numberOfDisplayNodes = model->GetNumberOfDisplayNodes();
-  for (int i = 0; i < numberOfDisplayNodes; i++)
-  {
-    vtkMRMLGlyphDisplayNode* glyphDisplayNode = vtkMRMLGlyphDisplayNode::SafeDownCast(model->GetNthDisplayNode(i));
-    if (!glyphDisplayNode)
-    {
-      continue;
-    }
-    auto actorIt = this->Internal->DisplayedGlyphActors.find(glyphDisplayNode->GetID());
-    if (actorIt == this->Internal->DisplayedGlyphActors.end())
-    {
-      continue;
-    }
-    vtkActor* actor = vtkActor::SafeDownCast(actorIt->second);
-    if (!actor)
-    {
-      continue;
-    }
-
-    bool hierarchyVisibility = true;
-    double hierarchyOpacity = 1.0;
-    vtkMRMLDisplayNode* effectiveDisplayNode = glyphDisplayNode;
-    if (glyphDisplayNode->GetFolderDisplayOverrideAllowed())
-    {
-      if (overrideHierarchyDisplayNode)
-      {
-        effectiveDisplayNode = overrideHierarchyDisplayNode;
-      }
-      hierarchyVisibility = vtkMRMLFolderDisplayNode::GetHierarchyVisibility(model);
-      hierarchyOpacity = vtkMRMLFolderDisplayNode::GetHierarchyOpacity(model);
-    }
-
-    actor->SetUserMatrix(matrixTransformToWorld.GetPointer());
-
-    bool visible = hierarchyVisibility                                                             //
-                   && glyphDisplayNode->GetVisibility() && glyphDisplayNode->GetVisibility3D() //
-                   && glyphDisplayNode->IsDisplayableInView(this->GetMRMLViewNode()->GetID());
-    actor->SetVisibility(visible);
-    if (!visible)
-    {
-      continue;
-    }
-
-    double opacity = hierarchyOpacity * effectiveDisplayNode->GetOpacity();
-    vtkProperty* actorProperties = actor->GetProperty();
-    actorProperties->SetColor(glyphDisplayNode->GetColor());
-    actorProperties->SetOpacity(opacity);
-    actorProperties->SetAmbient(glyphDisplayNode->GetAmbient());
-    actorProperties->SetDiffuse(glyphDisplayNode->GetDiffuse());
-    actorProperties->SetSpecular(glyphDisplayNode->GetSpecular());
-    actorProperties->SetSpecularPower(glyphDisplayNode->GetPower());
-    actorProperties->SetRepresentation(glyphDisplayNode->GetRepresentation());
-    actorProperties->SetBackfaceCulling(glyphDisplayNode->GetBackfaceCulling());
-    actorProperties->SetFrontfaceCulling(glyphDisplayNode->GetFrontfaceCulling());
-  }
-}
-
-//---------------------------------------------------------------------------
 void vtkMRMLModelDisplayableManager::UpdateModel(vtkMRMLDisplayableNode* model)
 {
   this->UpdateModelMesh(model);
-  this->UpdateModelGlyphs(model);
 
   vtkEventBroker* broker = vtkEventBroker::GetInstance();
   vtkEventBroker::ObservationVector observations;
@@ -1464,23 +1113,6 @@ void vtkMRMLModelDisplayableManager::RemoveModelProps()
   for (unsigned int i = 0; i < removedIDs.size(); i++)
   {
     this->RemoveDisplayedID(removedIDs[i]);
-  }
-
-  // Remove glyph actors whose display node no longer exists in the scene
-  // (the model itself may still be there, only the glyph display node was removed).
-  std::vector<std::string> removedGlyphIDs;
-  for (auto iter = this->Internal->DisplayedGlyphActors.begin(); iter != this->Internal->DisplayedGlyphActors.end(); iter++)
-  {
-    vtkMRMLGlyphDisplayNode* glyphDisplayNode =
-      vtkMRMLGlyphDisplayNode::SafeDownCast(this->GetMRMLScene() ? this->GetMRMLScene()->GetNodeByID(iter->first) : nullptr);
-    if (glyphDisplayNode == nullptr)
-    {
-      removedGlyphIDs.push_back(iter->first);
-    }
-  }
-  for (unsigned int i = 0; i < removedGlyphIDs.size(); i++)
-  {
-    this->RemoveDisplayedID(removedGlyphIDs[i]);
   }
 }
 
@@ -1562,31 +1194,6 @@ void vtkMRMLModelDisplayableManager::RemoveDisplayedID(const std::string& id)
     capTransformFilterIter->second->SetInputConnection(nullptr);
     capTransformFilterIter->second->SetTransform(nullptr);
     this->Internal->DisplayNodeCapTransformFilters.erase(capTransformFilterIter);
-  }
-
-  auto glyphActorIter = this->Internal->DisplayedGlyphActors.find(id);
-  if (glyphActorIter != this->Internal->DisplayedGlyphActors.end())
-  {
-    this->GetRenderer()->RemoveViewProp(glyphActorIter->second);
-    this->Internal->DisplayedGlyphActors.erase(glyphActorIter);
-  }
-
-  this->Internal->GlyphMaskFilters.erase(id);
-  this->Internal->GlyphMappers.erase(id);
-
-  auto glyphTransformFilterIter = this->Internal->GlyphTransformFilters.find(id);
-  if (glyphTransformFilterIter != this->Internal->GlyphTransformFilters.end())
-  {
-    glyphTransformFilterIter->second->SetInputConnection(nullptr);
-    glyphTransformFilterIter->second->SetTransform(nullptr);
-    this->Internal->GlyphTransformFilters.erase(glyphTransformFilterIter);
-  }
-
-  auto glyphSurfaceFilterIter = this->Internal->GlyphSurfaceFilters.find(id);
-  if (glyphSurfaceFilterIter != this->Internal->GlyphSurfaceFilters.end())
-  {
-    glyphSurfaceFilterIter->second->SetInputConnection(nullptr);
-    this->Internal->GlyphSurfaceFilters.erase(glyphSurfaceFilterIter);
   }
 }
 
