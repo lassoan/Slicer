@@ -18,18 +18,20 @@
 // MRML includes
 #include "vtkMRMLVectorFieldModePipeline.h"
 #include "vtkMRMLVectorFieldDisplayNode.h"
+#include "vtkMRMLVectorFieldGridLines.h"
 #include "vtkMRMLVectorFieldSampler.h"
 
 // VTK includes
 #include <vtkAlgorithmOutput.h>
+#include <vtkAppendPolyData.h>
 #include <vtkContourFilter.h>
-#include <vtkExtractEdges.h>
 #include <vtkObjectFactory.h>
 #include <vtkStreamTracer.h>
 #include <vtkTubeFilter.h>
 #include <vtkWarpVector.h>
 
 // STD includes
+#include <algorithm>
 #include <vector>
 
 //----------------------------------------------------------------------------
@@ -38,16 +40,14 @@ vtkStandardNewMacro(vtkMRMLVectorFieldModePipeline);
 //----------------------------------------------------------------------------
 vtkMRMLVectorFieldModePipeline::vtkMRMLVectorFieldModePipeline()
 {
-  this->EdgeExtractor = vtkSmartPointer<vtkExtractEdges>::New();
+  this->GridLines = vtkSmartPointer<vtkMRMLVectorFieldGridLines>::New();
   this->Warper = vtkSmartPointer<vtkWarpVector>::New();
+  this->NonWarpedGridAppender = vtkSmartPointer<vtkAppendPolyData>::New();
   this->GridTuber = vtkSmartPointer<vtkTubeFilter>::New();
   this->Contour = vtkSmartPointer<vtkContourFilter>::New();
   this->StreamTracer = vtkSmartPointer<vtkStreamTracer>::New();
   this->StreamlineTuber = vtkSmartPointer<vtkTubeFilter>::New();
 
-  // The deformed grid is the edges of the sampling lattice, moved by the vectors
-  this->Warper->SetInputConnection(this->EdgeExtractor->GetOutputPort());
-  this->GridTuber->SetInputConnection(this->Warper->GetOutputPort());
   this->GridTuber->SetNumberOfSides(8);
   this->GridTuber->CappingOn();
 
@@ -85,11 +85,38 @@ vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::Update(vtkMRMLVectorFieldDis
 //----------------------------------------------------------------------------
 vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateGrid(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection, bool flat)
 {
-  // The lattice that the field was sampled on is the undeformed grid; its edges are the
-  // grid lines, and warping them by the vectors shows the deformation.
-  this->EdgeExtractor->SetInputConnection(fieldConnection);
+  // The lattice that the field was sampled on is the undeformed grid; warping its lines by
+  // the vectors shows the deformation. Grid lines are drawn every GridSpacingMm, but they
+  // follow every sampled point, so a finer sampling shows how the grid curves in between.
+  this->GridLines->SetInputConnection(fieldConnection);
+  double samplingSpacingMm = displayNode->GetEffectiveSamplingSpacingMm();
+  double gridSpacingMm = displayNode->GetGridSpacingMm();
+  int subdivision = 1;
+  if (gridSpacingMm > 0.0 && samplingSpacingMm > 0.0)
+  {
+    subdivision = std::max(1, static_cast<int>(gridSpacingMm / samplingSpacingMm + 0.5));
+  }
+  this->GridLines->SetSubdivision(subdivision);
+
+  this->Warper->SetInputConnection(this->GridLines->GetOutputPort());
   this->Warper->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, vtkMRMLVectorFieldSampler::GetVectorArrayName());
   this->Warper->SetScaleFactor(displayNode->GetGridScalePercent() * 0.01);
+
+  vtkAlgorithmOutput* gridConnection = this->Warper->GetOutputPort();
+
+  // Showing the undeformed grid next to the deformed one makes the deformation easier to
+  // read. It is only offered in slice views: in a 3D view it makes the image unreadable.
+  if (flat && displayNode->GetGridShowNonWarped())
+  {
+    this->NonWarpedGridAppender->RemoveAllInputConnections(0);
+    this->NonWarpedGridAppender->AddInputConnection(this->Warper->GetOutputPort());
+    this->NonWarpedGridAppender->AddInputConnection(this->GridLines->GetOutputPort());
+    gridConnection = this->NonWarpedGridAppender->GetOutputPort();
+  }
+  else
+  {
+    this->NonWarpedGridAppender->RemoveAllInputConnections(0);
+  }
 
   double lineDiameterMm = displayNode->GetGridLineDiameterMm();
   if (flat || lineDiameterMm <= 0.0)
@@ -97,9 +124,9 @@ vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateGrid(vtkMRMLVectorFiel
     // Slice views draw the grid as lines: a tube would be seen edge-on and would only
     // clutter the image.
     this->GridTuber->SetInputConnection(nullptr);
-    return this->Warper->GetOutputPort();
+    return gridConnection;
   }
-  this->GridTuber->SetInputConnection(this->Warper->GetOutputPort());
+  this->GridTuber->SetInputConnection(gridConnection);
   this->GridTuber->SetRadius(0.5 * lineDiameterMm);
   return this->GridTuber->GetOutputPort();
 }

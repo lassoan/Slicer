@@ -56,6 +56,16 @@ public:
   vtkGetStringMacro(VectorArrayName);
   ///@}
 
+  ///@{
+  /// Name of the array that the projected vectors are written to. If not set (the default),
+  /// the input array is replaced.
+  /// Writing to a separate array keeps the original vectors available, which matters when
+  /// they are also what the glyphs are colored by: the color should show the true magnitude
+  /// of the vector, not the part of it that happens to lie in the plane.
+  vtkSetStringMacro(OutputVectorArrayName);
+  vtkGetStringMacro(OutputVectorArrayName);
+  ///@}
+
 protected:
   vtkProjectVectorsToPlane();
   ~vtkProjectVectorsToPlane() override;
@@ -66,6 +76,7 @@ protected:
 
   double PlaneNormal[3];
   char* VectorArrayName{ nullptr };
+  char* OutputVectorArrayName{ nullptr };
 };
 
 #endif

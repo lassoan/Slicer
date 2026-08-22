@@ -278,6 +278,8 @@ set(MRMLCore_SRCS
   vtkMRMLTextNode.cxx
   vtkMRMLTextStorageNode.cxx
   vtkMRMLTransformDisplayNode.cxx
+  vtkMRMLTransformFieldSampler.cxx
+  vtkMRMLTransformInteractionDisplayNode.cxx
   vtkMRMLTransformNode.cxx
   vtkMRMLTransformSequenceStorageNode.cxx
   vtkMRMLTransformSequenceStorageNode.h
@@ -286,6 +288,7 @@ set(MRMLCore_SRCS
   vtkMRMLTranslator.h
   vtkMRMLUnitNode.cxx
   vtkMRMLVectorFieldDisplayNode.cxx
+  vtkMRMLVectorFieldGridLines.cxx
   vtkMRMLVectorFieldModePipeline.cxx
   vtkMRMLVectorFieldSampler.cxx
   vtkMRMLVectorVolumeDisplayNode.cxx
@@ -337,6 +340,7 @@ set_source_files_properties(
   vtkMRMLDisplayableNode.cxx
   vtkMRMLNode.cxx
   vtkMRMLTransformNode.cxx
+  vtkMRMLVectorFieldSampler.cxx
   vtkMRMLVolumeDisplayNode.cxx
   vtkMRMLVolumeNode.cxx
   ABSTRACT

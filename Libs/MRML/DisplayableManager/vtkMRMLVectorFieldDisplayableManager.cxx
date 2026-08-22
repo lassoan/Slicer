@@ -35,6 +35,7 @@
 
 // VTK includes
 #include <vtkActor.h>
+#include <vtkArrayCalculator.h>
 #include <vtkAlgorithmOutput.h>
 #include <vtkDataArray.h>
 #include <vtkGeneralTransform.h>
@@ -58,9 +59,16 @@
 #include <map>
 #include <set>
 #include <string>
+#include <cstring>
 
 //---------------------------------------------------------------------------
 vtkStandardNewMacro(vtkMRMLVectorFieldDisplayableManager);
+
+namespace
+{
+/// Name of the per-axis scale array that directional scaling computes.
+const char* DirectionalScaleArrayName = "GlyphDirectionalScale";
+} // namespace
 
 //---------------------------------------------------------------------------
 class vtkMRMLVectorFieldDisplayableManager::vtkInternal
@@ -73,6 +81,9 @@ public:
     vtkSmartPointer<vtkGeometryFilter> SurfaceFilter;
     vtkSmartPointer<vtkThresholdPoints> ScalarThreshold;
     vtkSmartPointer<vtkMaskPoints> MaskPoints;
+    /// Computes the per-axis scale of a directionally scaled glyph: the glyph is stretched
+    /// along its own axis only, so that its thickness does not grow with its length.
+    vtkSmartPointer<vtkArrayCalculator> DirectionalScaler;
     vtkSmartPointer<vtkGlyph3DMapper> Glypher;
     /// Draws the geometry of the grid, contour and streamline modes; the glyph mapper is
     /// only used in glyph mode.
@@ -251,6 +262,7 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::AddDisplayNode(vtkMRMLDi
   pipeline->SurfaceFilter = vtkSmartPointer<vtkGeometryFilter>::New();
   pipeline->ScalarThreshold = vtkSmartPointer<vtkThresholdPoints>::New();
   pipeline->MaskPoints = vtkSmartPointer<vtkMaskPoints>::New();
+  pipeline->DirectionalScaler = vtkSmartPointer<vtkArrayCalculator>::New();
   pipeline->Glypher = vtkSmartPointer<vtkGlyph3DMapper>::New();
   pipeline->PolyDataMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
   pipeline->Actor = vtkSmartPointer<vtkActor>::New();
@@ -447,7 +459,8 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
 
   // Orientation
   const char* orientationArrayName = fieldDisplayNode->GetOrientationArrayName();
-  if (orientationArrayName && orientationArrayName[0] != '\0')
+  bool hasOrientationArray = (orientationArrayName && orientationArrayName[0] != '\0');
+  if (hasOrientationArray)
   {
     pipeline->Glypher->OrientOn();
     pipeline->Glypher->SetOrientationModeToDirection();
@@ -460,19 +473,43 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
 
   // Scale
   pipeline->Glypher->ScalingOn();
-  pipeline->Glypher->SetScaleFactor(fieldDisplayNode->GetScaleFactor());
   const char* scaleArrayName = fieldDisplayNode->GetScaleArrayName();
-  if (scaleArrayName && scaleArrayName[0] != '\0')
+  bool hasScaleArray = (scaleArrayName && scaleArrayName[0] != '\0');
+  if (fieldDisplayNode->GetScaleDirectional() && hasOrientationArray)
   {
-    pipeline->Glypher->SetScaleArray(scaleArrayName);
-    vtkDataArray* scaleArray = fieldDisplayNode->GetScaleArray();
-    bool scaleByComponents = (scaleArray && scaleArray->GetNumberOfComponents() == 3 //
-                              && fieldDisplayNode->GetVectorScaleMode() == vtkMRMLVectorFieldDisplayNode::VectorScaleModeByComponents);
-    pipeline->Glypher->SetScaleMode(scaleByComponents ? vtkGlyph3DMapper::SCALE_BY_COMPONENTS : vtkGlyph3DMapper::SCALE_BY_MAGNITUDE);
+    // Stretch the glyph along its own axis only: the thickness stays the thickness of the
+    // source geometry (GlyphDiameterMm), however long the glyph is. The mapper can only
+    // scale per axis from an array, so the per-axis factors are computed into one:
+    // (length, 1, 1), with the length already multiplied by the scale factor.
+    std::string scaleExpression = std::to_string(fieldDisplayNode->GetScaleFactor()) + "*mag(" + orientationArrayName + ")*iHat + jHat + kHat";
+    pipeline->DirectionalScaler->SetInputConnection(glyphInputConnection);
+    pipeline->DirectionalScaler->SetAttributeTypeToPointData();
+    pipeline->DirectionalScaler->RemoveAllVariables();
+    pipeline->DirectionalScaler->AddVectorArrayName(orientationArrayName);
+    pipeline->DirectionalScaler->SetResultArrayName(DirectionalScaleArrayName);
+    pipeline->DirectionalScaler->SetFunction(scaleExpression.c_str());
+    pipeline->Glypher->SetInputConnection(pipeline->DirectionalScaler->GetOutputPort());
+    pipeline->Glypher->SetScaleArray(DirectionalScaleArrayName);
+    pipeline->Glypher->SetScaleMode(vtkGlyph3DMapper::SCALE_BY_COMPONENTS);
+    pipeline->Glypher->SetScaleFactor(1.0);
   }
   else
   {
-    pipeline->Glypher->SetScaleModeToNoDataScaling();
+    pipeline->DirectionalScaler->SetInputConnection(nullptr);
+    pipeline->Glypher->SetInputConnection(pipeline->MaskPoints->GetOutputPort());
+    pipeline->Glypher->SetScaleFactor(fieldDisplayNode->GetScaleFactor());
+    if (hasScaleArray)
+    {
+      pipeline->Glypher->SetScaleArray(scaleArrayName);
+      vtkDataArray* scaleArray = fieldDisplayNode->GetScaleArray();
+      bool scaleByComponents = (scaleArray && scaleArray->GetNumberOfComponents() == 3 //
+                                && fieldDisplayNode->GetVectorScaleMode() == vtkMRMLVectorFieldDisplayNode::VectorScaleModeByComponents);
+      pipeline->Glypher->SetScaleMode(scaleByComponents ? vtkGlyph3DMapper::SCALE_BY_COMPONENTS : vtkGlyph3DMapper::SCALE_BY_MAGNITUDE);
+    }
+    else
+    {
+      pipeline->Glypher->SetScaleModeToNoDataScaling();
+    }
   }
 
   this->UpdateScalarColoring(fieldDisplayNode, pipeline->Glypher);

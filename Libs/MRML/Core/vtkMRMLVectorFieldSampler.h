@@ -24,6 +24,7 @@
 // VTK includes
 #include <vtkUnstructuredGridAlgorithm.h>
 #include <vtkSmartPointer.h>
+#include <vtkWeakPointer.h>
 
 class vtkDataArray;
 class vtkMatrix4x4;
@@ -56,6 +57,11 @@ public:
 
   /// Name of the point data array that stores the magnitude of the sampled vectors.
   static const char* GetMagnitudeArrayName();
+
+  /// Name of the field data array that stores the size of the lattice that the samples are
+  /// arranged in. Filters downstream (the grid lines) need it to know how the points are
+  /// connected; it is absent when the samples do not form a lattice.
+  static const char* GetLatticeSizeArrayName();
 
   ///@{
   /// Region that is sampled, in the RAS coordinate system. regionToRAS defines the origin
@@ -117,6 +123,26 @@ protected:
   /// this so that the sampler re-executes when the field itself changes.
   virtual vtkMTimeType GetSampledObjectMTime() { return 0; }
 
+  /// Compute the positions that the field is sampled at, in RAS. Uses, in this order of
+  /// preference: the explicitly set sample positions, a lattice in the slice plane, a
+  /// lattice in the sampling region, or whatever GetDefaultSamplePositions() provides.
+  /// latticeSize is filled with the number of positions along each axis of the lattice, or
+  /// with zeros if the positions do not form a lattice.
+  void GetSamplePositions(vtkPoints* samplePositions_RAS, int latticeSize[3]);
+
+  /// Sampling spacing to use when SamplingSpacingMm is 0. Subclasses reimplement this to
+  /// follow the resolution of what they sample.
+  virtual double GetDefaultSamplingSpacingMm() { return 1.0; }
+
+  /// Positions to sample when neither sample positions, a slice plane, nor a region is set.
+  /// Sources that have a natural extent of their own (an image) reimplement this; sources
+  /// that do not (a transform is defined everywhere) show nothing until a region is given.
+  virtual bool GetDefaultSamplePositions(vtkPoints* vtkNotUsed(samplePositions_RAS), int vtkNotUsed(latticeSize)[3]) { return false; }
+
+  /// Fill samplePositions_RAS with the points of a lattice: latticeToRAS maps the lattice
+  /// indices to RAS, latticeSize is the number of points along each of its axes.
+  static void GetLatticePositions(vtkMatrix4x4* latticeToRAS, const int latticeSize[3], vtkPoints* samplePositions_RAS);
+
   /// Add the vector array and the magnitude array to the output point set.
   /// vectors must have 3 components and as many tuples as outputPointSet has points.
   static void SetOutputVectors(vtkPointSet* outputPointSet, vtkDataArray* vectors_RAS);
@@ -126,7 +152,9 @@ protected:
   /// varying fastest.
   static void GenerateLatticeCells(vtkUnstructuredGrid* outputGrid, const int latticeSize[3]);
 
-  /// Set by subclasses at the end of RequestData.
+  /// Set by subclasses at the end of RequestData. Also stores the size in the field data of
+  /// the output, so that downstream filters can use it.
+  void SetOutputLatticeSize(vtkUnstructuredGrid* output, const int latticeSize[3]);
   vtkSetVector3Macro(OutputLatticeSize, int);
 
   int OutputLatticeSize[3];
