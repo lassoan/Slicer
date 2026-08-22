@@ -195,6 +195,57 @@ public:
   ///@}
 
   ///@{
+  /// Scale the glyph along its own axis only, so that its thickness stays the same however
+  /// long it is. This is what makes a field of arrows readable: without it a long arrow is
+  /// also a thick arrow. The thickness is then GlyphDiameterMm.
+  /// Default is false.
+  vtkGetMacro(ScaleDirectional, bool);
+  vtkSetMacro(ScaleDirectional, bool);
+  vtkBooleanMacro(ScaleDirectional, bool);
+  ///@}
+
+  ///@{
+  /// Thickness of the glyphs, in mm. Only used when ScaleDirectional is enabled; otherwise
+  /// the glyph is scaled uniformly and its thickness follows its length.
+  /// Default is 5.
+  vtkGetMacro(GlyphDiameterMm, double);
+  vtkSetClampMacro(GlyphDiameterMm, double, 0.0, VTK_DOUBLE_MAX);
+  ///@}
+
+  ///@{
+  /// Grid mode: distance between the grid lines, in mm. The lines themselves follow the
+  /// sampled points, so a sampling spacing finer than this shows how the grid curves
+  /// between its lines. 0 draws a line through every sampled point.
+  /// Default is 0.
+  vtkGetMacro(GridSpacingMm, double);
+  vtkSetClampMacro(GridSpacingMm, double, 0.0, VTK_DOUBLE_MAX);
+  ///@}
+
+  ///@{
+  /// Grid mode: also draw the undeformed grid. Only used in slice views; in a 3D view it
+  /// would make the visualization very cluttered.
+  /// Default is false.
+  vtkGetMacro(GridShowNonWarped, bool);
+  vtkSetMacro(GridShowNonWarped, bool);
+  vtkBooleanMacro(GridShowNonWarped, bool);
+  ///@}
+
+  ///@{
+  /// Contour mode: opacity of the isosurfaces, between 0 and 1.
+  /// Default is 0.8.
+  vtkGetMacro(ContourOpacity, double);
+  vtkSetClampMacro(ContourOpacity, double, 0.0, 1.0);
+  ///@}
+
+  ///@{
+  /// Distance between the sampled points that is actually used, which can depend on the
+  /// visualization mode. Reimplemented by nodes that keep a separate spacing per mode, so
+  /// that the GUI reads and writes the spacing that applies to what is being shown.
+  virtual double GetEffectiveSamplingSpacingMm();
+  virtual void SetEffectiveSamplingSpacingMm(double spacingMm);
+  ///@}
+
+  ///@{
   /// Grid mode: length of the deformation applied to the grid, in percent of the vectors.
   /// 100 means that the grid is deformed by the vectors themselves.
   /// Default is 100.
@@ -359,6 +410,15 @@ public:
   void SetAndObserveRegionNode(vtkMRMLNode* node);
   ///@}
 
+  ///@{
+  /// Markups node whose control points are used as the positions that the field is sampled
+  /// at, instead of a regular lattice. Glyphs are placed at those points, and streamlines
+  /// are started from them.
+  /// Only used by sources that can be sampled at arbitrary positions.
+  vtkMRMLNode* GetSamplePointsNode();
+  void SetAndObserveSamplePointsNode(vtkMRMLNode* node);
+  ///@}
+
   /// Get the region that the field is sampled in, from the region node.
   /// regionToRAS defines the origin and the axis directions (scaled by the sampling
   /// spacing), regionSize the number of samples along each axis.
@@ -382,6 +442,11 @@ public:
   /// True if the current visualization mode draws poly data instead of glyphs.
   bool IsPolyDataVisualizationMode();
 
+  /// True if the field can be sampled at any position, so that the sampling spacing, the
+  /// region and the sample points apply to it. False for sources that only have values at
+  /// fixed locations, such as the point data of a mesh.
+  virtual bool CanSampleAtArbitraryPositions();
+
   /// Create a sampler that resamples the field in the plane of a slice view. Each slice
   /// view owns its own sampler, because the same display node can be shown in several
   /// slice views at different positions.
@@ -389,6 +454,12 @@ public:
   /// the point data of a mesh); the slice view then selects the points that are within a
   /// slab around the slice plane instead.
   virtual vtkSmartPointer<vtkMRMLVectorFieldSampler> CreateSliceFieldSampler();
+
+  /// True if the field source always provides the same arrays, so there is nothing for the
+  /// user to pick: a sampled field (a vector volume, a transform) always produces one vector
+  /// array and its magnitude. False for a mesh, whose point data can hold any number of
+  /// arrays.
+  virtual bool HasFixedFieldArrays();
 
   /// Get the name and the number of components of each array that can be used for glyph
   /// orientation, scaling, and coloring. Does not update the pipeline, so it is safe to
@@ -444,8 +515,13 @@ protected:
   /// Create (if needed) and configure the sampler that reads the field from a vector volume.
   virtual vtkMRMLVectorFieldSampler* UpdateVolumeFieldSampler(vtkMRMLVolumeNode* volumeNode, vtkMRMLVectorFieldSampler* sampler);
 
-  /// Push the region and the sampling spacing into a sampler.
+  /// Push the region, the sampling spacing and the sample positions into a sampler.
   void UpdateSamplerRegion(vtkMRMLVectorFieldSampler* sampler);
+
+  /// Sampling lattice of a region that is defined by an oriented box (a markups region of
+  /// interest or plane): objectToWorld holds its center and axis directions, sizeMm its
+  /// extent along those axes.
+  bool GetOrientedSamplingRegion(vtkMatrix4x4* objectToWorld, const double sizeMm[3], vtkMatrix4x4* regionToRAS, int regionSize[3]);
 
   /// Set the array names to the arrays that a sampler produces, if they are not set yet.
   /// Sampled fields always provide the same two arrays, so the user does not have to pick.
@@ -456,6 +532,11 @@ protected:
   vtkSmartPointer<vtkMRMLVectorFieldModePipeline> ModePipeline;
 
   int VisualizationMode;
+  bool ScaleDirectional;
+  double GlyphDiameterMm;
+  double GridSpacingMm;
+  bool GridShowNonWarped;
+  double ContourOpacity;
   double GridScalePercent;
   double GridLineDiameterMm;
   std::vector<double> ContourLevelsMm;

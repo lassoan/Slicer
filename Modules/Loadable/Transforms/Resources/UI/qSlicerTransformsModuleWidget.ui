@@ -395,6 +395,27 @@
     </widget>
    </item>
    <item>
+    <widget class="ctkCollapsibleButton" name="ColorLegendCollapsibleButton">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="text">
+      <string>Color legend</string>
+     </property>
+     <property name="collapsed">
+      <bool>true</bool>
+     </property>
+     <layout class="QVBoxLayout" name="colorLegendLayout">
+      <item>
+       <widget class="qMRMLColorLegendDisplayNodeWidget" name="ColorLegendDisplayNodeWidget"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="ctkCollapsibleButton" name="TransformedCollapsibleButton">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
@@ -727,6 +748,11 @@
    <class>qMRMLTransformInfoWidget</class>
    <extends>qMRMLWidget</extends>
    <header>qMRMLTransformInfoWidget.h</header>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLColorLegendDisplayNodeWidget</class>
+   <extends>QWidget</extends>
+   <header>qMRMLColorLegendDisplayNodeWidget.h</header>
   </customwidget>
   <customwidget>
    <class>ctkCollapsibleButton</class>

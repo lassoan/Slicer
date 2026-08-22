@@ -28,6 +28,9 @@
 #include <vtkPointSet.h>
 #include <vtkSmartPointer.h>
 
+// STD includes
+#include <cstring>
+
 //----------------------------------------------------------------------------
 vtkStandardNewMacro(vtkProjectVectorsToPlane);
 
@@ -43,6 +46,7 @@ vtkProjectVectorsToPlane::vtkProjectVectorsToPlane()
 vtkProjectVectorsToPlane::~vtkProjectVectorsToPlane()
 {
   this->SetVectorArrayName(nullptr);
+  this->SetOutputVectorArrayName(nullptr);
 }
 
 //----------------------------------------------------------------------------
@@ -90,8 +94,10 @@ int vtkProjectVectorsToPlane::RequestData(vtkInformation* vtkNotUsed(request), v
     return 1;
   }
 
+  bool writeToSeparateArray = (this->OutputVectorArrayName && this->OutputVectorArrayName[0] != 0 //
+                               && (!inputVectors->GetName() || strcmp(this->OutputVectorArrayName, inputVectors->GetName()) != 0));
   vtkSmartPointer<vtkDataArray> projectedVectors = vtkSmartPointer<vtkDataArray>::Take(inputVectors->NewInstance());
-  projectedVectors->SetName(inputVectors->GetName());
+  projectedVectors->SetName(writeToSeparateArray ? this->OutputVectorArrayName : inputVectors->GetName());
   projectedVectors->SetNumberOfComponents(3);
   vtkIdType numberOfTuples = inputVectors->GetNumberOfTuples();
   projectedVectors->SetNumberOfTuples(numberOfTuples);
@@ -109,7 +115,7 @@ int vtkProjectVectorsToPlane::RequestData(vtkInformation* vtkNotUsed(request), v
 
   bool wasActiveVectors = (outputPointData->GetVectors() == inputVectors);
   outputPointData->RemoveArray(projectedVectors->GetName());
-  if (wasActiveVectors)
+  if (wasActiveVectors && !writeToSeparateArray)
   {
     outputPointData->SetVectors(projectedVectors);
   }

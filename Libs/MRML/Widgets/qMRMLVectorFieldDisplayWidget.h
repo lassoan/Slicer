@@ -54,7 +54,6 @@ public slots:
 protected slots:
   void updateWidgetFromMRML();
 
-  void onVisibilityToggled(bool visible);
   void onGlyphTypeChanged(int index);
   void onOrientationArrayChanged(int index);
   void onScaleArrayChanged(int index);
@@ -63,6 +62,15 @@ protected slots:
   void onMaskingModeChanged(int index);
   void onMaskingNthPointChanged(int value);
   void onMaskingPointsNumberChanged(int value);
+  void onVisualizationModeToggled(bool checked);
+  void onSamplingSpacingChanged(double value);
+  void onRegionNodeChanged(vtkMRMLNode* node);
+  void onSamplePointsNodeChanged(vtkMRMLNode* node);
+  void onGridScaleChanged(double value);
+  void onGridLineDiameterChanged(double value);
+  void onContourLevelsChanged();
+  void onMaximumPropagationChanged(double value);
+  void onStreamlineTubeDiameterChanged(double value);
 
   /// Convert the selected orientation array between the RAS and LPS coordinate
   /// systems by inverting the sign of the first two components of each vector.

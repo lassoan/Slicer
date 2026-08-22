@@ -100,134 +100,57 @@ vtkMTimeType vtkMRMLImageFieldSampler::GetSampledObjectMTime()
 }
 
 //----------------------------------------------------------------------------
-void vtkMRMLImageFieldSampler::GetSamplePositions(vtkImageData* image, vtkPoints* samplePositions_RAS, int latticeSize[3])
+double vtkMRMLImageFieldSampler::GetDefaultSamplingSpacingMm()
 {
-  samplePositions_RAS->Initialize();
-  latticeSize[0] = 0;
-  latticeSize[1] = 0;
-  latticeSize[2] = 0;
+  // Follow the resolution of the image
+  double voxelSizeMm[3] = { 0.0, 0.0, 0.0 };
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    double axisVector[3] = { this->IJKToRAS->GetElement(0, axis), this->IJKToRAS->GetElement(1, axis), this->IJKToRAS->GetElement(2, axis) };
+    voxelSizeMm[axis] = vtkMath::Norm(axisVector);
+  }
+  return std::max(std::max(voxelSizeMm[0], voxelSizeMm[1]), voxelSizeMm[2]);
+}
+
+//----------------------------------------------------------------------------
+bool vtkMRMLImageFieldSampler::GetDefaultSamplePositions(vtkPoints* samplePositions_RAS, int latticeSize[3])
+{
+  vtkImageData* image = vtkImageData::SafeDownCast(this->GetInput());
   if (!image)
   {
-    return;
+    return false;
   }
-
-  // Explicitly requested positions (for example the control points of a markups node)
-  if (this->SamplePositions && this->SamplePositions->GetNumberOfPoints() > 0)
-  {
-    samplePositions_RAS->DeepCopy(this->SamplePositions);
-    return;
-  }
-
-  if (this->SliceXYToRAS && (this->FieldOfViewSizeMm[0] > 0.0 && this->FieldOfViewSizeMm[1] > 0.0))
-  {
-    // Slice view: an evenly spaced lattice in the plane of the slice, over its field of view.
-    double spacingMm = this->SamplingSpacingMm;
-    if (spacingMm <= 0.0)
-    {
-      // Follow the resolution of the image
-      double voxelSizeMm[3] = { 0.0, 0.0, 0.0 };
-      for (int axis = 0; axis < 3; ++axis)
-      {
-        double axisVector[3] = { this->IJKToRAS->GetElement(0, axis), this->IJKToRAS->GetElement(1, axis), this->IJKToRAS->GetElement(2, axis) };
-        voxelSizeMm[axis] = vtkMath::Norm(axisVector);
-      }
-      spacingMm = std::max(std::max(voxelSizeMm[0], voxelSizeMm[1]), voxelSizeMm[2]);
-    }
-    if (spacingMm <= 0.0)
-    {
-      return;
-    }
-    int numberOfPointsX = static_cast<int>(this->FieldOfViewSizeMm[0] / spacingMm) + 1;
-    int numberOfPointsY = static_cast<int>(this->FieldOfViewSizeMm[1] / spacingMm) + 1;
-    // The slice XY coordinate system is in screen units; convert the mm spacing into it.
-    double xAxis_RAS[3] = { this->SliceXYToRAS->GetElement(0, 0), this->SliceXYToRAS->GetElement(1, 0), this->SliceXYToRAS->GetElement(2, 0) };
-    double yAxis_RAS[3] = { this->SliceXYToRAS->GetElement(0, 1), this->SliceXYToRAS->GetElement(1, 1), this->SliceXYToRAS->GetElement(2, 1) };
-    double xAxisLengthMm = vtkMath::Norm(xAxis_RAS);
-    double yAxisLengthMm = vtkMath::Norm(yAxis_RAS);
-    if (xAxisLengthMm <= 0.0 || yAxisLengthMm <= 0.0)
-    {
-      return;
-    }
-    double stepX_XY = spacingMm / xAxisLengthMm;
-    double stepY_XY = spacingMm / yAxisLengthMm;
-    // Center the lattice on the middle of the field of view
-    double startX_XY = -0.5 * (numberOfPointsX - 1) * stepX_XY;
-    double startY_XY = -0.5 * (numberOfPointsY - 1) * stepY_XY;
-    samplePositions_RAS->SetNumberOfPoints(static_cast<vtkIdType>(numberOfPointsX) * numberOfPointsY);
-    vtkIdType pointIndex = 0;
-    for (int y = 0; y < numberOfPointsY; ++y)
-    {
-      for (int x = 0; x < numberOfPointsX; ++x)
-      {
-        double point_XY[4] = { startX_XY + x * stepX_XY, startY_XY + y * stepY_XY, 0.0, 1.0 };
-        double point_RAS[4] = { 0.0, 0.0, 0.0, 1.0 };
-        this->SliceXYToRAS->MultiplyPoint(point_XY, point_RAS);
-        samplePositions_RAS->SetPoint(pointIndex++, point_RAS);
-      }
-    }
-    latticeSize[0] = numberOfPointsX;
-    latticeSize[1] = numberOfPointsY;
-    latticeSize[2] = 1;
-    return;
-  }
-
-  // 3D view: a lattice over the sampling region, or over the whole image if no region is set.
+  // The whole image: step over the voxels so that the samples are SamplingSpacingMm apart.
+  int extent[6] = { 0, -1, 0, -1, 0, -1 };
+  image->GetExtent(extent);
   vtkNew<vtkMatrix4x4> latticeToRAS;
-  if (this->RegionSize[0] > 0 && this->RegionSize[1] > 0 && this->RegionSize[2] > 0)
+  latticeToRAS->DeepCopy(this->IJKToRAS);
+  for (int axis = 0; axis < 3; ++axis)
   {
-    latticeToRAS->DeepCopy(this->RegionToRAS);
-    for (int axis = 0; axis < 3; ++axis)
+    int numberOfVoxels = extent[2 * axis + 1] - extent[2 * axis] + 1;
+    double axisVector[3] = { this->IJKToRAS->GetElement(0, axis), this->IJKToRAS->GetElement(1, axis), this->IJKToRAS->GetElement(2, axis) };
+    double voxelSizeMm = vtkMath::Norm(axisVector);
+    int stride = 1;
+    if (this->SamplingSpacingMm > 0.0 && voxelSizeMm > 0.0)
     {
-      latticeSize[axis] = this->RegionSize[axis];
+      stride = std::max(1, static_cast<int>(this->SamplingSpacingMm / voxelSizeMm + 0.5));
     }
-  }
-  else
-  {
-    // Whole image: step over the voxels so that the samples are SamplingSpacingMm apart.
-    int extent[6] = { 0, -1, 0, -1, 0, -1 };
-    image->GetExtent(extent);
-    latticeToRAS->DeepCopy(this->IJKToRAS);
-    for (int axis = 0; axis < 3; ++axis)
-    {
-      int numberOfVoxels = extent[2 * axis + 1] - extent[2 * axis] + 1;
-      double axisVector[3] = { this->IJKToRAS->GetElement(0, axis), this->IJKToRAS->GetElement(1, axis), this->IJKToRAS->GetElement(2, axis) };
-      double voxelSizeMm = vtkMath::Norm(axisVector);
-      int stride = 1;
-      if (this->SamplingSpacingMm > 0.0 && voxelSizeMm > 0.0)
-      {
-        stride = std::max(1, static_cast<int>(this->SamplingSpacingMm / voxelSizeMm + 0.5));
-      }
-      latticeSize[axis] = std::max(1, numberOfVoxels / stride);
-      for (int row = 0; row < 3; ++row)
-      {
-        latticeToRAS->SetElement(row, axis, this->IJKToRAS->GetElement(row, axis) * stride);
-      }
-    }
-    // Start at the first voxel of the extent
-    double firstVoxel_IJK[4] = { static_cast<double>(extent[0]), static_cast<double>(extent[2]), static_cast<double>(extent[4]), 1.0 };
-    double firstVoxel_RAS[4] = { 0.0, 0.0, 0.0, 1.0 };
-    this->IJKToRAS->MultiplyPoint(firstVoxel_IJK, firstVoxel_RAS);
+    latticeSize[axis] = std::max(1, numberOfVoxels / stride);
     for (int row = 0; row < 3; ++row)
     {
-      latticeToRAS->SetElement(row, 3, firstVoxel_RAS[row]);
+      latticeToRAS->SetElement(row, axis, this->IJKToRAS->GetElement(row, axis) * stride);
     }
   }
-
-  samplePositions_RAS->SetNumberOfPoints(static_cast<vtkIdType>(latticeSize[0]) * latticeSize[1] * latticeSize[2]);
-  vtkIdType pointIndex = 0;
-  for (int k = 0; k < latticeSize[2]; ++k)
+  // Start at the first voxel of the extent
+  double firstVoxel_IJK[4] = { static_cast<double>(extent[0]), static_cast<double>(extent[2]), static_cast<double>(extent[4]), 1.0 };
+  double firstVoxel_RAS[4] = { 0.0, 0.0, 0.0, 1.0 };
+  this->IJKToRAS->MultiplyPoint(firstVoxel_IJK, firstVoxel_RAS);
+  for (int row = 0; row < 3; ++row)
   {
-    for (int j = 0; j < latticeSize[1]; ++j)
-    {
-      for (int i = 0; i < latticeSize[0]; ++i)
-      {
-        double point_Lattice[4] = { static_cast<double>(i), static_cast<double>(j), static_cast<double>(k), 1.0 };
-        double point_RAS[4] = { 0.0, 0.0, 0.0, 1.0 };
-        latticeToRAS->MultiplyPoint(point_Lattice, point_RAS);
-        samplePositions_RAS->SetPoint(pointIndex++, point_RAS);
-      }
-    }
+    latticeToRAS->SetElement(row, 3, firstVoxel_RAS[row]);
   }
+  vtkMRMLVectorFieldSampler::GetLatticePositions(latticeToRAS, latticeSize, samplePositions_RAS);
+  return true;
 }
 
 //----------------------------------------------------------------------------
@@ -241,8 +164,8 @@ int vtkMRMLImageFieldSampler::RequestData(vtkInformation* vtkNotUsed(request), v
   }
   vtkNew<vtkPoints> samplePositions_RAS;
   int latticeSize[3] = { 0, 0, 0 };
-  this->GetSamplePositions(image, samplePositions_RAS, latticeSize);
-  this->SetOutputLatticeSize(latticeSize);
+  this->GetSamplePositions(samplePositions_RAS, latticeSize);
+  this->SetOutputLatticeSize(output, latticeSize);
   vtkIdType numberOfSamples = samplePositions_RAS->GetNumberOfPoints();
   if (!image || image->GetNumberOfScalarComponents() < 3 || numberOfSamples == 0)
   {

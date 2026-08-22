@@ -69,12 +69,12 @@ protected:
 
   vtkMTimeType GetSampledObjectMTime() override;
 
-  /// Compute the positions that the image is sampled at, in RAS. Uses, in this order of
-  /// preference: the explicitly set sample positions, a lattice in the slice plane, a
-  /// lattice in the sampling region, or a lattice over the whole image.
-  /// latticeSize is filled with the number of positions along each axis of the lattice, or
-  /// with zeros if the positions do not form a lattice.
-  void GetSamplePositions(vtkImageData* image, vtkPoints* samplePositions_RAS, int latticeSize[3]);
+  /// Follows the resolution of the image: the largest of its voxel dimensions.
+  double GetDefaultSamplingSpacingMm() override;
+
+  /// A lattice over the whole image, stepping over voxels so that the samples are
+  /// SamplingSpacingMm apart.
+  bool GetDefaultSamplePositions(vtkPoints* samplePositions_RAS, int latticeSize[3]) override;
 
   vtkSmartPointer<vtkMatrix4x4> IJKToRAS;
   bool VectorsInRAS{ true };

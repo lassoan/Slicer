@@ -75,6 +75,9 @@ namespace
 /// point from the slice plane. Used for selecting the points that are within
 /// the displayed slab.
 const char* SliceDistanceArrayName = "GlyphSliceDistance";
+/// Appended to the name of the orientation array to name the array of vectors that were
+/// projected onto the slice plane.
+const char* ProjectedArrayNameSuffix = " projected";
 } // namespace
 
 //---------------------------------------------------------------------------
@@ -416,7 +419,9 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
     double fieldOfViewSizeMm[2] = { 0.0, 0.0 };
     this->GetSliceFieldOfViewSizeMm(fieldOfViewSizeMm);
     pipeline->SliceSampler->SetSlicePlane(this->SliceXYToRAS, fieldOfViewSizeMm);
-    pipeline->SliceSampler->SetSamplingSpacingMm(glyphDisplayNode->GetSamplingSpacingMm());
+    // The effective spacing, not SamplingSpacingMm: nodes that keep a separate spacing per
+    // visualization mode (transform display) return the one that applies to the current mode.
+    pipeline->SliceSampler->SetSamplingSpacingMm(glyphDisplayNode->GetEffectiveSamplingSpacingMm());
     glyphInputConnection = pipeline->SliceSampler->GetOutputPort();
   }
   else
@@ -520,15 +525,20 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
   bool hasOrientationArray = (orientationArrayName && orientationArrayName[0] != '\0');
 
   // Project the vectors onto the slice plane, so that the length of a glyph shows the
-  // in-plane component instead of a foreshortened 3D vector. The magnitude scalars are
-  // left untouched, therefore the colors still show the true magnitude.
+  // in-plane component instead of a foreshortened 3D vector. The projected vectors go into
+  // an array of their own: the original vectors and the magnitude scalars stay untouched, so
+  // the glyphs are still colored by the true magnitude of the vector and not by the part of
+  // it that happens to lie in the plane.
+  std::string glyphOrientationArrayName = (hasOrientationArray ? orientationArrayName : "");
   if (glyphDisplayNode->GetSliceProjectionEnabled() && hasOrientationArray)
   {
     double sliceNormal_RAS[3] = { this->SliceXYToRAS->GetElement(0, 2), //
                                   this->SliceXYToRAS->GetElement(1, 2),
                                   this->SliceXYToRAS->GetElement(2, 2) };
+    glyphOrientationArrayName = std::string(orientationArrayName) + ProjectedArrayNameSuffix;
     pipeline->Projector->SetPlaneNormal(sliceNormal_RAS);
     pipeline->Projector->SetVectorArrayName(orientationArrayName);
+    pipeline->Projector->SetOutputVectorArrayName(glyphOrientationArrayName.c_str());
     pipeline->Projector->SetInputConnection(pipeline->MaskPoints->GetOutputPort());
     pipeline->Glypher->SetInputConnection(pipeline->Projector->GetOutputPort());
   }
@@ -569,7 +579,7 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
   {
     pipeline->Glypher->OrientOn();
     pipeline->Glypher->SetVectorModeToUseVector();
-    pipeline->Glypher->SetInputArrayToProcess(1, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, orientationArrayName);
+    pipeline->Glypher->SetInputArrayToProcess(1, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, glyphOrientationArrayName.c_str());
   }
   else
   {

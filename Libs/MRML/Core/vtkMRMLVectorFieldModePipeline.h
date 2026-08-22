@@ -26,8 +26,9 @@
 #include <vtkSmartPointer.h>
 
 class vtkAlgorithmOutput;
+class vtkAppendPolyData;
 class vtkContourFilter;
-class vtkExtractEdges;
+class vtkMRMLVectorFieldGridLines;
 class vtkMRMLVectorFieldDisplayNode;
 class vtkStreamTracer;
 class vtkTubeFilter;
@@ -68,8 +69,9 @@ protected:
   vtkAlgorithmOutput* UpdateContour(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection);
   vtkAlgorithmOutput* UpdateStreamline(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection, bool flat);
 
-  vtkSmartPointer<vtkExtractEdges> EdgeExtractor;
+  vtkSmartPointer<vtkMRMLVectorFieldGridLines> GridLines;
   vtkSmartPointer<vtkWarpVector> Warper;
+  vtkSmartPointer<vtkAppendPolyData> NonWarpedGridAppender;
   vtkSmartPointer<vtkTubeFilter> GridTuber;
   vtkSmartPointer<vtkContourFilter> Contour;
   vtkSmartPointer<vtkStreamTracer> StreamTracer;

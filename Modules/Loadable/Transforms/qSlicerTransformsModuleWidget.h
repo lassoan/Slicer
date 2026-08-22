@@ -64,6 +64,11 @@ protected:
 
 protected slots:
 
+  /// Show the color legend of the displacement magnitude that the transform is colored by.
+  /// The legend node is created the first time the section is opened.
+  void updateColorLegendFromMRML();
+  void colorLegendCollapsibleButtonCollapsed(bool collapsed);
+
   /// Called when a subject hierarchy item is modified.
   /// Updates current item selection to reflect changes in item (such as display node creation)
   void onSubjectHierarchyItemModified(vtkObject* caller, void* callData);
