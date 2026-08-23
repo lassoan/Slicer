@@ -457,6 +457,22 @@ void qMRMLScalarsDisplayWidget::setTresholdEnabled(bool b)
 }
 
 //------------------------------------------------------------------------------
+bool qMRMLScalarsDisplayWidget::isThresholdVisible() const
+{
+  Q_D(const qMRMLScalarsDisplayWidget);
+  return d->ThresholdCheckBox->isVisibleTo(const_cast<qMRMLScalarsDisplayWidget*>(this));
+}
+
+//------------------------------------------------------------------------------
+void qMRMLScalarsDisplayWidget::setThresholdVisible(bool visible)
+{
+  Q_D(qMRMLScalarsDisplayWidget);
+  d->ThresholdLabel->setVisible(visible);
+  d->ThresholdCheckBox->setVisible(visible);
+  d->ThresholdRangeWidget->setVisible(visible);
+}
+
+//------------------------------------------------------------------------------
 void qMRMLScalarsDisplayWidget::setThresholdRange(double min, double max)
 {
   Q_D(qMRMLScalarsDisplayWidget);

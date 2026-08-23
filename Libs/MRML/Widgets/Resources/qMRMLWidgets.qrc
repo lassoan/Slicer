@@ -1,7 +1,6 @@
 <RCC>
     <qresource prefix="/">
         <file>Icons/LayoutCompareViewGrid.png</file>
-        <file>Icons/VectorFieldNone.png</file>
         <file>Icons/VectorFieldGlyph.png</file>
         <file>Icons/VectorFieldGrid.png</file>
         <file>Icons/VectorFieldContour.png</file>

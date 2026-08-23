@@ -32,6 +32,7 @@
 // VTK includes
 #include <vtkAlgorithmOutput.h>
 #include <vtkColorTransferFunction.h>
+#include <vtkCommand.h>
 #include <vtkLookupTable.h>
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
@@ -79,6 +80,8 @@ vtkMRMLTransformDisplayNode::vtkMRMLTransformDisplayNode()
   this->SetThresholdRange(0.01, 100.0);
 
   this->SetGridSpacingMm(15.0);
+  // A transform is sampled, so the glyphs sit on a lattice rather than on mesh points
+  this->SetMaskingMode(vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing);
   this->SetGridScalePercent(100.0);
   this->SetGridLineDiameterMm(1.0);
   this->SetGridShowNonWarped(false);
@@ -241,6 +244,12 @@ bool vtkMRMLTransformDisplayNode::CanSampleAtArbitraryPositions()
 }
 
 //----------------------------------------------------------------------------
+bool vtkMRMLTransformDisplayNode::IsVisualizationModeSupported(int visualizationMode)
+{
+  return (visualizationMode >= 0 && visualizationMode < vtkMRMLTransformDisplayNode::VIS_MODE_LAST);
+}
+
+//----------------------------------------------------------------------------
 double vtkMRMLTransformDisplayNode::GetEffectiveSamplingSpacingMm()
 {
   switch (this->GetVisualizationMode())
@@ -352,7 +361,12 @@ vtkMRMLNode* vtkMRMLTransformDisplayNode::GetGlyphPointsNode()
 //----------------------------------------------------------------------------
 void vtkMRMLTransformDisplayNode::SetAndObserveGlyphPointsNode(vtkMRMLNode* node)
 {
+  // Setting this node has always meant "draw the glyphs at these points", so it also selects
+  // the way of placing glyphs that does that, and clearing it goes back to the lattice.
+  MRMLNodeModifyBlocker blocker(this);
   this->SetAndObserveSamplePointsNode(node);
+  this->SetMaskingMode(node ? vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints //
+                            : vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing);
 }
 
 //----------------------------------------------------------------------------
@@ -720,6 +734,21 @@ void vtkMRMLTransformDisplayNode::SetDefaultColors()
 
   this->GetScene()->AddNode(colorNode.GetPointer());
   this->SetAndObserveColorNodeID(colorNode->GetID());
+  // The color map is what defines the scalar range, so the range is only meaningful once
+  // the map exists
+  this->UpdateScalarRange();
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLTransformDisplayNode::ProcessMRMLEvents(vtkObject* caller, unsigned long event, void* callData)
+{
+  this->Superclass::ProcessMRMLEvents(caller, event, callData);
+  vtkMRMLColorNode* colorNode = vtkMRMLColorNode::SafeDownCast(caller);
+  if (colorNode && colorNode == this->GetColorNode() && event == vtkCommand::ModifiedEvent)
+  {
+    // Editing the color map moves the range that the displacements are mapped to
+    this->UpdateScalarRange();
+  }
 }
 
 //----------------------------------------------------------------------------

@@ -31,42 +31,110 @@
      <property name="fieldGrowthPolicy">
       <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
      </property>
-     <item row="0" column="0" colspan="2">
-      <layout class="QHBoxLayout" name="visualizationModeLayout">
+     <item row="0" column="0">
+      <widget class="QLabel" name="VisibilityLabel">
+       <property name="text">
+        <string>Visibility:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QCheckBox" name="VisibilityCheckBox">
+       <property name="toolTip">
+        <string>Show the vector field in the views.</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="Visibility3DLabel">
+       <property name="text">
+        <string>Visibility in 3D view:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <layout class="QHBoxLayout" name="visibility3DLayout">
        <item>
-        <widget class="QToolButton" name="NoneModeToolButton">
+        <widget class="QCheckBox" name="Visibility3DCheckBox">
          <property name="toolTip">
-          <string>Do not draw the vector field</string>
+          <string>Show the vector field in 3D views.</string>
          </property>
          <property name="text">
-          <string>None</string>
-         </property>
-         <property name="icon">
-          <iconset resource="../qMRMLWidgets.qrc">
-           <normaloff>:/Icons/VectorFieldNone.png</normaloff>:/Icons/VectorFieldNone.png</iconset>
-         </property>
-         <property name="iconSize">
-          <size>
-           <width>32</width>
-           <height>32</height>
-          </size>
-         </property>
-         <property name="checkable">
-          <bool>true</bool>
-         </property>
-         <property name="checked">
-          <bool>false</bool>
-         </property>
-         <property name="autoExclusive">
-          <bool>true</bool>
-         </property>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonTextUnderIcon</enum>
+          <string/>
          </property>
         </widget>
        </item>
        <item>
+        <widget class="QLabel" name="RegionLabel">
+         <property name="text">
+          <string>Region:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+         <widget class="qMRMLNodeComboBox" name="RegionNodeComboBox">
+          <property name="toolTip">
+           <string>Node that bounds the region in which the field is sampled. If not set, the whole field is sampled.</string>
+          </property>
+          <property name="nodeTypes">
+           <stringlist>
+            <string>vtkMRMLMarkupsROINode</string>
+            <string>vtkMRMLMarkupsPlaneNode</string>
+            <string>vtkMRMLModelNode</string>
+            <string>vtkMRMLVolumeNode</string>
+            <string>vtkMRMLSliceNode</string>
+           </stringlist>
+          </property>
+          <property name="noneEnabled">
+           <bool>true</bool>
+          </property>
+          <property name="addEnabled">
+           <bool>false</bool>
+          </property>
+          <property name="removeEnabled">
+           <bool>false</bool>
+          </property>
+         </widget>
+       </item>
+    </layout>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="Visibility2DLabel">
+       <property name="text">
+        <string>Visibility in slice view:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <widget class="QCheckBox" name="Visibility2DCheckBox">
+       <property name="toolTip">
+        <string>Show the vector field in slice views.</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="VisualizationModeLabel">
+       <property name="text">
+        <string>Mode:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1">
+      <layout class="QHBoxLayout" name="visualizationModeLayout">
+       <item>
         <widget class="QToolButton" name="GlyphModeToolButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+           <horstretch>1</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="toolTip">
           <string>Draw a glyph at each sampled point, oriented and scaled by the vector</string>
          </property>
@@ -99,6 +167,12 @@
        </item>
        <item>
         <widget class="QToolButton" name="GridModeToolButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+           <horstretch>1</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="toolTip">
           <string>Draw a lattice of lines, deformed by the vectors</string>
          </property>
@@ -131,6 +205,12 @@
        </item>
        <item>
         <widget class="QToolButton" name="ContourModeToolButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+           <horstretch>1</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="toolTip">
           <string>Draw isosurfaces of the vector magnitude (isolines in slice views)</string>
          </property>
@@ -163,6 +243,12 @@
        </item>
        <item>
         <widget class="QToolButton" name="StreamlineModeToolButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+           <horstretch>1</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="toolTip">
           <string>Draw curves that follow the direction of the field</string>
          </property>
@@ -193,100 +279,7 @@
          </property>
         </widget>
        </item>
-        <item>
-         <spacer name="visualizationModeSpacer">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-         </spacer>
-        </item>
       </layout>
-     </item>
-     <item row="1" column="0">
-      <widget class="QLabel" name="SamplingSpacingLabel">
-       <property name="text">
-        <string>Sampling spacing:</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="1">
-      <widget class="ctkDoubleSpinBox" name="SamplingSpacingSpinBox">
-       <property name="toolTip">
-        <string>Distance between the sampled points. 0 follows the resolution of the field (the voxel size of a vector volume). Not used for the point data of a model, which is sampled at the points of the mesh.</string>
-       </property>
-       <property name="suffix">
-        <string> mm</string>
-       </property>
-       <property name="minimum">
-        <double>0.000000000000000</double>
-       </property>
-       <property name="maximum">
-        <double>1000000.000000000000000</double>
-       </property>
-       <property name="singleStep">
-        <double>1.000000000000000</double>
-       </property>
-      </widget>
-     </item>
-     <item row="2" column="0">
-      <widget class="QLabel" name="RegionLabel">
-       <property name="text">
-        <string>Region:</string>
-       </property>
-      </widget>
-     </item>
-     <item row="2" column="1">
-      <widget class="qMRMLNodeComboBox" name="RegionNodeComboBox">
-       <property name="toolTip">
-        <string>Node that bounds the region in which the field is sampled. If not set, the whole field is sampled.</string>
-       </property>
-       <property name="nodeTypes">
-        <stringlist>
-         <string>vtkMRMLMarkupsROINode</string>
-         <string>vtkMRMLMarkupsPlaneNode</string>
-         <string>vtkMRMLModelNode</string>
-         <string>vtkMRMLVolumeNode</string>
-         <string>vtkMRMLSliceNode</string>
-        </stringlist>
-       </property>
-       <property name="noneEnabled">
-        <bool>true</bool>
-       </property>
-       <property name="addEnabled">
-        <bool>false</bool>
-       </property>
-       <property name="removeEnabled">
-        <bool>false</bool>
-       </property>
-      </widget>
-     </item>
-     <item row="3" column="0">
-      <widget class="QLabel" name="SamplePointsLabel">
-       <property name="text">
-        <string>Sample points:</string>
-       </property>
-      </widget>
-     </item>
-     <item row="3" column="1">
-      <widget class="qMRMLNodeComboBox" name="SamplePointsNodeComboBox">
-       <property name="toolTip">
-        <string>Markups node whose control points are used as sampling positions, instead of a regular lattice.</string>
-       </property>
-       <property name="nodeTypes">
-        <stringlist>
-         <string>vtkMRMLMarkupsNode</string>
-        </stringlist>
-       </property>
-       <property name="noneEnabled">
-        <bool>true</bool>
-       </property>
-       <property name="addEnabled">
-        <bool>false</bool>
-       </property>
-       <property name="removeEnabled">
-        <bool>false</bool>
-       </property>
-      </widget>
      </item>
      <item row="4" column="0">
       <widget class="QLabel" name="GlyphTypeLabel">
@@ -399,33 +392,69 @@
       </widget>
      </item>
      <item row="10" column="0">
-      <widget class="QLabel" name="MaskingNthPointLabel">
+      <widget class="QLabel" name="GlyphSpacingLabel">
        <property name="text">
-        <string>N:</string>
+        <string>Spacing:</string>
        </property>
       </widget>
      </item>
      <item row="10" column="1">
-      <widget class="QSpinBox" name="MaskingNthPointSpinBox">
+      <widget class="ctkDoubleSpinBox" name="GlyphSpacingSpinBox">
        <property name="toolTip">
-        <string>Show a glyph at every Nth point of the mesh.</string>
+        <string>Distance between the glyphs.</string>
+       </property>
+       <property name="suffix">
+        <string> mm</string>
        </property>
        <property name="minimum">
-        <number>1</number>
+        <double>0.000000000000000</double>
        </property>
        <property name="maximum">
-        <number>1000000</number>
+        <double>1000.000000000000000</double>
+       </property>
+       <property name="singleStep">
+        <double>1.000000000000000</double>
        </property>
       </widget>
      </item>
      <item row="11" column="0">
-      <widget class="QLabel" name="MaskingPointsNumberLabel">
+      <widget class="QLabel" name="SamplePointsLabel">
        <property name="text">
-        <string>Maximum number of glyphs:</string>
+        <string>Source points:</string>
        </property>
       </widget>
      </item>
      <item row="11" column="1">
+      <widget class="qMRMLNodeComboBox" name="SamplePointsNodeComboBox">
+       <property name="toolTip">
+        <string>Node whose points are used as glyph positions: the control points of a markups node, the mesh points of a model, or the voxel centers of a volume.</string>
+       </property>
+       <property name="nodeTypes">
+        <stringlist>
+         <string>vtkMRMLMarkupsNode</string>
+         <string>vtkMRMLModelNode</string>
+         <string>vtkMRMLVolumeNode</string>
+        </stringlist>
+       </property>
+       <property name="noneEnabled">
+        <bool>true</bool>
+       </property>
+       <property name="addEnabled">
+        <bool>false</bool>
+       </property>
+       <property name="removeEnabled">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item row="12" column="0">
+      <widget class="QLabel" name="MaskingPointsNumberLabel">
+       <property name="text">
+        <string>Number of points:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="12" column="1">
       <widget class="QSpinBox" name="MaskingPointsNumberSpinBox">
        <property name="toolTip">
         <string>Maximum number of randomly sampled glyphs to show.</string>
@@ -441,14 +470,50 @@
        </property>
       </widget>
      </item>
-     <item row="12" column="0">
+     <item row="13" column="0">
+      <widget class="QLabel" name="GridSpacingLabel">
+       <property name="text">
+        <string>Grid spacing:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="13" column="1">
+      <widget class="ctkDoubleSpinBox" name="GridSpacingSpinBox">
+       <property name="toolTip">
+        <string>Distance between the grid lines. The sampling spacing only controls how finely the lines follow the field in between.</string>
+       </property>
+       <property name="suffix">
+        <string> mm</string>
+       </property>
+       <property name="minimum">
+        <double>0.000000000000000</double>
+       </property>
+       <property name="maximum">
+        <double>1000.000000000000000</double>
+       </property>
+       <property name="singleStep">
+        <double>1.000000000000000</double>
+       </property>
+      </widget>
+     </item>
+     <item row="14" column="1">
+      <widget class="QCheckBox" name="GridShowNonWarpedCheckBox">
+       <property name="toolTip">
+        <string>Show the undeformed grid next to the deformed one, in slice views.</string>
+       </property>
+       <property name="text">
+        <string>Show non-warped grid</string>
+       </property>
+      </widget>
+     </item>
+     <item row="15" column="0">
       <widget class="QLabel" name="GridScaleLabel">
        <property name="text">
         <string>Grid scale:</string>
        </property>
       </widget>
      </item>
-     <item row="12" column="1">
+     <item row="15" column="1">
       <widget class="ctkDoubleSpinBox" name="GridScaleSpinBox">
        <property name="toolTip">
         <string>Length of the deformation applied to the grid, in percent of the vectors.</string>
@@ -470,14 +535,14 @@
        </property>
       </widget>
      </item>
-     <item row="13" column="0">
+     <item row="16" column="0">
       <widget class="QLabel" name="GridLineDiameterLabel">
        <property name="text">
         <string>Grid line diameter:</string>
        </property>
       </widget>
      </item>
-     <item row="13" column="1">
+     <item row="16" column="1">
       <widget class="ctkDoubleSpinBox" name="GridLineDiameterSpinBox">
        <property name="toolTip">
         <string>Diameter of the grid lines. 0 draws them as thin lines.</string>
@@ -496,28 +561,28 @@
        </property>
       </widget>
      </item>
-     <item row="14" column="0">
+     <item row="17" column="0">
       <widget class="QLabel" name="ContourLevelsLabel">
        <property name="text">
         <string>Contour levels:</string>
        </property>
       </widget>
      </item>
-     <item row="14" column="1">
+     <item row="17" column="1">
       <widget class="QLineEdit" name="ContourLevelsLineEdit">
        <property name="toolTip">
         <string>Magnitude values that isosurfaces are drawn at, separated by spaces.</string>
        </property>
       </widget>
      </item>
-     <item row="15" column="0">
+     <item row="18" column="0">
       <widget class="QLabel" name="MaximumPropagationLabel">
        <property name="text">
         <string>Maximum length:</string>
        </property>
       </widget>
      </item>
-     <item row="15" column="1">
+     <item row="18" column="1">
       <widget class="ctkDoubleSpinBox" name="MaximumPropagationSpinBox">
        <property name="toolTip">
         <string>Maximum length of a streamline.</string>
@@ -536,14 +601,14 @@
        </property>
       </widget>
      </item>
-     <item row="16" column="0">
+     <item row="19" column="0">
       <widget class="QLabel" name="StreamlineTubeDiameterLabel">
        <property name="text">
         <string>Streamline diameter:</string>
        </property>
       </widget>
      </item>
-     <item row="16" column="1">
+     <item row="19" column="1">
       <widget class="ctkDoubleSpinBox" name="StreamlineTubeDiameterSpinBox">
        <property name="toolTip">
         <string>Diameter of the streamline tubes. 0 draws them as thin lines.</string>
@@ -562,7 +627,75 @@
        </property>
       </widget>
      </item>
+     <item row="20" column="0">
+      <widget class="QLabel" name="FieldThresholdLabel">
+       <property name="text">
+        <string>Threshold:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="20" column="1">
+      <widget class="QCheckBox" name="FieldThresholdCheckBox">
+       <property name="toolTip">
+        <string>Only draw the field where the magnitude is inside the threshold range.</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+     <item row="21" column="1">
+      <widget class="ctkRangeWidget" name="FieldThresholdRangeWidget">
+       <property name="toolTip">
+        <string>Range of the magnitude that is drawn.</string>
+       </property>
+      </widget>
+     </item>
     </layout>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleGroupBox" name="AdvancedGroupBox">
+     <property name="title">
+      <string>Advanced</string>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+     <property name="collapsed">
+      <bool>true</bool>
+     </property>
+     <layout class="QFormLayout" name="advancedLayout">
+      <property name="fieldGrowthPolicy">
+       <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+      </property>
+     <item row="0" column="0">
+      <widget class="QLabel" name="SamplingSpacingLabel">
+       <property name="text">
+        <string>Resolution:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="ctkDoubleSpinBox" name="SamplingSpacingSpinBox">
+       <property name="toolTip">
+        <string>Distance between the sampled points. 0 follows the resolution of the field (the voxel size of a vector volume). Not used for the point data of a model, which is sampled at the points of the mesh.</string>
+       </property>
+       <property name="suffix">
+        <string> mm</string>
+       </property>
+       <property name="minimum">
+        <double>0.000000000000000</double>
+       </property>
+       <property name="maximum">
+        <double>1000000.000000000000000</double>
+       </property>
+       <property name="singleStep">
+        <double>1.000000000000000</double>
+       </property>
+      </widget>
+     </item>
+     </layout>
+    </widget>
    </item>
    <item>
     <widget class="ctkCollapsibleGroupBox" name="ColoringGroupBox">
@@ -576,6 +709,44 @@
       <bool>true</bool>
      </property>
      <layout class="QVBoxLayout" name="coloringLayout">
+      <item>
+       <layout class="QFormLayout" name="colorByLayout">
+        <property name="fieldGrowthPolicy">
+         <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+        </property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="ColorByLabel">
+          <property name="text">
+           <string>Color by:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="ColorByComboBox">
+          <property name="toolTip">
+           <string>Whether the field is drawn in one color or colored by the value of an array.</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="ColorLabel">
+          <property name="text">
+           <string>Color:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="ctkColorPickerButton" name="ColorPickerButton">
+          <property name="toolTip">
+           <string>The one color that the field is drawn in.</string>
+          </property>
+          <property name="displayColorName">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
       <item>
        <widget class="qMRMLScalarsDisplayWidget" name="ScalarsDisplayWidget"/>
       </item>
@@ -598,44 +769,13 @@
        <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
       </property>
       <item row="0" column="0">
-       <widget class="QLabel" name="Visibility3DLabel">
-        <property name="text">
-         <string>Visibility in 3D views:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QCheckBox" name="Visibility3DCheckBox">
-        <property name="toolTip">
-         <string>Show the glyphs in the 3D views.</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="ColorLabel">
-        <property name="text">
-         <string>Color:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="ctkColorPickerButton" name="ColorPickerButton">
-        <property name="toolTip">
-         <string>Color of the glyphs. Only used when the glyphs are not colored by a scalar array.</string>
-        </property>
-        <property name="displayColorName">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
        <widget class="QLabel" name="OpacityLabel">
         <property name="text">
          <string>Opacity:</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="0" column="1">
        <widget class="ctkSliderWidget" name="OpacitySliderWidget">
         <property name="toolTip">
          <string>Opacity of the glyphs in 3D views.</string>
@@ -670,27 +810,13 @@
        <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
       </property>
       <item row="0" column="0">
-       <widget class="QLabel" name="Visibility2DLabel">
-        <property name="text">
-         <string>Visibility in slice views:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QCheckBox" name="Visibility2DCheckBox">
-        <property name="toolTip">
-         <string>Show the glyphs in the slice views.</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
        <widget class="QLabel" name="SliceSlabThicknessLabel">
         <property name="text">
          <string>Slab thickness:</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item row="0" column="1">
        <widget class="ctkDoubleSpinBox" name="SliceSlabThicknessSpinBox">
         <property name="toolTip">
          <string>Glyphs are shown in a slice view for mesh points that are closer to the slice plane than half of this thickness.</string>
@@ -712,43 +838,14 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="SliceGlyphScaleLabel">
-        <property name="text">
-         <string>Glyph scale:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="ctkDoubleSpinBox" name="SliceGlyphScaleSpinBox">
-        <property name="toolTip">
-         <string>Size of the glyphs in slice views, in percent of the size used in 3D views.</string>
-        </property>
-        <property name="suffix">
-         <string> %</string>
-        </property>
-        <property name="decimals">
-         <number>0</number>
-        </property>
-        <property name="minimum">
-         <double>1.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>10000.000000000000000</double>
-        </property>
-        <property name="singleStep">
-         <double>10.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
+      <item row="1" column="0">
        <widget class="QLabel" name="SliceLineWidthLabel">
         <property name="text">
          <string>Line width:</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
+      <item row="1" column="1">
        <widget class="QSpinBox" name="SliceLineWidthSpinBox">
         <property name="toolTip">
          <string>Line width used for drawing the glyphs in slice views.</string>
@@ -777,6 +874,11 @@
    <class>ctkColorPickerButton</class>
    <extends>QPushButton</extends>
    <header>ctkColorPickerButton.h</header>
+  </customwidget>
+  <customwidget>
+   <class>ctkRangeWidget</class>
+   <extends>QWidget</extends>
+   <header>ctkRangeWidget.h</header>
   </customwidget>
   <customwidget>
    <class>ctkDoubleSpinBox</class>

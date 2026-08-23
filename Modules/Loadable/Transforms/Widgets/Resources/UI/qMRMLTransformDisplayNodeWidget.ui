@@ -41,41 +41,26 @@
    <item row="2" column="0" colspan="3">
     <widget class="ctkCollapsibleGroupBox" name="VisualizationCollapsibleGroupBox">
      <property name="title">
-      <string>Visualization</string>
+      <string>Displacement field</string>
      </property>
      <layout class="QVBoxLayout" name="visualizationLayout">
       <item>
        <widget class="qMRMLVectorFieldDisplayWidget" name="VectorFieldDisplayWidget"/>
       </item>
       <item>
-       <widget class="ctkCollapsibleGroupBox" name="ColorsSection">
-        <property name="title">
-         <string>Displacement colors</string>
+       <widget class="ctkVTKScalarsToColorsWidget" name="ColorMapWidget">
+        <property name="toolTip">
+         <string>Colors that the displacement magnitude is mapped to. The horizontal axis is the magnitude in mm.</string>
         </property>
-        <property name="checked">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>80</height>
+         </size>
+        </property>
+        <property name="verticalSliderVisible">
          <bool>false</bool>
         </property>
-        <property name="collapsed">
-         <bool>true</bool>
-        </property>
-        <layout class="QVBoxLayout" name="colorsLayout">
-         <item>
-          <widget class="ctkVTKScalarsToColorsWidget" name="ColorMapWidget">
-           <property name="toolTip">
-            <string>Colors that the displacement magnitude is mapped to. The horizontal axis is the magnitude in mm.</string>
-           </property>
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>80</height>
-            </size>
-           </property>
-           <property name="verticalSliderVisible">
-            <bool>false</bool>
-           </property>
-          </widget>
-         </item>
-        </layout>
        </widget>
       </item>
      </layout>

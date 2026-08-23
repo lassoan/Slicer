@@ -490,7 +490,7 @@
    <item row="4" column="0">
     <widget class="ctkCollapsibleGroupBox" name="GlyphsGroupBox">
      <property name="title">
-      <string>Glyphs</string>
+      <string>Vector field</string>
      </property>
      <property name="checked">
       <bool>false</bool>

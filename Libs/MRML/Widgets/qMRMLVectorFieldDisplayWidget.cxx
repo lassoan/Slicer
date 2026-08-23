@@ -89,9 +89,6 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   this->VectorScaleModeComboBox->addItem(qMRMLVectorFieldDisplayWidget::tr("Scale by components"), vtkMRMLVectorFieldDisplayNode::VectorScaleModeByComponents);
 
   this->MaskingModeComboBox->addItem(qMRMLVectorFieldDisplayWidget::tr("All points"), vtkMRMLVectorFieldDisplayNode::MaskingModeAllPoints);
-  this->MaskingModeComboBox->addItem(              //
-    qMRMLVectorFieldDisplayWidget::tr("Every Nth point"), //
-    vtkMRMLVectorFieldDisplayNode::MaskingModeEveryNthPoint);
   this->MaskingModeComboBox->addItem(                                             //
     qMRMLVectorFieldDisplayWidget::tr("Uniform spatial distribution - bounds based"), //
     vtkMRMLVectorFieldDisplayNode::MaskingModeUniformBounds);
@@ -101,6 +98,15 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   this->MaskingModeComboBox->addItem(                                              //
     qMRMLVectorFieldDisplayWidget::tr("Uniform spatial distribution - volume sampling"), //
     vtkMRMLVectorFieldDisplayNode::MaskingModeUniformVolume);
+  this->MaskingModeComboBox->addItem(                  //
+    qMRMLVectorFieldDisplayWidget::tr("Fixed spacing"), //
+    vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing);
+  this->MaskingModeComboBox->addItem(                //
+    qMRMLVectorFieldDisplayWidget::tr("Node points"), //
+    vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints);
+
+  this->ColorByComboBox->addItem(qMRMLVectorFieldDisplayWidget::tr("Solid color"), 0);
+  this->ColorByComboBox->addItem(qMRMLVectorFieldDisplayWidget::tr("Magnitude"), 1);
 
   // One checkable icon button per visualization mode, as the transform display had
   this->ModeToolButtons[vtkMRMLVectorFieldDisplayNode::VisualizationModeGlyph] = this->GlyphModeToolButton;
@@ -108,7 +114,7 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   this->ModeToolButtons[vtkMRMLVectorFieldDisplayNode::VisualizationModeContour] = this->ContourModeToolButton;
   this->ModeToolButtons[vtkMRMLVectorFieldDisplayNode::VisualizationModeStreamline] = this->StreamlineModeToolButton;
 
-  q->connect(this->NoneModeToolButton, SIGNAL(toggled(bool)), q, SLOT(onVisualizationModeToggled(bool)));
+  q->connect(this->VisibilityCheckBox, SIGNAL(toggled(bool)), q, SLOT(onVisibilityToggled(bool)));
   q->connect(this->GlyphTypeComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onGlyphTypeChanged(int)));
   q->connect(this->OrientationArrayComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onOrientationArrayChanged(int)));
   q->connect(this->ScaleArrayComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onScaleArrayChanged(int)));
@@ -116,7 +122,13 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   q->connect(this->VectorScaleModeComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onVectorScaleModeChanged(int)));
   q->connect(this->ScaleFactorSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onScaleFactorChanged(double)));
   q->connect(this->MaskingModeComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onMaskingModeChanged(int)));
-  q->connect(this->MaskingNthPointSpinBox, SIGNAL(valueChanged(int)), q, SLOT(onMaskingNthPointChanged(int)));
+  q->connect(this->ColorByComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onColorByChanged(int)));
+  q->connect(this->GlyphSpacingSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGlyphSpacingChanged(double)));
+  q->connect(this->FieldThresholdCheckBox, SIGNAL(toggled(bool)), q, SLOT(onThresholdEnabledToggled(bool)));
+  q->connect(this->FieldThresholdRangeWidget, SIGNAL(valuesChanged(double, double)), q, SLOT(onThresholdRangeChanged(double, double)));
+  // Thresholding is offered here, with the other parameters that apply whatever the field
+  // is colored by, so the coloring widget does not repeat it.
+  this->ScalarsDisplayWidget->setThresholdVisible(false);
   q->connect(this->MaskingPointsNumberSpinBox, SIGNAL(valueChanged(int)), q, SLOT(onMaskingPointsNumberChanged(int)));
   for (auto modeToButton : this->ModeToolButtons)
   {
@@ -125,6 +137,8 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   q->connect(this->SamplingSpacingSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onSamplingSpacingChanged(double)));
   q->connect(this->RegionNodeComboBox, SIGNAL(currentNodeChanged(vtkMRMLNode*)), q, SLOT(onRegionNodeChanged(vtkMRMLNode*)));
   q->connect(this->SamplePointsNodeComboBox, SIGNAL(currentNodeChanged(vtkMRMLNode*)), q, SLOT(onSamplePointsNodeChanged(vtkMRMLNode*)));
+  q->connect(this->GridSpacingSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGridSpacingChanged(double)));
+  q->connect(this->GridShowNonWarpedCheckBox, SIGNAL(toggled(bool)), q, SLOT(onGridShowNonWarpedToggled(bool)));
   q->connect(this->GridScaleSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGridScaleChanged(double)));
   q->connect(this->GridLineDiameterSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGridLineDiameterChanged(double)));
   q->connect(this->ContourLevelsLineEdit, SIGNAL(editingFinished()), q, SLOT(onContourLevelsChanged()));
@@ -139,7 +153,6 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   // Slice display
   q->connect(this->Visibility2DCheckBox, SIGNAL(toggled(bool)), q, SLOT(onVisibility2DToggled(bool)));
   q->connect(this->SliceSlabThicknessSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onSliceSlabThicknessChanged(double)));
-  q->connect(this->SliceGlyphScaleSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onSliceGlyphScaleChanged(double)));
   q->connect(this->SliceLineWidthSpinBox, SIGNAL(valueChanged(int)), q, SLOT(onSliceLineWidthChanged(int)));
 
   q->setEnabled(false);
@@ -278,34 +291,36 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
 
   d->ScaleFactorSpinBox->setValue(d->GlyphDisplayNode->GetScaleFactor());
 
-  int maskingModeIndex = d->MaskingModeComboBox->findData(d->GlyphDisplayNode->GetMaskingMode());
+  // Only the ways of placing glyphs that this source can honor are offered
+  for (int itemIndex = 0; itemIndex < d->MaskingModeComboBox->count(); ++itemIndex)
+  {
+    bool supported = d->GlyphDisplayNode->IsMaskingModeSupported(d->MaskingModeComboBox->itemData(itemIndex).toInt());
+    d->MaskingModeComboBox->setItemData(itemIndex, supported ? QVariant() : QVariant(0), Qt::UserRole - 1);
+  }
+  int effectiveMaskingMode = d->GlyphDisplayNode->GetEffectiveMaskingMode();
+  int maskingModeIndex = d->MaskingModeComboBox->findData(effectiveMaskingMode);
   d->MaskingModeComboBox->setCurrentIndex(maskingModeIndex >= 0 ? maskingModeIndex : 0);
-  d->MaskingNthPointSpinBox->setValue(d->GlyphDisplayNode->GetMaskingNthPoint());
   d->MaskingPointsNumberSpinBox->setValue(d->GlyphDisplayNode->GetMaskingPointsNumber());
 
-  bool showNthPoint = (d->GlyphDisplayNode->GetMaskingMode() == vtkMRMLVectorFieldDisplayNode::MaskingModeEveryNthPoint);
-  d->MaskingNthPointLabel->setVisible(showNthPoint);
-  d->MaskingNthPointSpinBox->setVisible(showNthPoint);
-
-  bool showPointsNumber = (d->GlyphDisplayNode->GetMaskingMode() == vtkMRMLVectorFieldDisplayNode::MaskingModeUniformBounds ||
-                           d->GlyphDisplayNode->GetMaskingMode() == vtkMRMLVectorFieldDisplayNode::MaskingModeUniformSurface ||
-                           d->GlyphDisplayNode->GetMaskingMode() == vtkMRMLVectorFieldDisplayNode::MaskingModeUniformVolume);
+  bool showPointsNumber = (effectiveMaskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeUniformBounds ||
+                           effectiveMaskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeUniformSurface ||
+                           effectiveMaskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeUniformVolume);
   d->MaskingPointsNumberLabel->setVisible(showPointsNumber);
   d->MaskingPointsNumberSpinBox->setVisible(showPointsNumber);
 
   // Visualization mode, and the parameters that only apply to one of the modes
   int visualizationMode = d->GlyphDisplayNode->GetVisualizationMode();
-  bool fieldIsShown = (d->GlyphDisplayNode->GetVisibility() != 0);
+  d->VisibilityCheckBox->setChecked(d->GlyphDisplayNode->GetVisibility() != 0);
   for (auto modeToButton : d->ModeToolButtons)
   {
+    modeToButton.second->setVisible(d->GlyphDisplayNode->IsVisualizationModeSupported(modeToButton.first));
     bool wasBlocked = modeToButton.second->blockSignals(true);
-    modeToButton.second->setChecked(fieldIsShown && modeToButton.first == visualizationMode);
+    modeToButton.second->setChecked(modeToButton.first == visualizationMode);
     modeToButton.second->blockSignals(wasBlocked);
   }
-  bool wasBlockedNone = d->NoneModeToolButton->blockSignals(true);
-  d->NoneModeToolButton->setChecked(!fieldIsShown);
-  d->NoneModeToolButton->blockSignals(wasBlockedNone);
 
+  d->GridSpacingSpinBox->setValue(d->GlyphDisplayNode->GetGridSpacingMm());
+  d->GridShowNonWarpedCheckBox->setChecked(d->GlyphDisplayNode->GetGridShowNonWarped());
   d->GridScaleSpinBox->setValue(d->GlyphDisplayNode->GetGridScalePercent());
   d->GridLineDiameterSpinBox->setValue(d->GlyphDisplayNode->GetGridLineDiameterMm());
   d->ContourLevelsLineEdit->setText(QString::fromStdString(d->GlyphDisplayNode->GetContourLevelsMmAsString()));
@@ -330,8 +345,6 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   }
   if (!glyphMode)
   {
-    d->MaskingNthPointLabel->setVisible(false);
-    d->MaskingNthPointSpinBox->setVisible(false);
     d->MaskingPointsNumberLabel->setVisible(false);
     d->MaskingPointsNumberSpinBox->setVisible(false);
     d->VectorScaleModeLabel->setVisible(false);
@@ -342,6 +355,9 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
     d->VectorScaleModeLabel->setVisible(true);
     d->VectorScaleModeComboBox->setVisible(true);
   }
+  d->GridSpacingLabel->setVisible(gridMode);
+  d->GridSpacingSpinBox->setVisible(gridMode);
+  d->GridShowNonWarpedCheckBox->setVisible(gridMode);
   d->GridScaleLabel->setVisible(gridMode);
   d->GridScaleSpinBox->setVisible(gridMode);
   d->GridLineDiameterLabel->setVisible(gridMode);
@@ -373,17 +389,70 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   // Sampling: only sources that can be sampled at arbitrary positions (a vector volume, a
   // transform) use these; the point data of a model is taken at the points of the mesh.
   bool isSampledSource = d->GlyphDisplayNode->CanSampleAtArbitraryPositions();
-  d->SamplingSpacingLabel->setVisible(isSampledSource);
-  d->SamplingSpacingSpinBox->setVisible(isSampledSource);
-  d->RegionLabel->setVisible(isSampledSource);
+  // The lattice spacing is what a non-glyph mode is sampled on, and in glyph mode it only
+  // applies when the glyphs sit on a lattice.
+  bool usesLattice = (isSampledSource //
+                      && (!glyphMode  //
+                          || effectiveMaskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing));
+  bool usesNodePoints = (effectiveMaskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints);
+  bool showGlyphSpacing = (glyphMode && usesLattice);
+  d->GlyphSpacingLabel->setVisible(showGlyphSpacing);
+  d->GlyphSpacingSpinBox->setVisible(showGlyphSpacing);
+  // The same spacing is offered among the advanced parameters for the modes that sample the
+  // field without drawing glyphs, where it reads as a resolution rather than a spacing.
+  d->SamplingSpacingLabel->setVisible(usesLattice && !showGlyphSpacing);
+  d->SamplingSpacingSpinBox->setVisible(usesLattice && !showGlyphSpacing);
   d->RegionNodeComboBox->setVisible(isSampledSource);
-  d->SamplePointsLabel->setVisible(isSampledSource);
-  d->SamplePointsNodeComboBox->setVisible(isSampledSource);
+  d->SamplePointsLabel->setVisible(usesNodePoints);
+  d->SamplePointsNodeComboBox->setVisible(usesNodePoints);
   if (isSampledSource)
   {
     d->SamplingSpacingSpinBox->setValue(d->GlyphDisplayNode->GetEffectiveSamplingSpacingMm());
+    d->GlyphSpacingSpinBox->setValue(d->GlyphDisplayNode->GetEffectiveSamplingSpacingMm());
     d->RegionNodeComboBox->setCurrentNode(d->GlyphDisplayNode->GetRegionNode());
-    d->SamplePointsNodeComboBox->setCurrentNode(d->GlyphDisplayNode->GetSamplePointsNode());
+  }
+  d->SamplePointsNodeComboBox->setCurrentNode(d->GlyphDisplayNode->GetSamplePointsNode());
+
+  // Coloring: either one color, or the values of the active array through the color node
+  bool colorByScalar = (d->GlyphDisplayNode->GetScalarVisibility() != 0);
+  d->ColorByComboBox->setCurrentIndex(colorByScalar ? 1 : 0);
+  d->ColorLabel->setVisible(!colorByScalar);
+  d->ColorPickerButton->setVisible(!colorByScalar);
+  d->ScalarsDisplayWidget->setVisible(colorByScalar);
+  // The scalars widget has a visibility check box of its own, which this selector replaces,
+  // and an array selector that means nothing for a source whose arrays are fixed.
+  for (const char* hiddenChild : { "ScalarsVisibilityLabel", "ScalarsVisibilityCheckBox" })
+  {
+    QWidget* child = d->ScalarsDisplayWidget->findChild<QWidget*>(hiddenChild);
+    if (child)
+    {
+      child->setVisible(false);
+    }
+  }
+  for (const char* arrayChild : { "ActiveScalarLabel", "ActiveScalarComboBox" })
+  {
+    QWidget* child = d->ScalarsDisplayWidget->findChild<QWidget*>(arrayChild);
+    if (child)
+    {
+      child->setVisible(!hasFixedArrays);
+    }
+  }
+
+  // Thresholding, which hides the parts of the field whose magnitude is outside the range
+  bool thresholdEnabled = (d->GlyphDisplayNode->GetThresholdEnabled() != 0);
+  d->FieldThresholdCheckBox->setChecked(thresholdEnabled);
+  d->FieldThresholdRangeWidget->setEnabled(thresholdEnabled);
+  double scalarRange[2] = { 0.0, 0.0 };
+  d->GlyphDisplayNode->GetScalarRange(scalarRange);
+  if (scalarRange[1] > scalarRange[0])
+  {
+    d->FieldThresholdRangeWidget->setRange(scalarRange[0], scalarRange[1]);
+  }
+  double thresholdRange[2] = { 0.0, 0.0 };
+  d->GlyphDisplayNode->GetThresholdRange(thresholdRange);
+  if (thresholdRange[1] >= thresholdRange[0])
+  {
+    d->FieldThresholdRangeWidget->setValues(thresholdRange[0], thresholdRange[1]);
   }
 
   // 3D display
@@ -398,7 +467,6 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   // Slice display
   d->Visibility2DCheckBox->setChecked(d->GlyphDisplayNode->GetVisibility2D() != 0);
   d->SliceSlabThicknessSpinBox->setValue(d->GlyphDisplayNode->GetSliceSlabThicknessMm());
-  d->SliceGlyphScaleSpinBox->setValue(d->GlyphDisplayNode->GetSliceGlyphScalePercent());
   d->SliceLineWidthSpinBox->setValue(d->GlyphDisplayNode->GetSliceIntersectionThickness());
 
   d->IsUpdatingWidgetFromMRML = false;
@@ -473,17 +541,6 @@ void qMRMLVectorFieldDisplayWidget::onMaskingModeChanged(int index)
 }
 
 //------------------------------------------------------------------------------
-void qMRMLVectorFieldDisplayWidget::onMaskingNthPointChanged(int value)
-{
-  Q_D(qMRMLVectorFieldDisplayWidget);
-  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
-  {
-    return;
-  }
-  d->GlyphDisplayNode->SetMaskingNthPoint(value);
-}
-
-//------------------------------------------------------------------------------
 void qMRMLVectorFieldDisplayWidget::onMaskingPointsNumberChanged(int value)
 {
   Q_D(qMRMLVectorFieldDisplayWidget);
@@ -502,24 +559,81 @@ void qMRMLVectorFieldDisplayWidget::onVisualizationModeToggled(bool checked)
   {
     return;
   }
-  // The buttons are auto-exclusive, so exactly one of them is checked. "None" is not a
-  // visualization mode of the node: it means that nothing is drawn, so it turns visibility
-  // off and leaves the mode alone, ready for when the user switches back to it.
-  if (this->sender() == d->NoneModeToolButton)
-  {
-    d->GlyphDisplayNode->SetVisibility(false);
-    return;
-  }
+  // The buttons are auto-exclusive, so exactly one of them is checked
   for (auto modeToButton : d->ModeToolButtons)
   {
     if (modeToButton.second == this->sender())
     {
-      MRMLNodeModifyBlocker blocker(d->GlyphDisplayNode);
       d->GlyphDisplayNode->SetVisualizationMode(modeToButton.first);
-      d->GlyphDisplayNode->SetVisibility(true);
       return;
     }
   }
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGlyphSpacingChanged(double value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetEffectiveSamplingSpacingMm(value);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onThresholdEnabledToggled(bool enabled)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetThresholdEnabled(enabled);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onThresholdRangeChanged(double minimum, double maximum)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetThresholdRange(minimum, maximum);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onColorByChanged(int index)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetScalarVisibility(d->ColorByComboBox->itemData(index).toInt() != 0);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::addColoringWidget(QWidget* widget)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!widget)
+  {
+    return;
+  }
+  d->coloringLayout->addWidget(widget);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onVisibilityToggled(bool visible)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetVisibility(visible);
 }
 
 //------------------------------------------------------------------------------
@@ -553,6 +667,28 @@ void qMRMLVectorFieldDisplayWidget::onSamplePointsNodeChanged(vtkMRMLNode* node)
     return;
   }
   d->GlyphDisplayNode->SetAndObserveSamplePointsNode(node);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGridSpacingChanged(double value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetGridSpacingMm(value);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGridShowNonWarpedToggled(bool enabled)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetGridShowNonWarped(enabled);
 }
 
 //------------------------------------------------------------------------------
@@ -700,17 +836,6 @@ void qMRMLVectorFieldDisplayWidget::onSliceSlabThicknessChanged(double value)
     return;
   }
   d->GlyphDisplayNode->SetSliceSlabThicknessMm(value);
-}
-
-//------------------------------------------------------------------------------
-void qMRMLVectorFieldDisplayWidget::onSliceGlyphScaleChanged(double value)
-{
-  Q_D(qMRMLVectorFieldDisplayWidget);
-  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
-  {
-    return;
-  }
-  d->GlyphDisplayNode->SetSliceGlyphScalePercent(value);
 }
 
 //------------------------------------------------------------------------------

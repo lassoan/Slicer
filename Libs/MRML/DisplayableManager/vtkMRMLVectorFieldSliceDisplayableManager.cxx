@@ -419,9 +419,11 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
     double fieldOfViewSizeMm[2] = { 0.0, 0.0 };
     this->GetSliceFieldOfViewSizeMm(fieldOfViewSizeMm);
     pipeline->SliceSampler->SetSlicePlane(this->SliceXYToRAS, fieldOfViewSizeMm);
-    // The effective spacing, not SamplingSpacingMm: nodes that keep a separate spacing per
-    // visualization mode (transform display) return the one that applies to the current mode.
-    pipeline->SliceSampler->SetSamplingSpacingMm(glyphDisplayNode->GetEffectiveSamplingSpacingMm());
+    // The spacing the field is really sampled at, not SamplingSpacingMm: nodes that keep a
+    // separate spacing per visualization mode (transform display) return the one that applies
+    // to the current mode, refined so that the grid lines land a whole grid cell apart.
+    pipeline->SliceSampler->SetSamplingSpacingMm(glyphDisplayNode->GetSamplingSpacingForFieldMm());
+    pipeline->SliceSampler->SetLatticeGroupSize(glyphDisplayNode->GetGridSubdivision());
     glyphInputConnection = pipeline->SliceSampler->GetOutputPort();
   }
   else
@@ -503,10 +505,6 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
   // of the selected points.
   switch (glyphDisplayNode->GetMaskingMode())
   {
-    case vtkMRMLVectorFieldDisplayNode::MaskingModeEveryNthPoint:
-      pipeline->MaskPoints->RandomModeOff();
-      pipeline->MaskPoints->SetOnRatio(glyphDisplayNode->GetMaskingNthPoint());
-      break;
     case vtkMRMLVectorFieldDisplayNode::MaskingModeUniformBounds:
     case vtkMRMLVectorFieldDisplayNode::MaskingModeUniformSurface:
     case vtkMRMLVectorFieldDisplayNode::MaskingModeUniformVolume:
@@ -589,18 +587,18 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
   // Scale. vtkGlyph3D scales by the orientation vectors, so an independent
   // 3-component scale array can only be used when it is also the array that
   // orients the glyphs; otherwise glyphs are scaled uniformly.
-  pipeline->Glypher->SetScaleFactor(glyphDisplayNode->GetScaleFactor() * 0.01 * glyphDisplayNode->GetSliceGlyphScalePercent());
-  const char* scaleArrayName = glyphDisplayNode->GetScaleArrayName();
+  pipeline->Glypher->SetScaleFactor(glyphDisplayNode->GetScaleFactor());
+  const char* scaleArrayName = glyphDisplayNode->GetEffectiveScaleArrayName();
   bool hasScaleArray = (scaleArrayName && scaleArrayName[0] != '\0');
-  vtkDataArray* scaleArray = glyphDisplayNode->GetScaleArray();
+  vtkDataArray* scaleArray = glyphDisplayNode->GetEffectiveScaleArray();
   int scaleArrayComponents = scaleArray ? scaleArray->GetNumberOfComponents() : 0;
   if (hasScaleArray && scaleArrayComponents == 1)
   {
     pipeline->Glypher->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, scaleArrayName);
     pipeline->Glypher->SetScaleModeToScaleByScalar();
   }
-  else if (hasScaleArray && scaleArrayComponents == 3 && hasOrientationArray //
-           && strcmp(scaleArrayName, orientationArrayName) == 0)
+  else if (hasScaleArray && hasOrientationArray && strcmp(scaleArrayName, orientationArrayName) == 0 //
+           && (scaleArrayComponents == 3 || scaleArrayComponents == 0))
   {
     if (glyphDisplayNode->GetVectorScaleMode() == vtkMRMLVectorFieldDisplayNode::VectorScaleModeByComponents)
     {

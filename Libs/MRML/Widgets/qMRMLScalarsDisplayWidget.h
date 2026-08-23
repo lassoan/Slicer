@@ -38,6 +38,9 @@ class QMRML_WIDGETS_EXPORT qMRMLScalarsDisplayWidget : public qMRMLWidget
   QVTK_OBJECT
 
   Q_PROPERTY(vtkMRMLDisplayNode::ScalarRangeFlagType scalarRangeMode READ scalarRangeMode WRITE setScalarRangeMode)
+  /// Whether the threshold controls are part of this widget. A host that offers thresholding
+  /// of its own, outside the coloring controls, turns them off here.
+  Q_PROPERTY(bool thresholdVisible READ isThresholdVisible WRITE setThresholdVisible)
 
 public:
   /// Constructors
@@ -65,6 +68,9 @@ public:
   /// Get maximum of the scalar display range
   double maximumValue() const;
 
+  /// \sa setThresholdVisible()
+  bool isThresholdVisible() const;
+
 signals:
   /// Signal sent if the auto/manual value is updated
   void scalarRangeModeValueChanged(vtkMRMLDisplayNode::ScalarRangeFlagType mode);
@@ -89,6 +95,7 @@ public slots:
   void setScalarsDisplayRange(double min, double max);
   void setTresholdEnabled(bool b);
   void setThresholdRange(double min, double max);
+  void setThresholdVisible(bool visible);
 
   /// Set Auto/Manual mode
   void setScalarRangeMode(int scalarRangeMode);

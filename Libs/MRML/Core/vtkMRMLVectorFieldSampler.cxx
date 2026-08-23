@@ -287,8 +287,13 @@ void vtkMRMLVectorFieldSampler::GetSamplePositions(vtkPoints* samplePositions_RA
     {
       return;
     }
-    int numberOfPointsX = static_cast<int>(this->FieldOfViewSizeMm[0] / spacingMm) + 1;
-    int numberOfPointsY = static_cast<int>(this->FieldOfViewSizeMm[1] / spacingMm) + 1;
+    // The lattice holds a whole number of groups, so that grid visualization draws complete
+    // grid cells and never a partial one at the edge of the view.
+    int groupSize = std::max(1, this->LatticeGroupSize);
+    int numberOfStepsX = std::max(groupSize, static_cast<int>(this->FieldOfViewSizeMm[0] / (spacingMm * groupSize)) * groupSize);
+    int numberOfStepsY = std::max(groupSize, static_cast<int>(this->FieldOfViewSizeMm[1] / (spacingMm * groupSize)) * groupSize);
+    int numberOfPointsX = numberOfStepsX + 1;
+    int numberOfPointsY = numberOfStepsY + 1;
     double stepX_XY = spacingMm / xAxisLengthMm;
     double stepY_XY = spacingMm / yAxisLengthMm;
     // The origin of a slice view's XY coordinate system is a corner of the view, not its

@@ -427,10 +427,6 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
   // Masking: which of the points get a glyph.
   switch (fieldDisplayNode->GetMaskingMode())
   {
-    case vtkMRMLVectorFieldDisplayNode::MaskingModeEveryNthPoint:
-      pipeline->MaskPoints->RandomModeOff();
-      pipeline->MaskPoints->SetOnRatio(fieldDisplayNode->GetMaskingNthPoint());
-      break;
     case vtkMRMLVectorFieldDisplayNode::MaskingModeUniformBounds:
       pipeline->MaskPoints->RandomModeOn();
       pipeline->MaskPoints->SetRandomModeType(vtkMaskPoints::UNIFORM_SPATIAL_BOUNDS);
@@ -473,7 +469,7 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
 
   // Scale
   pipeline->Glypher->ScalingOn();
-  const char* scaleArrayName = fieldDisplayNode->GetScaleArrayName();
+  const char* scaleArrayName = fieldDisplayNode->GetEffectiveScaleArrayName();
   bool hasScaleArray = (scaleArrayName && scaleArrayName[0] != '\0');
   if (fieldDisplayNode->GetScaleDirectional() && hasOrientationArray)
   {
@@ -501,7 +497,7 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
     if (hasScaleArray)
     {
       pipeline->Glypher->SetScaleArray(scaleArrayName);
-      vtkDataArray* scaleArray = fieldDisplayNode->GetScaleArray();
+      vtkDataArray* scaleArray = fieldDisplayNode->GetEffectiveScaleArray();
       bool scaleByComponents = (scaleArray && scaleArray->GetNumberOfComponents() == 3 //
                                 && fieldDisplayNode->GetVectorScaleMode() == vtkMRMLVectorFieldDisplayNode::VectorScaleModeByComponents);
       pipeline->Glypher->SetScaleMode(scaleByComponents ? vtkGlyph3DMapper::SCALE_BY_COMPONENTS : vtkGlyph3DMapper::SCALE_BY_MAGNITUDE);

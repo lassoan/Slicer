@@ -27,6 +27,7 @@
 
 class vtkAlgorithmOutput;
 class vtkAppendPolyData;
+class vtkArrayCalculator;
 class vtkContourFilter;
 class vtkMRMLVectorFieldGridLines;
 class vtkMRMLVectorFieldDisplayNode;
@@ -71,6 +72,7 @@ protected:
 
   vtkSmartPointer<vtkMRMLVectorFieldGridLines> GridLines;
   vtkSmartPointer<vtkWarpVector> Warper;
+  vtkSmartPointer<vtkArrayCalculator> NonWarpedGridMagnitude;
   vtkSmartPointer<vtkAppendPolyData> NonWarpedGridAppender;
   vtkSmartPointer<vtkTubeFilter> GridTuber;
   vtkSmartPointer<vtkContourFilter> Contour;

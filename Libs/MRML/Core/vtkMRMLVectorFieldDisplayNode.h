@@ -26,6 +26,7 @@
 class vtkAlgorithmOutput;
 class vtkDataArray;
 class vtkDataSet;
+class vtkPoints;
 class vtkMatrix4x4;
 class vtkMRMLVectorFieldModePipeline;
 class vtkMRMLVectorFieldSampler;
@@ -82,14 +83,17 @@ public:
     VisualizationMode_Last       // placeholder after the last valid value, this must be the last in the list of modes
   };
 
-  /// Determines which mesh points get a glyph.
+  /// Determines where the glyphs are placed. The first modes select points of the mesh that
+  /// carries the vectors; the last two apply to a field that can be evaluated anywhere (a
+  /// transform, a vector volume).
   enum GlyphMaskingModeType
   {
     MaskingModeAllPoints = 0,      ///< show a glyph at every point of the mesh
-    MaskingModeEveryNthPoint,      ///< show a glyph at every Nth point of the mesh
     MaskingModeUniformBounds,      ///< randomly sample points, uniformly distributed within the bounding box of the mesh
     MaskingModeUniformSurface,     ///< randomly sample points, uniformly distributed on the surface of the mesh
     MaskingModeUniformVolume,      ///< randomly sample points, uniformly distributed within the volume of the mesh
+    MaskingModeFixedSpacing,       ///< show a glyph on an evenly spaced lattice, at SamplingSpacingMm
+    MaskingModeNodePoints,         ///< show a glyph at each point of the sample points node
     MaskingMode_Last                // placeholder after the last valid value, this must be the last in the list of modes
   };
 
@@ -166,13 +170,31 @@ public:
   static int GetMaskingModeFromString(const char* modeString);
   ///@}
 
+  /// The points of the sample points node, in world coordinates: the control points of a
+  /// markups node, the mesh points of a model, or the voxel centers of a volume.
+  /// Returns false if there is no such node or it has no points.
+  bool GetSamplePositions(vtkPoints* samplePositions_RAS);
+
   ///@{
-  /// Show a glyph at every Nth point of the mesh.
-  /// Only used if MaskingMode is MaskingModeEveryNthPoint.
-  /// Default is 10.
-  vtkGetMacro(MaskingNthPoint, int);
-  vtkSetClampMacro(MaskingNthPoint, int, 1, VTK_INT_MAX);
+  /// The array that scales the glyphs, and the array itself. It is the scale array when one
+  /// is set, and the orientation array otherwise: a vector field is drawn with the length of
+  /// its own vectors unless the user asks for something else.
+  const char* GetEffectiveScaleArrayName();
+  vtkDataArray* GetEffectiveScaleArray();
   ///@}
+
+  /// True if the source can place glyphs the way the mode asks for. A field that is sampled
+  /// can only use a lattice or a list of points, and the point data of a mesh can only use
+  /// the points of that mesh.
+  virtual bool IsMaskingModeSupported(int maskingMode);
+
+  /// The masking mode that is used, which is the mode that was set if the source supports
+  /// it, and the source's natural one otherwise.
+  int GetEffectiveMaskingMode();
+
+  /// True if the source can be drawn the way the visualization mode asks for. Reimplemented
+  /// by nodes whose source does not offer every mode (a transform has no streamlines).
+  virtual bool IsVisualizationModeSupported(int visualizationMode);
 
   ///@{
   /// Maximum number of glyphs to show.
@@ -244,6 +266,17 @@ public:
   virtual double GetEffectiveSamplingSpacingMm();
   virtual void SetEffectiveSamplingSpacingMm(double spacingMm);
   ///@}
+
+  /// Distance between the sampled points that the field is really sampled at, which is not
+  /// always the requested one: in grid mode the lattice has to divide the grid line spacing
+  /// evenly, so it is refined to the next such spacing that is no coarser than requested.
+  /// Without that, the drawn grid spacing would be round(GridSpacingMm / requested) times
+  /// the requested spacing, which jumps up and down as the requested spacing is changed.
+  double GetSamplingSpacingForFieldMm();
+
+  /// Number of sampling steps between two grid lines, which is what makes the grid lines
+  /// land exactly GridSpacingMm apart at the spacing GetSamplingSpacingForFieldMm() returns.
+  int GetGridSubdivision();
 
   ///@{
   /// Grid mode: length of the deformation applied to the grid, in percent of the vectors.
@@ -360,14 +393,6 @@ public:
   /// Default is 1.0.
   vtkGetMacro(SliceSlabThicknessMm, double);
   vtkSetMacro(SliceSlabThicknessMm, double);
-  ///@}
-
-  ///@{
-  /// Scale factor of the glyphs in slice views, in percent of the glyph size used
-  /// in 3D views (ScaleFactor).
-  /// Default is 100.
-  vtkGetMacro(SliceGlyphScalePercent, double);
-  vtkSetMacro(SliceGlyphScalePercent, double);
   ///@}
 
   ///@{
@@ -506,7 +531,6 @@ protected:
   int VectorScaleMode;
   double ScaleFactor;
   int MaskingMode;
-  int MaskingNthPoint;
   int MaskingPointsNumber;
   /// Samples a vector volume. Created when the display node is used with a volume;
   /// model point data does not need a sampler.
@@ -552,7 +576,6 @@ protected:
   int GlyphResolution2D;
   double GlyphTipLengthPercent2D;
   double SliceSlabThicknessMm;
-  double SliceGlyphScalePercent;
   bool ThresholdEnabled;
   double ThresholdRange[2];
 };

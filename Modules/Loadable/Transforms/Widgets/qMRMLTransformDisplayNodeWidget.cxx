@@ -84,6 +84,10 @@ void qMRMLTransformDisplayNodeWidgetPrivate::init()
   Q_Q(qMRMLTransformDisplayNodeWidget);
   this->setupUi(q);
 
+  // The color map of a transform is a coloring option, so it belongs in the one coloring
+  // section of the shared widget rather than in a second section next to it
+  this->VectorFieldDisplayWidget->addColoringWidget(this->ColorMapWidget);
+
   double validBounds[4] = { VTK_DOUBLE_MIN, VTK_DOUBLE_MAX, 0., 1. };
 
   this->ColorMapWidget->view()->setValidBounds(validBounds);
