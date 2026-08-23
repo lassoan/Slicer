@@ -17,6 +17,7 @@
 
 // Qt includes
 #include <QColor>
+#include <QListView>
 #include <QToolButton>
 
 // STD includes
@@ -124,6 +125,12 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   q->connect(this->ScaleFactorSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onScaleFactorChanged(double)));
   q->connect(this->MaskingModeComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onMaskingModeChanged(int)));
   q->connect(this->ColorByComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onColorByChanged(int)));
+  q->connect(this->GlyphDiameterSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGlyphDiameterChanged(double)));
+  q->connect(this->GlyphShaftDiameterSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGlyphShaftDiameterChanged(double)));
+  q->connect(this->GlyphTipLengthSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGlyphTipLengthChanged(double)));
+  q->connect(this->GlyphResolutionSpinBox, SIGNAL(valueChanged(int)), q, SLOT(onGlyphResolutionChanged(int)));
+  q->connect(this->GlyphTipLength2DSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGlyphTipLength2DChanged(double)));
+  q->connect(this->GlyphResolution2DSpinBox, SIGNAL(valueChanged(int)), q, SLOT(onGlyphResolution2DChanged(int)));
   q->connect(this->GlyphSpacingSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGlyphSpacingChanged(double)));
   q->connect(this->FieldThresholdCheckBox, SIGNAL(toggled(bool)), q, SLOT(onThresholdEnabledToggled(bool)));
   q->connect(this->FieldThresholdRangeWidget, SIGNAL(valuesChanged(double, double)), q, SLOT(onThresholdRangeChanged(double, double)));
@@ -290,11 +297,17 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
 
   d->ScaleFactorSpinBox->setValue(d->GlyphDisplayNode->GetEffectiveScaleFactor());
 
-  // Only the ways of placing glyphs that this source can honor are offered
+  // Only the ways of placing glyphs that this source can honor are offered: a mesh stride
+  // means nothing for a sampled field, and a lattice means nothing for the points of a mesh,
+  // so the ones that do not apply are left out of the list rather than shown greyed.
   for (int itemIndex = 0; itemIndex < d->MaskingModeComboBox->count(); ++itemIndex)
   {
     bool supported = d->GlyphDisplayNode->IsMaskingModeSupported(d->MaskingModeComboBox->itemData(itemIndex).toInt());
-    d->MaskingModeComboBox->setItemData(itemIndex, supported ? QVariant() : QVariant(0), Qt::UserRole - 1);
+    QListView* maskingModeView = qobject_cast<QListView*>(d->MaskingModeComboBox->view());
+    if (maskingModeView)
+    {
+      maskingModeView->setRowHidden(itemIndex, !supported);
+    }
   }
   int effectiveMaskingMode = d->GlyphDisplayNode->GetEffectiveMaskingMode();
   int maskingModeIndex = d->MaskingModeComboBox->findData(effectiveMaskingMode);
@@ -394,7 +407,7 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   bool usesLattice = (isSampledSource //
                       && (!glyphMode  //
                           || effectiveMaskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing));
-  bool usesNodePoints = (effectiveMaskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints);
+  bool usesNodePoints = (glyphMode && effectiveMaskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints);
   bool showGlyphSpacing = (glyphMode && usesLattice);
   d->GlyphSpacingLabel->setVisible(showGlyphSpacing);
   d->GlyphSpacingSpinBox->setVisible(showGlyphSpacing);
@@ -467,6 +480,36 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   {
     d->FieldThresholdRangeWidget->setRange(scalarRange[0], scalarRange[1]);
   }
+
+  // The geometry of the glyph. Which of these mean anything depends on the glyph: only an
+  // arrow has a shaft and a tip, only a round glyph has a resolution.
+  int glyphType = d->GlyphDisplayNode->GetGlyphType();
+  bool isArrow = (glyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeArrow);
+  bool isCone = (glyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeCone);
+  bool isSphere = (glyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeSphere);
+  bool hasDiameter = (isArrow || isCone || glyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeBox ||
+                      glyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeCylinder);
+  bool hasResolution = (isArrow || isCone || isSphere || glyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeCylinder);
+  d->GlyphDiameterSpinBox->setValue(d->GlyphDisplayNode->GetGlyphDiameterMm());
+  d->GlyphShaftDiameterSpinBox->setValue(d->GlyphDisplayNode->GetGlyphShaftDiameterPercent());
+  d->GlyphTipLengthSpinBox->setValue(d->GlyphDisplayNode->GetGlyphTipLengthPercent());
+  d->GlyphResolutionSpinBox->setValue(d->GlyphDisplayNode->GetGlyphResolution());
+  d->GlyphTipLength2DSpinBox->setValue(d->GlyphDisplayNode->GetGlyphTipLengthPercent2D());
+  d->GlyphResolution2DSpinBox->setValue(d->GlyphDisplayNode->GetGlyphResolution2D());
+  d->GlyphDiameterLabel->setVisible(glyphMode && hasDiameter);
+  d->GlyphDiameterSpinBox->setVisible(glyphMode && hasDiameter);
+  d->GlyphShaftDiameterLabel->setVisible(glyphMode && isArrow);
+  d->GlyphShaftDiameterSpinBox->setVisible(glyphMode && isArrow);
+  d->GlyphTipLengthLabel->setVisible(glyphMode && isArrow);
+  d->GlyphTipLengthSpinBox->setVisible(glyphMode && isArrow);
+  d->GlyphResolutionLabel->setVisible(glyphMode && hasResolution);
+  d->GlyphResolutionSpinBox->setVisible(glyphMode && hasResolution);
+  // Slice views draw a flat outline, which has a tip only for an arrow and a resolution
+  // only for a round glyph.
+  d->GlyphTipLength2DLabel->setVisible(glyphMode && isArrow);
+  d->GlyphTipLength2DSpinBox->setVisible(glyphMode && isArrow);
+  d->GlyphResolution2DLabel->setVisible(glyphMode && isSphere);
+  d->GlyphResolution2DSpinBox->setVisible(glyphMode && isSphere);
 
   // 3D display
   d->Visibility3DCheckBox->setChecked(d->GlyphDisplayNode->GetVisibility3D() != 0);
@@ -613,6 +656,72 @@ void qMRMLVectorFieldDisplayWidget::onThresholdRangeChanged(double minimum, doub
     return;
   }
   d->GlyphDisplayNode->SetThresholdRange(minimum, maximum);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGlyphDiameterChanged(double value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetGlyphDiameterMm(value);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGlyphShaftDiameterChanged(double value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetGlyphShaftDiameterPercent(value);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGlyphTipLengthChanged(double value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetGlyphTipLengthPercent(value);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGlyphResolutionChanged(int value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetGlyphResolution(value);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGlyphTipLength2DChanged(double value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetGlyphTipLengthPercent2D(value);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGlyphResolution2DChanged(int value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetGlyphResolution2D(value);
 }
 
 //------------------------------------------------------------------------------

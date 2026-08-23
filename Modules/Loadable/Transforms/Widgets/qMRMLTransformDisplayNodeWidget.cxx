@@ -196,6 +196,17 @@ qMRMLTransformDisplayNodeWidget::qMRMLTransformDisplayNodeWidget(QWidget* newPar
 qMRMLTransformDisplayNodeWidget::~qMRMLTransformDisplayNodeWidget() = default;
 
 //-----------------------------------------------------------------------------
+void qMRMLTransformDisplayNodeWidget::addVisualizationWidget(QWidget* widget)
+{
+  Q_D(qMRMLTransformDisplayNodeWidget);
+  if (!widget)
+  {
+    return;
+  }
+  d->visualizationLayout->addWidget(widget);
+}
+
+//-----------------------------------------------------------------------------
 void qMRMLTransformDisplayNodeWidget::setMRMLTransformNode(vtkMRMLNode* transformNode)
 {
   setMRMLTransformNode(vtkMRMLTransformNode::SafeDownCast(transformNode));

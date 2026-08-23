@@ -34,6 +34,7 @@
 
 // STD includes
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -67,6 +68,7 @@ void vtkMRMLVectorFieldSampler::PrintSelf(ostream& os, vtkIndent indent)
   this->Superclass::PrintSelf(os, indent);
   os << indent << "RegionSize: " << this->RegionSize[0] << " " << this->RegionSize[1] << " " << this->RegionSize[2] << "\n";
   os << indent << "SamplingSpacingMm: " << this->SamplingSpacingMm << "\n";
+  os << indent << "SliceThicknessMm: " << this->SliceThicknessMm << "\n";
   os << indent << "FieldOfViewSizeMm: " << this->FieldOfViewSizeMm[0] << " " << this->FieldOfViewSizeMm[1] << "\n";
   os << indent << "CanSampleOnSlice: " << (this->CanSampleOnSlice() ? "true" : "false") << "\n";
 }
@@ -265,7 +267,31 @@ void vtkMRMLVectorFieldSampler::GetSamplePositions(vtkPoints* samplePositions_RA
   // Explicitly requested positions (for example the control points of a markups node)
   if (this->SamplePositions && this->SamplePositions->GetNumberOfPoints() > 0)
   {
-    samplePositions_RAS->DeepCopy(this->SamplePositions);
+    // A slice plane is only set for a sampler that serves a slice view; the matrix itself
+    // always exists, so it is the field of view that says whether one was given.
+    bool samplingOnSlice = (this->SliceXYToRAS && this->FieldOfViewSizeMm[0] > 0.0 && this->FieldOfViewSizeMm[1] > 0.0);
+    if (!samplingOnSlice)
+    {
+      samplePositions_RAS->DeepCopy(this->SamplePositions);
+      return;
+    }
+    // In a slice view only the positions that the slice shows are sampled
+    vtkNew<vtkMatrix4x4> rasToSliceXY;
+    vtkMatrix4x4::Invert(this->SliceXYToRAS, rasToSliceXY);
+    double halfThicknessMm = 0.5 * (this->SliceThicknessMm > 0.0 ? this->SliceThicknessMm : 1.0);
+    vtkIdType numberOfPositions = this->SamplePositions->GetNumberOfPoints();
+    for (vtkIdType positionIndex = 0; positionIndex < numberOfPositions; ++positionIndex)
+    {
+      double position_RAS[4] = { 0.0, 0.0, 0.0, 1.0 };
+      this->SamplePositions->GetPoint(positionIndex, position_RAS);
+      double position_SliceXY[4] = { 0.0, 0.0, 0.0, 1.0 };
+      rasToSliceXY->MultiplyPoint(position_RAS, position_SliceXY);
+      // The XY axes carry the zoom of the view, the third one is in mm
+      if (std::abs(position_SliceXY[2]) < halfThicknessMm)
+      {
+        samplePositions_RAS->InsertNextPoint(position_RAS);
+      }
+    }
     return;
   }
 

@@ -45,6 +45,7 @@
 #include <vtkMaskPoints.h>
 #include <vtkMath.h>
 #include <vtkMatrix4x4.h>
+#include <vtkPoints.h>
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
 #include <vtkPlane.h>
@@ -436,6 +437,21 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
     // to the current mode, refined so that the grid lines land a whole grid cell apart.
     pipeline->SliceSampler->SetSamplingSpacingMm(glyphDisplayNode->GetSamplingSpacingForFieldMm());
     pipeline->SliceSampler->SetLatticeGroupSize(glyphDisplayNode->GetGridSubdivision());
+    // Glyphs at the points of another node are shown in slice views too, where the ones the
+    // slice does not cross are left out.
+    vtkNew<vtkPoints> samplePositions_RAS;
+    if (glyphDisplayNode->GetEffectiveMaskingMode() == vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints //
+        && glyphDisplayNode->GetSamplePositions(samplePositions_RAS))
+    {
+      pipeline->SliceSampler->SetSamplePositions(samplePositions_RAS);
+    }
+    else
+    {
+      pipeline->SliceSampler->SetSamplePositions(nullptr);
+    }
+    double sliceFieldOfView[3] = { 0.0, 0.0, 0.0 };
+    this->SliceNode->GetFieldOfView(sliceFieldOfView);
+    pipeline->SliceSampler->SetSliceThicknessMm(sliceFieldOfView[2]);
     glyphInputConnection = pipeline->SliceSampler->GetOutputPort();
   }
   else
