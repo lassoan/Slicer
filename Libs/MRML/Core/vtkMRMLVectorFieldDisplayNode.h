@@ -201,6 +201,11 @@ public:
   /// True if the visualization mode can hide parts of the field by their magnitude.
   virtual bool IsThresholdUsed();
 
+  /// True if the glyphs are stretched along their own axis, keeping their thickness. Only
+  /// a glyph that has an axis and a cross section can be, so this is false for a sphere or
+  /// a box however ScaleDirectional is set.
+  bool IsScaleDirectionalUsed();
+
   /// True if the source can place glyphs the way the mode asks for. A field that is sampled
   /// can only use a lattice or a list of points, and the point data of a mesh can only use
   /// the points of that mesh.

@@ -471,7 +471,7 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
   pipeline->Glypher->ScalingOn();
   const char* scaleArrayName = fieldDisplayNode->GetEffectiveScaleArrayName();
   bool hasScaleArray = (scaleArrayName && scaleArrayName[0] != '\0');
-  if (fieldDisplayNode->GetScaleDirectional() && hasOrientationArray)
+  if (fieldDisplayNode->IsScaleDirectionalUsed() && hasOrientationArray)
   {
     // Stretch the glyph along its own axis only: the thickness stays the thickness of the
     // source geometry (GlyphDiameterMm), however long the glyph is. The mapper can only

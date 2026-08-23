@@ -315,21 +315,25 @@
       </widget>
      </item>
      <item row="5" column="1">
-      <widget class="QCheckBox" name="FieldThresholdCheckBox">
-       <property name="toolTip">
-        <string>Only draw the field where the magnitude is inside the threshold range.</string>
-       </property>
-       <property name="text">
-        <string/>
-       </property>
-      </widget>
-     </item>
-     <item row="6" column="1">
-      <widget class="ctkRangeWidget" name="FieldThresholdRangeWidget">
-       <property name="toolTip">
-        <string>Range of the magnitude that is drawn.</string>
-       </property>
-      </widget>
+      <layout class="QHBoxLayout" name="thresholdLayout">
+       <item>
+        <widget class="QCheckBox" name="FieldThresholdCheckBox">
+         <property name="toolTip">
+          <string>Only draw the field where the magnitude is inside the threshold range.</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkRangeWidget" name="FieldThresholdRangeWidget">
+         <property name="toolTip">
+          <string>Range of the magnitude that is drawn.</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </item>
     </layout>
    </item>
