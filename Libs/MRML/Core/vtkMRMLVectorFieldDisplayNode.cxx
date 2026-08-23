@@ -15,6 +15,7 @@
 #include "vtkMRMLMarkupsPlaneNode.h"
 #include "vtkMRMLMarkupsROINode.h"
 #include "vtkMRMLModelNode.h"
+#include "vtkMRMLMarkupsNode.h"
 #include "vtkMRMLTransformNode.h"
 #include "vtkMRMLSliceNode.h"
 #include "vtkMRMLVectorFieldModePipeline.h"
@@ -25,8 +26,10 @@
 #include <vtkAlgorithmOutput.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
+#include <vtkCommand.h>
 #include <vtkGeneralTransform.h>
 #include <vtkImageData.h>
+#include <vtkIntArray.h>
 #include <vtkMath.h>
 #include <vtkMatrix4x4.h>
 #include <vtkNew.h>
@@ -395,7 +398,9 @@ vtkMRMLNode* vtkMRMLVectorFieldDisplayNode::GetRegionNode()
 //-----------------------------------------------------------
 void vtkMRMLVectorFieldDisplayNode::SetAndObserveRegionNode(vtkMRMLNode* node)
 {
-  this->SetAndObserveNodeReferenceID(RegionReferenceRole, node ? node->GetID() : nullptr);
+  vtkNew<vtkIntArray> events;
+  vtkMRMLVectorFieldDisplayNode::AddSamplingEvents(events);
+  this->SetAndObserveNodeReferenceID(RegionReferenceRole, node ? node->GetID() : nullptr, events);
 }
 
 //-----------------------------------------------------------
@@ -407,7 +412,24 @@ vtkMRMLNode* vtkMRMLVectorFieldDisplayNode::GetSamplePointsNode()
 //-----------------------------------------------------------
 void vtkMRMLVectorFieldDisplayNode::SetAndObserveSamplePointsNode(vtkMRMLNode* node)
 {
-  this->SetAndObserveNodeReferenceID(SamplePointsReferenceRole, node ? node->GetID() : nullptr);
+  vtkNew<vtkIntArray> events;
+  vtkMRMLVectorFieldDisplayNode::AddSamplingEvents(events);
+  this->SetAndObserveNodeReferenceID(SamplePointsReferenceRole, node ? node->GetID() : nullptr, events);
+}
+
+//-----------------------------------------------------------
+void vtkMRMLVectorFieldDisplayNode::AddSamplingEvents(vtkIntArray* events)
+{
+  if (!events)
+  {
+    return;
+  }
+  // A control point that is being dragged only fires PointModifiedEvent, and a node that is
+  // moved by a transform only fires TransformModifiedEvent, but both change where the field
+  // has to be sampled.
+  events->InsertNextValue(vtkCommand::ModifiedEvent);
+  events->InsertNextValue(vtkMRMLMarkupsNode::PointModifiedEvent);
+  events->InsertNextValue(vtkMRMLTransformableNode::TransformModifiedEvent);
 }
 
 //-----------------------------------------------------------

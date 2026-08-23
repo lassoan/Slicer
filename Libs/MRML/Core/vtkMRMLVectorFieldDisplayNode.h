@@ -26,6 +26,7 @@
 class vtkAlgorithmOutput;
 class vtkDataArray;
 class vtkDataSet;
+class vtkIntArray;
 class vtkPoints;
 class vtkMatrix4x4;
 class vtkMRMLVectorFieldModePipeline;
@@ -169,6 +170,9 @@ public:
   static const char* GetMaskingModeAsString(int id);
   static int GetMaskingModeFromString(const char* modeString);
   ///@}
+
+  /// The events of a region or sample points node that change where the field is sampled.
+  static void AddSamplingEvents(vtkIntArray* events);
 
   /// The points of the sample points node, in world coordinates: the control points of a
   /// markups node, the mesh points of a model, or the voxel centers of a volume.

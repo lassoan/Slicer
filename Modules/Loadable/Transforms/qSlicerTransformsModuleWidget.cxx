@@ -167,6 +167,8 @@ void qSlicerTransformsModuleWidget::setup()
   // Connect node selector with module itself
   this->connect(d->TransformNodeSelector, SIGNAL(currentNodeChanged(vtkMRMLNode*)), SLOT(onNodeSelected(vtkMRMLNode*)));
   this->connect(d->ColorLegendCollapsibleButton, SIGNAL(contentsCollapsed(bool)), SLOT(colorLegendCollapsibleButtonCollapsed(bool)));
+  // The legend explains the colors of the displacement field, so it belongs with it
+  d->TransformDisplayNodeWidget->addVisualizationWidget(d->ColorLegendCollapsibleButton);
 
   // Set a static min/max range to let users freely enter values
   d->MatrixWidget->setRange(-1e10, 1e10);

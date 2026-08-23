@@ -80,6 +80,14 @@ public:
   ///@}
 
   ///@{
+  /// Thickness of the slice that is sampled, in mm. Only the given sample positions that are
+  /// within this thickness of the slice plane are used. Ignored when the samples are placed
+  /// on a lattice, which is in the plane anyway. Default is 1.
+  vtkSetClampMacro(SliceThicknessMm, double, 0.0, VTK_DOUBLE_MAX);
+  vtkGetMacro(SliceThicknessMm, double);
+  ///@}
+
+  ///@{
   /// Number of sampling steps that have to stay together, so that the lattice holds a whole
   /// number of groups along each axis and is centered in the sampled region. Grid
   /// visualization sets it to the number of steps between two grid lines, which is what
@@ -177,6 +185,7 @@ protected:
 
   double SamplingSpacingMm{ 0.0 };
   int LatticeGroupSize{ 1 };
+  double SliceThicknessMm{ 1.0 };
 
   vtkSmartPointer<vtkPoints> SamplePositions;
 };

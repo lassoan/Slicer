@@ -62,7 +62,7 @@ vtkMRMLTransformDisplayNode::vtkMRMLTransformDisplayNode()
   this->SetScaleArrayName(vtkMRMLVectorFieldSampler::GetVectorArrayName());
 
   this->Visibility = 0;
-  this->Visibility2D = 0;
+  this->Visibility2D = 1;
   this->Visibility3D = 1;
 
   // Arrows keep their thickness however long they are, which is what makes a field of

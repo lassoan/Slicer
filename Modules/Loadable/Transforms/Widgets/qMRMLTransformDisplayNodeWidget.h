@@ -46,6 +46,11 @@ public:
   qMRMLTransformDisplayNodeWidget(QWidget* newParent = nullptr);
   ~qMRMLTransformDisplayNodeWidget() override;
 
+  /// Add a widget at the end of the displacement field section, so that the module can put
+  /// what belongs to the displacement field there instead of in a section of its own (the
+  /// color legend). The widget is reparented.
+  void addVisualizationWidget(QWidget* widget);
+
 public slots:
 
   /// Set the MRML node of interest
