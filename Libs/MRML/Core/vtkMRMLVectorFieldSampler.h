@@ -80,6 +80,15 @@ public:
   ///@}
 
   ///@{
+  /// Number of sampling steps that have to stay together, so that the lattice holds a whole
+  /// number of groups along each axis and is centered in the sampled region. Grid
+  /// visualization sets it to the number of steps between two grid lines, which is what
+  /// makes the drawn grid consist of complete cells. Default is 1.
+  vtkSetClampMacro(LatticeGroupSize, int, 1, VTK_INT_MAX);
+  vtkGetMacro(LatticeGroupSize, int);
+  ///@}
+
+  ///@{
   /// Restrict sampling to the plane of a slice view. Ignored by samplers that return false
   /// from CanSampleOnSlice(). sliceXYToRAS maps slice view coordinates to RAS, and
   /// fieldOfViewSizeMm is the size of the visible slice region.
@@ -167,6 +176,7 @@ protected:
   double FieldOfViewSizeMm[2];
 
   double SamplingSpacingMm{ 0.0 };
+  int LatticeGroupSize{ 1 };
 
   vtkSmartPointer<vtkPoints> SamplePositions;
 };

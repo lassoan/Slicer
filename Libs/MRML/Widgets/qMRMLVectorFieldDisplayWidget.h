@@ -45,6 +45,11 @@ public:
   /// Get the glyph display node currently shown/edited by this widget.
   vtkMRMLVectorFieldDisplayNode* mrmlVectorFieldDisplayNode() const;
 
+  /// Add a widget below the shared coloring controls, inside the Coloring section, so that
+  /// a source can offer its own coloring options without a second section of its own (the
+  /// color map editor of a transform). The widget is reparented.
+  void addColoringWidget(QWidget* widget);
+
 public slots:
   /// Set the glyph display node shown/edited by this widget.
   void setMRMLVectorFieldDisplayNode(vtkMRMLVectorFieldDisplayNode* glyphDisplayNode);
@@ -60,12 +65,18 @@ protected slots:
   void onVectorScaleModeChanged(int index);
   void onScaleFactorChanged(double value);
   void onMaskingModeChanged(int index);
-  void onMaskingNthPointChanged(int value);
   void onMaskingPointsNumberChanged(int value);
+  void onVisibilityToggled(bool visible);
+  void onColorByChanged(int index);
+  void onGlyphSpacingChanged(double value);
+  void onThresholdEnabledToggled(bool enabled);
+  void onThresholdRangeChanged(double minimum, double maximum);
   void onVisualizationModeToggled(bool checked);
   void onSamplingSpacingChanged(double value);
   void onRegionNodeChanged(vtkMRMLNode* node);
   void onSamplePointsNodeChanged(vtkMRMLNode* node);
+  void onGridSpacingChanged(double value);
+  void onGridShowNonWarpedToggled(bool enabled);
   void onGridScaleChanged(double value);
   void onGridLineDiameterChanged(double value);
   void onContourLevelsChanged();
@@ -82,7 +93,6 @@ protected slots:
 
   void onVisibility2DToggled(bool visible);
   void onSliceSlabThicknessChanged(double value);
-  void onSliceGlyphScaleChanged(double value);
   void onSliceLineWidthChanged(int value);
 
 protected:

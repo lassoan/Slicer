@@ -45,6 +45,7 @@
 #include <qMRMLUtils.h>
 
 // MRML includes
+#include "vtkMRMLDisplayableNode.h"
 #include "vtkMRMLScalarVolumeNode.h"
 #include "vtkMRMLScene.h"
 #include "vtkMRMLSubjectHierarchyNode.h"
@@ -298,12 +299,21 @@ void qSlicerTransformsModuleWidget::updateColorLegendFromMRML()
   vtkMRMLTransformDisplayNode* displayNode =
     d->MRMLTransformNode ? vtkMRMLTransformDisplayNode::SafeDownCast(d->MRMLTransformNode->GetDisplayNode()) : nullptr;
   vtkMRMLColorLegendDisplayNode* colorLegendNode = displayNode ? vtkSlicerColorLogic::GetColorLegendDisplayNode(displayNode) : nullptr;
-  d->ColorLegendDisplayNodeWidget->setMRMLColorLegendDisplayNode(colorLegendNode);
-  d->ColorLegendCollapsibleButton->setEnabled(displayNode != nullptr);
-  if (!colorLegendNode)
+  if (!colorLegendNode && displayNode && !d->ColorLegendCollapsibleButton->collapsed())
   {
-    d->ColorLegendCollapsibleButton->setCollapsed(true);
+    // The section is already open, so the legend has to be editable right away
+    colorLegendNode = vtkSlicerColorLogic::AddDefaultColorLegendDisplayNode(displayNode);
+    if (colorLegendNode)
+    {
+      colorLegendNode->SetVisibility(false);
+    }
   }
+  d->ColorLegendDisplayNodeWidget->setMRMLColorLegendDisplayNode(colorLegendNode);
+  // A legend only says something when the colors mean something: it is the color node and
+  // the scalar range of the displacement magnitude that it shows.
+  d->ColorLegendCollapsibleButton->setEnabled(displayNode != nullptr    //
+                                              && displayNode->GetScalarVisibility() //
+                                              && displayNode->GetColorNode() != nullptr);
 }
 
 //-----------------------------------------------------------------------------
@@ -341,6 +351,9 @@ void qSlicerTransformsModuleWidget::onNodeSelected(vtkMRMLNode* node)
   vtkMRMLTransformNode* transformNode = vtkMRMLTransformNode::SafeDownCast(node);
 
   this->qvtkReconnect(d->MRMLTransformNode, transformNode, vtkMRMLTransformableNode::TransformModifiedEvent, this, SLOT(onMRMLTransformNodeModified(vtkObject*)));
+  // The legend shows what the coloring means, so it follows the display node: turning the
+  // coloring off or changing the color node changes whether a legend says anything.
+  this->qvtkReconnect(d->MRMLTransformNode, transformNode, vtkMRMLDisplayableNode::DisplayModifiedEvent, this, SLOT(updateColorLegendFromMRML()));
 
   if (d->MRMLTransformNode == nullptr && transformNode != nullptr)
   {

@@ -15,6 +15,7 @@
 #include "vtkMRMLMarkupsPlaneNode.h"
 #include "vtkMRMLMarkupsROINode.h"
 #include "vtkMRMLModelNode.h"
+#include "vtkMRMLTransformNode.h"
 #include "vtkMRMLSliceNode.h"
 #include "vtkMRMLVectorFieldModePipeline.h"
 #include "vtkMRMLVectorFieldSampler.h"
@@ -24,6 +25,7 @@
 #include <vtkAlgorithmOutput.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
+#include <vtkGeneralTransform.h>
 #include <vtkImageData.h>
 #include <vtkMath.h>
 #include <vtkMatrix4x4.h>
@@ -35,6 +37,7 @@
 
 // STD includes
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <sstream>
 
@@ -58,7 +61,6 @@ vtkMRMLVectorFieldDisplayNode::vtkMRMLVectorFieldDisplayNode()
   , VectorScaleMode(vtkMRMLVectorFieldDisplayNode::VectorScaleModeByMagnitude)
   , ScaleFactor(10.0)
   , MaskingMode(vtkMRMLVectorFieldDisplayNode::MaskingModeAllPoints)
-  , MaskingNthPoint(10)
   , MaskingPointsNumber(1000)
   , VisualizationMode(vtkMRMLVectorFieldDisplayNode::VisualizationModeGlyph)
   , ScaleDirectional(false)
@@ -81,7 +83,6 @@ vtkMRMLVectorFieldDisplayNode::vtkMRMLVectorFieldDisplayNode()
   , GlyphResolution2D(12)
   , GlyphTipLengthPercent2D(30.0)
   , SliceSlabThicknessMm(1.0)
-  , SliceGlyphScalePercent(100.0)
   , ThresholdEnabled(false)
 {
   this->ThresholdRange[0] = 0.0;
@@ -111,7 +112,6 @@ void vtkMRMLVectorFieldDisplayNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintEnumMacro(VectorScaleMode);
   vtkMRMLPrintFloatMacro(ScaleFactor);
   vtkMRMLPrintEnumMacro(MaskingMode);
-  vtkMRMLPrintIntMacro(MaskingNthPoint);
   vtkMRMLPrintIntMacro(MaskingPointsNumber);
   vtkMRMLPrintEnumMacro(VisualizationMode);
   vtkMRMLPrintBooleanMacro(ScaleDirectional);
@@ -133,7 +133,6 @@ void vtkMRMLVectorFieldDisplayNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintIntMacro(GlyphResolution2D);
   vtkMRMLPrintFloatMacro(GlyphTipLengthPercent2D);
   vtkMRMLPrintFloatMacro(SliceSlabThicknessMm);
-  vtkMRMLPrintFloatMacro(SliceGlyphScalePercent);
   vtkMRMLPrintBooleanMacro(ThresholdEnabled);
   vtkMRMLPrintVectorMacro(ThresholdRange, double, 2);
   vtkMRMLPrintEndMacro();
@@ -152,7 +151,6 @@ void vtkMRMLVectorFieldDisplayNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLEnumMacro(vectorScaleMode, VectorScaleMode);
   vtkMRMLWriteXMLFloatMacro(scaleFactor, ScaleFactor);
   vtkMRMLWriteXMLEnumMacro(maskingMode, MaskingMode);
-  vtkMRMLWriteXMLIntMacro(maskingNthPoint, MaskingNthPoint);
   vtkMRMLWriteXMLIntMacro(maskingPointsNumber, MaskingPointsNumber);
   vtkMRMLWriteXMLEnumMacro(visualizationMode, VisualizationMode);
   vtkMRMLWriteXMLBooleanMacro(scaleDirectional, ScaleDirectional);
@@ -174,7 +172,6 @@ void vtkMRMLVectorFieldDisplayNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLIntMacro(glyphResolution2D, GlyphResolution2D);
   vtkMRMLWriteXMLFloatMacro(glyphTipLengthPercent2D, GlyphTipLengthPercent2D);
   vtkMRMLWriteXMLFloatMacro(sliceSlabThicknessMm, SliceSlabThicknessMm);
-  vtkMRMLWriteXMLFloatMacro(sliceGlyphScalePercent, SliceGlyphScalePercent);
   vtkMRMLWriteXMLBooleanMacro(thresholdEnabled, ThresholdEnabled);
   vtkMRMLWriteXMLVectorMacro(thresholdRange, ThresholdRange, double, 2);
   vtkMRMLWriteXMLEndMacro();
@@ -193,7 +190,6 @@ void vtkMRMLVectorFieldDisplayNode::ReadXMLAttributes(const char** atts)
   vtkMRMLReadXMLEnumMacro(vectorScaleMode, VectorScaleMode);
   vtkMRMLReadXMLFloatMacro(scaleFactor, ScaleFactor);
   vtkMRMLReadXMLEnumMacro(maskingMode, MaskingMode);
-  vtkMRMLReadXMLIntMacro(maskingNthPoint, MaskingNthPoint);
   vtkMRMLReadXMLIntMacro(maskingPointsNumber, MaskingPointsNumber);
   vtkMRMLReadXMLEnumMacro(visualizationMode, VisualizationMode);
   vtkMRMLReadXMLBooleanMacro(scaleDirectional, ScaleDirectional);
@@ -215,7 +211,6 @@ void vtkMRMLVectorFieldDisplayNode::ReadXMLAttributes(const char** atts)
   vtkMRMLReadXMLIntMacro(glyphResolution2D, GlyphResolution2D);
   vtkMRMLReadXMLFloatMacro(glyphTipLengthPercent2D, GlyphTipLengthPercent2D);
   vtkMRMLReadXMLFloatMacro(sliceSlabThicknessMm, SliceSlabThicknessMm);
-  vtkMRMLReadXMLFloatMacro(sliceGlyphScalePercent, SliceGlyphScalePercent);
   vtkMRMLReadXMLBooleanMacro(thresholdEnabled, ThresholdEnabled);
   vtkMRMLReadXMLVectorMacro(thresholdRange, ThresholdRange, double, 2);
   vtkMRMLReadXMLEndMacro();
@@ -242,7 +237,6 @@ void vtkMRMLVectorFieldDisplayNode::CopyContent(vtkMRMLNode* anode, bool deepCop
   vtkMRMLCopyEnumMacro(VectorScaleMode);
   vtkMRMLCopyFloatMacro(ScaleFactor);
   vtkMRMLCopyEnumMacro(MaskingMode);
-  vtkMRMLCopyIntMacro(MaskingNthPoint);
   vtkMRMLCopyIntMacro(MaskingPointsNumber);
   vtkMRMLCopyEnumMacro(VisualizationMode);
   vtkMRMLCopyBooleanMacro(ScaleDirectional);
@@ -264,7 +258,6 @@ void vtkMRMLVectorFieldDisplayNode::CopyContent(vtkMRMLNode* anode, bool deepCop
   vtkMRMLCopyIntMacro(GlyphResolution2D);
   vtkMRMLCopyFloatMacro(GlyphTipLengthPercent2D);
   vtkMRMLCopyFloatMacro(SliceSlabThicknessMm);
-  vtkMRMLCopyFloatMacro(SliceGlyphScalePercent);
   vtkMRMLCopyBooleanMacro(ThresholdEnabled);
   vtkMRMLCopyVectorMacro(ThresholdRange, double, 2);
   vtkMRMLCopyEndMacro();
@@ -372,10 +365,11 @@ const char* vtkMRMLVectorFieldDisplayNode::GetMaskingModeAsString(int id)
   switch (id)
   {
     case MaskingModeAllPoints: return "allPoints";
-    case MaskingModeEveryNthPoint: return "everyNthPoint";
     case MaskingModeUniformBounds: return "uniformBounds";
     case MaskingModeUniformSurface: return "uniformSurface";
     case MaskingModeUniformVolume: return "uniformVolume";
+    case MaskingModeFixedSpacing: return "fixedSpacing";
+    case MaskingModeNodePoints: return "nodePoints";
     default: return "";
   }
 }
@@ -445,7 +439,7 @@ bool vtkMRMLVectorFieldDisplayNode::GetSamplingRegion(vtkMatrix4x4* regionToRAS,
   {
     return false;
   }
-  double spacingMm = this->GetEffectiveSamplingSpacingMm();
+  double spacingMm = this->GetSamplingSpacingForFieldMm();
 
   vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(regionNode);
   if (sliceNode)
@@ -458,18 +452,22 @@ bool vtkMRMLVectorFieldDisplayNode::GetSamplingRegion(vtkMatrix4x4* regionToRAS,
       return false;
     }
     regionToRAS->DeepCopy(sliceNode->GetSliceToRAS());
-    // Scale the in-plane axes by the sampling spacing and move the origin to the corner
+    // Scale the in-plane axes by the sampling spacing and move the origin to the corner. The
+    // lattice holds a whole number of groups, so that grid visualization draws complete grid
+    // cells, and it is centered in the field of view.
+    int groupSize = std::max(1, this->GetGridSubdivision());
     double origin_RAS[3] = { regionToRAS->GetElement(0, 3), regionToRAS->GetElement(1, 3), regionToRAS->GetElement(2, 3) };
     for (int axis = 0; axis < 2; ++axis)
     {
+      int numberOfSteps = std::max(groupSize, static_cast<int>(fieldOfView[axis] / (spacingMm * groupSize)) * groupSize);
       double axisVector[3] = { regionToRAS->GetElement(0, axis), regionToRAS->GetElement(1, axis), regionToRAS->GetElement(2, axis) };
       vtkMath::Normalize(axisVector);
       for (int row = 0; row < 3; ++row)
       {
-        origin_RAS[row] -= 0.5 * fieldOfView[axis] * axisVector[row];
+        origin_RAS[row] -= 0.5 * numberOfSteps * spacingMm * axisVector[row];
         regionToRAS->SetElement(row, axis, axisVector[row] * spacingMm);
       }
-      regionSize[axis] = static_cast<int>(fieldOfView[axis] / spacingMm) + 1;
+      regionSize[axis] = numberOfSteps + 1;
     }
     for (int row = 0; row < 3; ++row)
     {
@@ -537,7 +535,7 @@ bool vtkMRMLVectorFieldDisplayNode::GetOrientedSamplingRegion(vtkMatrix4x4* obje
   {
     return false;
   }
-  double spacingMm = this->GetEffectiveSamplingSpacingMm();
+  double spacingMm = this->GetSamplingSpacingForFieldMm();
   if (spacingMm <= 0.0)
   {
     // Aim for a reasonable number of samples along the largest axis of the region
@@ -545,9 +543,20 @@ bool vtkMRMLVectorFieldDisplayNode::GetOrientedSamplingRegion(vtkMatrix4x4* obje
     spacingMm = (largestSizeMm > 0.0 ? largestSizeMm / 20.0 : 1.0);
   }
 
-  // The object matrix is centered on the region; the sampling lattice starts at its corner
-  // and steps by the sampling spacing along the object axes.
-  double corner_Object[4] = { -0.5 * sizeMm[0], -0.5 * sizeMm[1], -0.5 * sizeMm[2], 1.0 };
+  // The lattice holds a whole number of groups along each axis, so that grid visualization
+  // draws complete grid cells, and it is centered in the region: the leftover of the region
+  // that the lattice does not span is split between its two sides.
+  int groupSize = std::max(1, this->GetGridSubdivision());
+  int numberOfSteps[3] = { 0, 0, 0 };
+  double corner_Object[4] = { 0.0, 0.0, 0.0, 1.0 };
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    // Rounding, because a region size that is a whole number of steps may be computed as a
+    // hair less than that
+    numberOfSteps[axis] = std::max(groupSize, static_cast<int>(sizeMm[axis] / (spacingMm * groupSize) + 0.5) * groupSize);
+    corner_Object[axis] = -0.5 * numberOfSteps[axis] * spacingMm;
+    regionSize[axis] = numberOfSteps[axis] + 1;
+  }
   double corner_RAS[4] = { 0.0, 0.0, 0.0, 1.0 };
   objectToWorld->MultiplyPoint(corner_Object, corner_RAS);
 
@@ -560,7 +569,6 @@ bool vtkMRMLVectorFieldDisplayNode::GetOrientedSamplingRegion(vtkMatrix4x4* obje
     {
       regionToRAS->SetElement(row, axis, axisVector[row] * spacingMm);
     }
-    regionSize[axis] = static_cast<int>(sizeMm[axis] / spacingMm) + 1;
   }
   for (int row = 0; row < 3; ++row)
   {
@@ -582,27 +590,197 @@ void vtkMRMLVectorFieldDisplayNode::SetEffectiveSamplingSpacingMm(double spacing
 }
 
 //-----------------------------------------------------------
+bool vtkMRMLVectorFieldDisplayNode::GetSamplePositions(vtkPoints* samplePositions_RAS)
+{
+  if (!samplePositions_RAS)
+  {
+    return false;
+  }
+  samplePositions_RAS->Initialize();
+  vtkMRMLNode* samplePointsNode = this->GetSamplePointsNode();
+  if (!samplePointsNode)
+  {
+    return false;
+  }
+
+  // A markups node: its control points
+  vtkMRMLMarkupsNode* markupsNode = vtkMRMLMarkupsNode::SafeDownCast(samplePointsNode);
+  if (markupsNode)
+  {
+    int numberOfControlPoints = markupsNode->GetNumberOfControlPoints();
+    samplePositions_RAS->SetNumberOfPoints(numberOfControlPoints);
+    for (int controlPointIndex = 0; controlPointIndex < numberOfControlPoints; ++controlPointIndex)
+    {
+      double position_World[3] = { 0.0, 0.0, 0.0 };
+      markupsNode->GetNthControlPointPositionWorld(controlPointIndex, position_World);
+      samplePositions_RAS->SetPoint(controlPointIndex, position_World);
+    }
+    return (numberOfControlPoints > 0);
+  }
+
+  // A model or any other node with a mesh: the points of that mesh, in world coordinates
+  vtkMRMLModelNode* modelNode = vtkMRMLModelNode::SafeDownCast(samplePointsNode);
+  if (modelNode)
+  {
+    vtkPointSet* mesh = modelNode->GetMesh();
+    if (!mesh || !mesh->GetPoints())
+    {
+      return false;
+    }
+    vtkNew<vtkGeneralTransform> meshToWorld;
+    meshToWorld->Identity();
+    if (modelNode->GetParentTransformNode())
+    {
+      modelNode->GetParentTransformNode()->GetTransformToWorld(meshToWorld);
+    }
+    vtkPoints* meshPoints = mesh->GetPoints();
+    vtkIdType numberOfPoints = meshPoints->GetNumberOfPoints();
+    samplePositions_RAS->SetNumberOfPoints(numberOfPoints);
+    for (vtkIdType pointIndex = 0; pointIndex < numberOfPoints; ++pointIndex)
+    {
+      double position_Mesh[3] = { 0.0, 0.0, 0.0 };
+      double position_World[3] = { 0.0, 0.0, 0.0 };
+      meshPoints->GetPoint(pointIndex, position_Mesh);
+      meshToWorld->TransformPoint(position_Mesh, position_World);
+      samplePositions_RAS->SetPoint(pointIndex, position_World);
+    }
+    return (numberOfPoints > 0);
+  }
+
+  // A volume: the center of each of its voxels. This is as many glyphs as there are voxels,
+  // so it is only practical for a small volume.
+  vtkMRMLVolumeNode* volumeNode = vtkMRMLVolumeNode::SafeDownCast(samplePointsNode);
+  if (volumeNode)
+  {
+    vtkImageData* image = volumeNode->GetImageData();
+    if (!image)
+    {
+      return false;
+    }
+    vtkNew<vtkMatrix4x4> ijkToRAS;
+    volumeNode->GetIJKToRASMatrix(ijkToRAS);
+    vtkNew<vtkGeneralTransform> nodeToWorld;
+    nodeToWorld->Identity();
+    if (volumeNode->GetParentTransformNode())
+    {
+      volumeNode->GetParentTransformNode()->GetTransformToWorld(nodeToWorld);
+    }
+    int extent[6] = { 0, -1, 0, -1, 0, -1 };
+    image->GetExtent(extent);
+    for (int k = extent[4]; k <= extent[5]; ++k)
+    {
+      for (int j = extent[2]; j <= extent[3]; ++j)
+      {
+        for (int i = extent[0]; i <= extent[1]; ++i)
+        {
+          double position_IJK[4] = { static_cast<double>(i), static_cast<double>(j), static_cast<double>(k), 1.0 };
+          double position_Node[4] = { 0.0, 0.0, 0.0, 1.0 };
+          ijkToRAS->MultiplyPoint(position_IJK, position_Node);
+          double position_World[3] = { 0.0, 0.0, 0.0 };
+          nodeToWorld->TransformPoint(position_Node, position_World);
+          samplePositions_RAS->InsertNextPoint(position_World);
+        }
+      }
+    }
+    return (samplePositions_RAS->GetNumberOfPoints() > 0);
+  }
+
+  return false;
+}
+
+//-----------------------------------------------------------
+const char* vtkMRMLVectorFieldDisplayNode::GetEffectiveScaleArrayName()
+{
+  if (this->ScaleArrayName && this->ScaleArrayName[0] != '\0')
+  {
+    return this->ScaleArrayName;
+  }
+  return this->OrientationArrayName;
+}
+
+//-----------------------------------------------------------
+vtkDataArray* vtkMRMLVectorFieldDisplayNode::GetEffectiveScaleArray()
+{
+  if (this->ScaleArrayName && this->ScaleArrayName[0] != '\0')
+  {
+    return this->GetScaleArray();
+  }
+  return this->GetOrientationArray();
+}
+
+//-----------------------------------------------------------
+bool vtkMRMLVectorFieldDisplayNode::IsMaskingModeSupported(int maskingMode)
+{
+  if (this->CanSampleAtArbitraryPositions())
+  {
+    // The field has no points of its own, so the glyph positions have to be chosen: either
+    // on a lattice, or at the points of another node.
+    return (maskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing || //
+            maskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints);
+  }
+  // The vectors live at the points of a mesh, so the glyphs can only be placed there
+  return (maskingMode >= 0 && maskingMode < vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing);
+}
+
+//-----------------------------------------------------------
+int vtkMRMLVectorFieldDisplayNode::GetEffectiveMaskingMode()
+{
+  if (this->IsMaskingModeSupported(this->MaskingMode))
+  {
+    return this->MaskingMode;
+  }
+  return (this->CanSampleAtArbitraryPositions() ? vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing //
+                                                : vtkMRMLVectorFieldDisplayNode::MaskingModeAllPoints);
+}
+
+//-----------------------------------------------------------
+bool vtkMRMLVectorFieldDisplayNode::IsVisualizationModeSupported(int visualizationMode)
+{
+  return (visualizationMode >= 0 && visualizationMode < vtkMRMLVectorFieldDisplayNode::VisualizationMode_Last);
+}
+
+//-----------------------------------------------------------
+int vtkMRMLVectorFieldDisplayNode::GetGridSubdivision()
+{
+  if (this->VisualizationMode != vtkMRMLVectorFieldDisplayNode::VisualizationModeGrid || this->GridSpacingMm <= 0.0)
+  {
+    return 1;
+  }
+  double requestedSpacingMm = this->GetEffectiveSamplingSpacingMm();
+  if (requestedSpacingMm <= 0.0)
+  {
+    // No sampling spacing requested: sample at the grid lines themselves
+    return 1;
+  }
+  // Round up, so that the lattice is never coarser than what was asked for
+  return std::max(1, static_cast<int>(std::ceil(this->GridSpacingMm / requestedSpacingMm - 1e-6)));
+}
+
+//-----------------------------------------------------------
+double vtkMRMLVectorFieldDisplayNode::GetSamplingSpacingForFieldMm()
+{
+  if (this->VisualizationMode == vtkMRMLVectorFieldDisplayNode::VisualizationModeGrid && this->GridSpacingMm > 0.0)
+  {
+    return this->GridSpacingMm / this->GetGridSubdivision();
+  }
+  return this->GetEffectiveSamplingSpacingMm();
+}
+
+//-----------------------------------------------------------
 void vtkMRMLVectorFieldDisplayNode::UpdateSamplerRegion(vtkMRMLVectorFieldSampler* sampler)
 {
   if (!sampler)
   {
     return;
   }
-  sampler->SetSamplingSpacingMm(this->GetEffectiveSamplingSpacingMm());
+  sampler->SetSamplingSpacingMm(this->GetSamplingSpacingForFieldMm());
+  sampler->SetLatticeGroupSize(this->GetGridSubdivision());
 
-  // Glyphs at the control points of a markups node, instead of on a lattice
-  vtkMRMLMarkupsNode* samplePointsNode = vtkMRMLMarkupsNode::SafeDownCast(this->GetSamplePointsNode());
-  if (samplePointsNode)
+  // Glyphs at the points of another node, instead of on a lattice
+  vtkNew<vtkPoints> samplePositions_RAS;
+  if (this->GetEffectiveMaskingMode() == vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints //
+      && this->GetSamplePositions(samplePositions_RAS))
   {
-    vtkNew<vtkPoints> samplePositions_RAS;
-    int numberOfControlPoints = samplePointsNode->GetNumberOfControlPoints();
-    samplePositions_RAS->SetNumberOfPoints(numberOfControlPoints);
-    for (int controlPointIndex = 0; controlPointIndex < numberOfControlPoints; ++controlPointIndex)
-    {
-      double position_World[3] = { 0.0, 0.0, 0.0 };
-      samplePointsNode->GetNthControlPointPositionWorld(controlPointIndex, position_World);
-      samplePositions_RAS->SetPoint(controlPointIndex, position_World);
-    }
     sampler->SetSamplePositions(samplePositions_RAS);
   }
   else

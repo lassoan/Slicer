@@ -24,6 +24,7 @@
 // VTK includes
 #include <vtkAlgorithmOutput.h>
 #include <vtkAppendPolyData.h>
+#include <vtkArrayCalculator.h>
 #include <vtkContourFilter.h>
 #include <vtkObjectFactory.h>
 #include <vtkStreamTracer.h>
@@ -42,6 +43,8 @@ vtkMRMLVectorFieldModePipeline::vtkMRMLVectorFieldModePipeline()
 {
   this->GridLines = vtkSmartPointer<vtkMRMLVectorFieldGridLines>::New();
   this->Warper = vtkSmartPointer<vtkWarpVector>::New();
+  this->NonWarpedGridMagnitude = vtkSmartPointer<vtkArrayCalculator>::New();
+  this->NonWarpedGridMagnitude->SetAttributeTypeToPointData();
   this->NonWarpedGridAppender = vtkSmartPointer<vtkAppendPolyData>::New();
   this->GridTuber = vtkSmartPointer<vtkTubeFilter>::New();
   this->Contour = vtkSmartPointer<vtkContourFilter>::New();
@@ -89,14 +92,7 @@ vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateGrid(vtkMRMLVectorFiel
   // the vectors shows the deformation. Grid lines are drawn every GridSpacingMm, but they
   // follow every sampled point, so a finer sampling shows how the grid curves in between.
   this->GridLines->SetInputConnection(fieldConnection);
-  double samplingSpacingMm = displayNode->GetEffectiveSamplingSpacingMm();
-  double gridSpacingMm = displayNode->GetGridSpacingMm();
-  int subdivision = 1;
-  if (gridSpacingMm > 0.0 && samplingSpacingMm > 0.0)
-  {
-    subdivision = std::max(1, static_cast<int>(gridSpacingMm / samplingSpacingMm + 0.5));
-  }
-  this->GridLines->SetSubdivision(subdivision);
+  this->GridLines->SetSubdivision(displayNode->GetGridSubdivision());
 
   this->Warper->SetInputConnection(this->GridLines->GetOutputPort());
   this->Warper->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, vtkMRMLVectorFieldSampler::GetVectorArrayName());
@@ -108,14 +104,21 @@ vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateGrid(vtkMRMLVectorFiel
   // read. It is only offered in slice views: in a 3D view it makes the image unreadable.
   if (flat && displayNode->GetGridShowNonWarped())
   {
+    // The undeformed grid is drawn in the color that the color map gives to a zero
+    // displacement, which sets it apart from the deformed grid without needing a second
+    // actor: its magnitudes are replaced by zeros, the deformed grid keeps its own.
+    this->NonWarpedGridMagnitude->SetInputConnection(this->GridLines->GetOutputPort());
+    this->NonWarpedGridMagnitude->SetResultArrayName(vtkMRMLVectorFieldSampler::GetMagnitudeArrayName());
+    this->NonWarpedGridMagnitude->SetFunction("0");
     this->NonWarpedGridAppender->RemoveAllInputConnections(0);
     this->NonWarpedGridAppender->AddInputConnection(this->Warper->GetOutputPort());
-    this->NonWarpedGridAppender->AddInputConnection(this->GridLines->GetOutputPort());
+    this->NonWarpedGridAppender->AddInputConnection(this->NonWarpedGridMagnitude->GetOutputPort());
     gridConnection = this->NonWarpedGridAppender->GetOutputPort();
   }
   else
   {
     this->NonWarpedGridAppender->RemoveAllInputConnections(0);
+    this->NonWarpedGridMagnitude->SetInputConnection(nullptr);
   }
 
   double lineDiameterMm = displayNode->GetGridLineDiameterMm();

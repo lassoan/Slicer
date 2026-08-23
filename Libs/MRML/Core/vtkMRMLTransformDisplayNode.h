@@ -121,6 +121,11 @@ public:
   /// A transform can be evaluated at any position.
   bool CanSampleAtArbitraryPositions() override;
 
+  /// Transform display offers glyphs, a deformed grid and contours of the displacement
+  /// magnitude, the modes it has always had. Streamlines of a displacement field are not
+  /// meaningful: the field is a displacement, not a velocity.
+  bool IsVisualizationModeSupported(int visualizationMode) override;
+
   /// Transform display keeps a separate sampling spacing for each visualization mode, so
   /// that a grid can be sampled more finely than the glyphs are spaced.
   double GetEffectiveSamplingSpacingMm() override;
@@ -129,6 +134,9 @@ public:
   /// The color map of a transform maps a displacement in mm to a color, so its range is the
   /// scalar range: the colors are used exactly as the map defines them.
   void UpdateScalarRange() override;
+
+  /// Keeps the scalar range in step with the color map, which is what defines it.
+  void ProcessMRMLEvents(vtkObject* caller, unsigned long event, void* callData) override;
 
   //--------------------------------------------------------------------------
   /// Display options
