@@ -51,6 +51,10 @@ public:
   /// color legend). The widget is reparented.
   void addVisualizationWidget(QWidget* widget);
 
+  /// Add a widget to the coloring section of the displacement field, for what belongs with
+  /// the colors (the color legend). The widget is reparented.
+  void addColoringWidget(QWidget* widget);
+
 public slots:
 
   /// Set the MRML node of interest

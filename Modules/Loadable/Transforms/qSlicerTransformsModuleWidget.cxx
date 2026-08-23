@@ -166,9 +166,11 @@ void qSlicerTransformsModuleWidget::setup()
 
   // Connect node selector with module itself
   this->connect(d->TransformNodeSelector, SIGNAL(currentNodeChanged(vtkMRMLNode*)), SLOT(onNodeSelected(vtkMRMLNode*)));
-  this->connect(d->ColorLegendCollapsibleButton, SIGNAL(contentsCollapsed(bool)), SLOT(colorLegendCollapsibleButtonCollapsed(bool)));
-  // The legend explains the colors of the displacement field, so it belongs with it
-  d->TransformDisplayNodeWidget->addVisualizationWidget(d->ColorLegendCollapsibleButton);
+  // A collapsible group box reports being opened as being checked
+  this->connect(d->ColorLegendCollapsibleGroupBox, SIGNAL(toggled(bool)), SLOT(colorLegendCollapsibleButtonCollapsed(bool)));
+  // The legend explains what the colors of the displacement field mean, so it belongs with
+  // the rest of the coloring
+  d->TransformDisplayNodeWidget->addColoringWidget(d->ColorLegendCollapsibleGroupBox);
 
   // Set a static min/max range to let users freely enter values
   d->MatrixWidget->setRange(-1e10, 1e10);
@@ -301,7 +303,7 @@ void qSlicerTransformsModuleWidget::updateColorLegendFromMRML()
   vtkMRMLTransformDisplayNode* displayNode =
     d->MRMLTransformNode ? vtkMRMLTransformDisplayNode::SafeDownCast(d->MRMLTransformNode->GetDisplayNode()) : nullptr;
   vtkMRMLColorLegendDisplayNode* colorLegendNode = displayNode ? vtkSlicerColorLogic::GetColorLegendDisplayNode(displayNode) : nullptr;
-  if (!colorLegendNode && displayNode && !d->ColorLegendCollapsibleButton->collapsed())
+  if (!colorLegendNode && displayNode && !d->ColorLegendCollapsibleGroupBox->collapsed())
   {
     // The section is already open, so the legend has to be editable right away
     colorLegendNode = vtkSlicerColorLogic::AddDefaultColorLegendDisplayNode(displayNode);
@@ -313,16 +315,16 @@ void qSlicerTransformsModuleWidget::updateColorLegendFromMRML()
   d->ColorLegendDisplayNodeWidget->setMRMLColorLegendDisplayNode(colorLegendNode);
   // A legend only says something when the colors mean something: it is the color node and
   // the scalar range of the displacement magnitude that it shows.
-  d->ColorLegendCollapsibleButton->setEnabled(displayNode != nullptr    //
+  d->ColorLegendCollapsibleGroupBox->setEnabled(displayNode != nullptr    //
                                               && displayNode->GetScalarVisibility() //
                                               && displayNode->GetColorNode() != nullptr);
 }
 
 //-----------------------------------------------------------------------------
-void qSlicerTransformsModuleWidget::colorLegendCollapsibleButtonCollapsed(bool collapsed)
+void qSlicerTransformsModuleWidget::colorLegendCollapsibleButtonCollapsed(bool opened)
 {
   Q_D(qSlicerTransformsModuleWidget);
-  if (collapsed)
+  if (!opened)
   {
     return;
   }

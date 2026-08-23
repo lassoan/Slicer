@@ -37,6 +37,7 @@
 
 // VTK includes
 #include <vtkActor2D.h>
+#include <vtkArrayCalculator.h>
 #include <vtkCollection.h>
 #include <vtkDataArray.h>
 #include <vtkGeneralTransform.h>
@@ -75,6 +76,7 @@ namespace
 /// Name of the point data array that stores the signed distance of each mesh
 /// point from the slice plane. Used for selecting the points that are within
 /// the displayed slab.
+const char* ColorMagnitudeArrayName = "GlyphColorMagnitude";
 const char* SliceDistanceArrayName = "GlyphSliceDistance";
 /// Appended to the name of the orientation array to name the array of vectors that were
 /// projected onto the slice plane.
@@ -103,6 +105,7 @@ public:
     vtkSmartPointer<vtkMaskPoints> MaskPoints;
     vtkSmartPointer<vtkGlyph3D> Glypher;
     vtkSmartPointer<vtkTransform> TransformToSlice;
+    vtkSmartPointer<vtkArrayCalculator> ColorMagnitude;
     vtkSmartPointer<vtkTransformFilter> GlyphInputToSlice;
     vtkSmartPointer<vtkTransform> GlyphInputToSliceTransform;
     vtkSmartPointer<vtkTransformPolyDataFilter> Transformer;
@@ -325,6 +328,8 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::AddDisplayNode(vtkM
   pipeline->Projector = vtkSmartPointer<vtkProjectVectorsToPlane>::New();
   pipeline->ModePipeline = vtkSmartPointer<vtkMRMLVectorFieldModePipeline>::New();
   pipeline->Glypher = vtkSmartPointer<vtkGlyph3D>::New();
+  pipeline->ColorMagnitude = vtkSmartPointer<vtkArrayCalculator>::New();
+  pipeline->ColorMagnitude->SetAttributeTypeToPointData();
   pipeline->GlyphInputToSliceTransform = vtkSmartPointer<vtkTransform>::New();
   pipeline->GlyphInputToSlice = vtkSmartPointer<vtkTransformFilter>::New();
   pipeline->TransformToSlice = vtkSmartPointer<vtkTransform>::New();
@@ -563,6 +568,8 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
   // the glyphs are still colored by the true magnitude of the vector and not by the part of
   // it that happens to lie in the plane.
   std::string glyphOrientationArrayName = (hasOrientationArray ? orientationArrayName : "");
+  // What feeds the glyphs, before they are taken into slice coordinates
+  vtkAlgorithmOutput* glyphInputConnectionForColor = nullptr;
   if (glyphDisplayNode->GetSliceProjectionEnabled() && hasOrientationArray)
   {
     double sliceNormal_RAS[3] = { this->SliceXYToRAS->GetElement(0, 2), //
@@ -573,13 +580,37 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
     pipeline->Projector->SetVectorArrayName(orientationArrayName);
     pipeline->Projector->SetOutputVectorArrayName(glyphOrientationArrayName.c_str());
     pipeline->Projector->SetInputConnection(pipeline->MaskPoints->GetOutputPort());
-    pipeline->GlyphInputToSlice->SetInputConnection(pipeline->Projector->GetOutputPort());
+    glyphInputConnectionForColor = pipeline->Projector->GetOutputPort();
   }
   else
   {
     pipeline->Projector->SetInputConnection(nullptr);
-    pipeline->GlyphInputToSlice->SetInputConnection(pipeline->MaskPoints->GetOutputPort());
+    glyphInputConnectionForColor = pipeline->MaskPoints->GetOutputPort();
   }
+  pipeline->GlyphInputToSlice->SetInputConnection(glyphInputConnectionForColor);
+  // Coloring by a vector array means coloring by its magnitude, and that magnitude has to
+  // be the one the vector has in RAS: the transform into slice coordinates below scales the
+  // vectors, so a magnitude taken after it would color the same vector differently in a
+  // slice view than in a 3D view. It is computed here, into a scalar array that the
+  // transform leaves alone.
+  const char* activeScalarNameForColor = glyphDisplayNode->GetActiveScalarName();
+  vtkDataArray* activeScalarArrayForColor = glyphDisplayNode->GetActiveScalarArray();
+  bool colorByMagnitude = (activeScalarNameForColor && activeScalarNameForColor[0] != '\0' //
+                           && activeScalarArrayForColor && activeScalarArrayForColor->GetNumberOfComponents() > 1);
+  if (colorByMagnitude)
+  {
+    pipeline->ColorMagnitude->SetInputConnection(glyphInputConnectionForColor);
+    pipeline->ColorMagnitude->RemoveAllVariables();
+    pipeline->ColorMagnitude->AddVectorArrayName(activeScalarNameForColor);
+    pipeline->ColorMagnitude->SetResultArrayName(ColorMagnitudeArrayName);
+    pipeline->ColorMagnitude->SetFunction((std::string("mag(") + activeScalarNameForColor + ")").c_str());
+    pipeline->GlyphInputToSlice->SetInputConnection(pipeline->ColorMagnitude->GetOutputPort());
+  }
+  else
+  {
+    pipeline->ColorMagnitude->SetInputConnection(nullptr);
+  }
+
   // RAS to slice XY, for the points and for the vectors that orient and scale the glyphs.
   // The vectors are scaled by it as well, which is what makes a vector of a given length in
   // mm come out that long on the slice.
@@ -659,12 +690,14 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateSliceMapperCo
     pipeline->Mapper->SetScalarVisibility(false);
     return;
   }
-  // Multi-component arrays are colored by their magnitude
+  // Multi-component arrays are colored by their magnitude, which the pipeline computed
+  // into a scalar array of its own before the vectors were taken into slice coordinates
   vtkDataArray* activeScalarArray = fieldDisplayNode->GetActiveScalarArray();
   bool useScalarMagnitude = (activeScalarArray && activeScalarArray->GetNumberOfComponents() > 1);
+  std::string colorArrayName = (useScalarMagnitude ? ColorMagnitudeArrayName : activeScalarName);
 
   pipeline->Glypher->SetColorModeToColorByScalar();
-  pipeline->Glypher->SetInputArrayToProcess(3, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, activeScalarName);
+  pipeline->Glypher->SetInputArrayToProcess(3, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, colorArrayName.c_str());
   // A copy of the color node's lookup table is used, because the alpha, the scalar
   // range and the vector mode are set on it and it must not be shared between mappers.
   // If no color node is set then a default table is used, so that the glyphs are
@@ -677,17 +710,11 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateSliceMapperCo
     lookupTable->Build();
   }
   lookupTable->SetAlpha(hierarchyOpacity * effectiveDisplayNode->GetSliceIntersectionOpacity());
-  if (useScalarMagnitude)
-  {
-    // Multi-component arrays are mapped by magnitude (the mapper passes component -1,
-    // and the lookup table turns the vector into a scalar).
-    lookupTable->SetVectorModeToMagnitude();
-  }
+
   pipeline->Mapper->SetLookupTable(lookupTable);
   pipeline->Mapper->SetColorModeToMapScalars();
   pipeline->Mapper->SetScalarModeToUsePointFieldData();
-  // Component -1 lets the lookup table turn the vector into a scalar (magnitude)
-  pipeline->Mapper->ColorByArrayComponent(const_cast<char*>(activeScalarName), useScalarMagnitude ? -1 : 0);
+  pipeline->Mapper->ColorByArrayComponent(const_cast<char*>(colorArrayName.c_str()), 0);
   pipeline->Mapper->UseLookupTableScalarRangeOff();
   pipeline->Mapper->SetScalarRange(fieldDisplayNode->GetScalarRange());
   pipeline->Mapper->SetScalarVisibility(true);

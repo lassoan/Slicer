@@ -53,7 +53,7 @@ inline vtkSmartPointer<vtkPolyDataAlgorithm> Create3D(vtkMRMLVectorFieldDisplayN
     {
       vtkNew<vtkConeSource> coneSource;
       coneSource->SetResolution(resolution);
-      if (displayNode && displayNode->GetScaleDirectional())
+      if (displayNode && displayNode->IsScaleDirectionalUsed())
       {
         coneSource->SetHeight(1.0);
         coneSource->SetRadius(displayNode->GetGlyphDiameterMm() * 0.5);
@@ -99,12 +99,10 @@ inline vtkSmartPointer<vtkPolyDataAlgorithm> Create3D(vtkMRMLVectorFieldDisplayN
       if (displayNode)
       {
         arrowSource->SetTipLength(displayNode->GetGlyphTipLengthPercent() * 0.01);
-        if (displayNode->GetScaleDirectional())
-        {
-          // The glyph is only stretched along its axis, so its thickness is the thickness of
-          // the source geometry and can be given in mm.
-          arrowSource->SetTipRadius(displayNode->GetGlyphDiameterMm() * 0.5);
-        }
+        // The source geometry is one unit long, so its radius is the thickness of the glyph
+        // when it is only stretched along its axis, and its thickness relative to its length
+        // when the whole glyph is scaled.
+        arrowSource->SetTipRadius(displayNode->GetGlyphDiameterMm() * 0.5);
         arrowSource->SetShaftRadius(arrowSource->GetTipRadius() * 0.01 * displayNode->GetGlyphShaftDiameterPercent());
       }
       return arrowSource.GetPointer();

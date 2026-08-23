@@ -207,6 +207,13 @@ void qMRMLTransformDisplayNodeWidget::addVisualizationWidget(QWidget* widget)
 }
 
 //-----------------------------------------------------------------------------
+void qMRMLTransformDisplayNodeWidget::addColoringWidget(QWidget* widget)
+{
+  Q_D(qMRMLTransformDisplayNodeWidget);
+  d->VectorFieldDisplayWidget->addColoringWidget(widget);
+}
+
+//-----------------------------------------------------------------------------
 void qMRMLTransformDisplayNodeWidget::setMRMLTransformNode(vtkMRMLNode* transformNode)
 {
   setMRMLTransformNode(vtkMRMLTransformNode::SafeDownCast(transformNode));

@@ -66,7 +66,7 @@ vtkMRMLVectorFieldDisplayNode::vtkMRMLVectorFieldDisplayNode()
   , MaskingMode(vtkMRMLVectorFieldDisplayNode::MaskingModeAllPoints)
   , MaskingPointsNumber(1000)
   , VisualizationMode(vtkMRMLVectorFieldDisplayNode::VisualizationModeGlyph)
-  , ScaleDirectional(false)
+  , ScaleDirectional(true)
   , GlyphDiameterMm(5.0)
   , GridSpacingMm(0.0)
   , GridShowNonWarped(false)
@@ -703,6 +703,15 @@ bool vtkMRMLVectorFieldDisplayNode::GetSamplePositions(vtkPoints* samplePosition
   }
 
   return false;
+}
+
+//-----------------------------------------------------------
+bool vtkMRMLVectorFieldDisplayNode::IsScaleDirectionalUsed()
+{
+  return (this->ScaleDirectional                                                  //
+          && (this->GlyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeArrow    //
+              || this->GlyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeCone  //
+              || this->GlyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeCylinder));
 }
 
 //-----------------------------------------------------------
