@@ -183,6 +183,20 @@ public:
   vtkDataArray* GetEffectiveScaleArray();
   ///@}
 
+  ///@{
+  /// How much the field is scaled by, whatever the visualization mode is: the length of the
+  /// glyphs in glyph mode, the length of the deformation of the grid in grid mode. 1 draws
+  /// the field at its own size. The modes that do not scale anything (contour, streamline)
+  /// keep the glyph scale factor.
+  virtual double GetEffectiveScaleFactor();
+  virtual void SetEffectiveScaleFactor(double scaleFactor);
+  /// True if the visualization mode has something to scale.
+  virtual bool IsScaleFactorUsed();
+  ///@}
+
+  /// True if the visualization mode can hide parts of the field by their magnitude.
+  virtual bool IsThresholdUsed();
+
   /// True if the source can place glyphs the way the mode asks for. A field that is sampled
   /// can only use a lattice or a list of points, and the point data of a mesh can only use
   /// the points of that mesh.
@@ -387,15 +401,6 @@ public:
   ///@}
 
   ///@{
-  /// Thickness (mm) of the slab around the slice plane in which mesh points are
-  /// shown as glyphs in slice views. Points farther from the slice plane than half
-  /// of this thickness are not displayed.
-  /// Default is 1.0.
-  vtkGetMacro(SliceSlabThicknessMm, double);
-  vtkSetMacro(SliceSlabThicknessMm, double);
-  ///@}
-
-  ///@{
   /// Only show glyphs at points where the active scalar value is within
   /// ThresholdRange. Glyphs at all other points are hidden.
   /// Default is off.
@@ -575,7 +580,6 @@ protected:
   double GlyphShaftDiameterPercent;
   int GlyphResolution2D;
   double GlyphTipLengthPercent2D;
-  double SliceSlabThicknessMm;
   bool ThresholdEnabled;
   double ThresholdRange[2];
 };

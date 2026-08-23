@@ -102,6 +102,8 @@ public:
     vtkSmartPointer<vtkMaskPoints> MaskPoints;
     vtkSmartPointer<vtkGlyph3D> Glypher;
     vtkSmartPointer<vtkTransform> TransformToSlice;
+    vtkSmartPointer<vtkTransformFilter> GlyphInputToSlice;
+    vtkSmartPointer<vtkTransform> GlyphInputToSliceTransform;
     vtkSmartPointer<vtkTransformPolyDataFilter> Transformer;
     vtkSmartPointer<vtkPolyDataMapper2D> Mapper;
     vtkSmartPointer<vtkActor2D> Actor;
@@ -322,6 +324,8 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::AddDisplayNode(vtkM
   pipeline->Projector = vtkSmartPointer<vtkProjectVectorsToPlane>::New();
   pipeline->ModePipeline = vtkSmartPointer<vtkMRMLVectorFieldModePipeline>::New();
   pipeline->Glypher = vtkSmartPointer<vtkGlyph3D>::New();
+  pipeline->GlyphInputToSliceTransform = vtkSmartPointer<vtkTransform>::New();
+  pipeline->GlyphInputToSlice = vtkSmartPointer<vtkTransformFilter>::New();
   pipeline->TransformToSlice = vtkSmartPointer<vtkTransform>::New();
   pipeline->Transformer = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
   pipeline->Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
@@ -338,8 +342,16 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::AddDisplayNode(vtkM
   pipeline->SlabThreshold->SetInputConnection(pipeline->SliceDistance->GetOutputPort());
   pipeline->SlabThreshold->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, SliceDistanceArrayName);
   pipeline->MaskPoints->GenerateVerticesOff();
+  // The glyphs are built in the slice view's own coordinate system, not in RAS. A flat 2D
+  // glyph placed in RAS would be turned out of the slice plane by the rotation that
+  // vtkGlyph3D applies to point it along the vector, and would be seen edge-on in every
+  // view whose plane is not perpendicular to the rotation axis - a sagittal view showed
+  // bare lines instead of arrows. In slice coordinates the glyph source lies in the XY
+  // plane and the vectors are in that plane too, so the rotation is about the view normal
+  // and the glyph stays flat.
+  pipeline->GlyphInputToSlice->SetTransform(pipeline->GlyphInputToSliceTransform);
+  pipeline->GlyphInputToSlice->TransformAllInputVectorsOn();
   pipeline->Transformer->SetTransform(pipeline->TransformToSlice);
-  pipeline->Transformer->SetInputConnection(pipeline->Glypher->GetOutputPort());
   pipeline->Mapper->SetInputConnection(pipeline->Transformer->GetOutputPort());
   pipeline->Actor->SetMapper(pipeline->Mapper);
   pipeline->Actor->SetVisibility(0);
@@ -439,7 +451,11 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
     // Select the points that are within the displayed slab around the slice plane
     this->SetSlicePlaneFromMatrix(this->SliceXYToRAS, pipeline->Plane);
     pipeline->Plane->Modified();
-    double slabHalfThickness = 0.5 * glyphDisplayNode->GetSliceSlabThicknessMm();
+    // The slab is as thick as the slice itself, so that the points that are drawn are the
+    // ones the slice shows.
+    double fieldOfView[3] = { 0.0, 0.0, 0.0 };
+    this->SliceNode->GetFieldOfView(fieldOfView);
+    double slabHalfThickness = 0.5 * (fieldOfView[2] > 0.0 ? fieldOfView[2] : 1.0);
     if (slabHalfThickness <= 0.0)
     {
       pipeline->Actor->SetVisibility(false);
@@ -467,11 +483,14 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
       return;
     }
     pipeline->Transformer->SetInputConnection(polyDataConnection);
+    pipeline->Mapper->SetInputConnection(pipeline->Transformer->GetOutputPort());
     this->UpdateSliceMapperColoring(glyphDisplayNode, displayNode, pipeline, hierarchyOpacity);
     this->UpdateSliceActorProperties(displayNode, pipeline, hierarchyOpacity);
     return;
   }
-  pipeline->Transformer->SetInputConnection(pipeline->Glypher->GetOutputPort());
+  // Glyphs are drawn in slice coordinates, so they go to the mapper as they are
+  pipeline->Transformer->SetInputConnection(nullptr);
+  pipeline->Mapper->SetInputConnection(pipeline->Glypher->GetOutputPort());
 
   // Optional thresholding by the active scalar array
   const char* activeScalarName = glyphDisplayNode->GetActiveScalarName();
@@ -538,38 +557,28 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
     pipeline->Projector->SetVectorArrayName(orientationArrayName);
     pipeline->Projector->SetOutputVectorArrayName(glyphOrientationArrayName.c_str());
     pipeline->Projector->SetInputConnection(pipeline->MaskPoints->GetOutputPort());
-    pipeline->Glypher->SetInputConnection(pipeline->Projector->GetOutputPort());
+    pipeline->GlyphInputToSlice->SetInputConnection(pipeline->Projector->GetOutputPort());
   }
   else
   {
     pipeline->Projector->SetInputConnection(nullptr);
-    pipeline->Glypher->SetInputConnection(pipeline->MaskPoints->GetOutputPort());
+    pipeline->GlyphInputToSlice->SetInputConnection(pipeline->MaskPoints->GetOutputPort());
   }
+  // RAS to slice XY, for the points and for the vectors that orient and scale the glyphs.
+  // The vectors are scaled by it as well, which is what makes a vector of a given length in
+  // mm come out that long on the slice.
+  vtkNew<vtkMatrix4x4> rasToXY;
+  vtkMatrix4x4::Invert(this->SliceXYToRAS, rasToXY.GetPointer());
+  pipeline->GlyphInputToSliceTransform->SetMatrix(rasToXY.GetPointer());
+  pipeline->Glypher->SetInputConnection(pipeline->GlyphInputToSlice->GetOutputPort());
 
   // Glyph geometry. Slice views draw flat 2D glyphs (as the transform display does):
   // their outlines stay crisp at any zoom level and they do not hide the image underneath.
   vtkNew<vtkTransform> glyphSourceTransform;
   vtkSmartPointer<vtkPolyDataAlgorithm> glyphSource = vtkMRMLVectorFieldGlyphSource::Create2D(glyphDisplayNode, glyphSourceTransform);
-  // The 2D glyph geometry is generated in the XY plane, rotate it into the slice plane.
-  vtkNew<vtkMatrix4x4> sliceRotation;
-  sliceRotation->DeepCopy(this->SliceXYToRAS);
-  for (int column = 0; column < 3; ++column)
-  {
-    sliceRotation->SetElement(column, 3, 0.0);
-    // Remove the zoom factor of the slice view from the axis directions
-    double axis[3] = { sliceRotation->GetElement(0, column), sliceRotation->GetElement(1, column), sliceRotation->GetElement(2, column) };
-    if (vtkMath::Normalize(axis) > 0.0)
-    {
-      for (int component = 0; component < 3; ++component)
-      {
-        sliceRotation->SetElement(component, column, axis[component]);
-      }
-    }
-  }
-  vtkNew<vtkTransform> glyphToSliceTransform;
-  glyphToSliceTransform->SetMatrix(sliceRotation);
-  glyphToSliceTransform->Concatenate(glyphSourceTransform);
-  pipeline->Glypher->SetSourceTransform(glyphToSliceTransform);
+  // The glyph source is generated in the XY plane, which is the plane the glyphs are drawn
+  // in, so only the source's own transform is needed.
+  pipeline->Glypher->SetSourceTransform(glyphSourceTransform);
   pipeline->Glypher->SetSourceConnection(glyphSource->GetOutputPort());
 
   // Orientation

@@ -20,6 +20,7 @@
 #include <QToolButton>
 
 // STD includes
+#include <algorithm>
 #include <map>
 
 // qMRML includes
@@ -139,7 +140,6 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   q->connect(this->SamplePointsNodeComboBox, SIGNAL(currentNodeChanged(vtkMRMLNode*)), q, SLOT(onSamplePointsNodeChanged(vtkMRMLNode*)));
   q->connect(this->GridSpacingSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGridSpacingChanged(double)));
   q->connect(this->GridShowNonWarpedCheckBox, SIGNAL(toggled(bool)), q, SLOT(onGridShowNonWarpedToggled(bool)));
-  q->connect(this->GridScaleSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGridScaleChanged(double)));
   q->connect(this->GridLineDiameterSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGridLineDiameterChanged(double)));
   q->connect(this->ContourLevelsLineEdit, SIGNAL(editingFinished()), q, SLOT(onContourLevelsChanged()));
   q->connect(this->MaximumPropagationSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onMaximumPropagationChanged(double)));
@@ -152,7 +152,6 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
 
   // Slice display
   q->connect(this->Visibility2DCheckBox, SIGNAL(toggled(bool)), q, SLOT(onVisibility2DToggled(bool)));
-  q->connect(this->SliceSlabThicknessSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onSliceSlabThicknessChanged(double)));
   q->connect(this->SliceLineWidthSpinBox, SIGNAL(valueChanged(int)), q, SLOT(onSliceLineWidthChanged(int)));
 
   q->setEnabled(false);
@@ -289,7 +288,7 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   d->SwapOrientationArrayCoordinateSystemButton->setEnabled(currentOrientationArrayFound //
                                                             && vtkMRMLModelNode::SafeDownCast(d->DisplayableNode) != nullptr);
 
-  d->ScaleFactorSpinBox->setValue(d->GlyphDisplayNode->GetScaleFactor());
+  d->ScaleFactorSpinBox->setValue(d->GlyphDisplayNode->GetEffectiveScaleFactor());
 
   // Only the ways of placing glyphs that this source can honor are offered
   for (int itemIndex = 0; itemIndex < d->MaskingModeComboBox->count(); ++itemIndex)
@@ -321,7 +320,6 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
 
   d->GridSpacingSpinBox->setValue(d->GlyphDisplayNode->GetGridSpacingMm());
   d->GridShowNonWarpedCheckBox->setChecked(d->GlyphDisplayNode->GetGridShowNonWarped());
-  d->GridScaleSpinBox->setValue(d->GlyphDisplayNode->GetGridScalePercent());
   d->GridLineDiameterSpinBox->setValue(d->GlyphDisplayNode->GetGridLineDiameterMm());
   d->ContourLevelsLineEdit->setText(QString::fromStdString(d->GlyphDisplayNode->GetContourLevelsMmAsString()));
   d->MaximumPropagationSpinBox->setValue(d->GlyphDisplayNode->GetMaximumPropagationMm());
@@ -336,8 +334,6 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
                                 static_cast<QWidget*>(d->GlyphTypeComboBox),
                                 static_cast<QWidget*>(d->ScaleArrayLabel),
                                 static_cast<QWidget*>(d->ScaleArrayComboBox),
-                                static_cast<QWidget*>(d->ScaleFactorLabel),
-                                static_cast<QWidget*>(d->ScaleFactorSpinBox),
                                 static_cast<QWidget*>(d->MaskingModeLabel),
                                 static_cast<QWidget*>(d->MaskingModeComboBox) })
   {
@@ -355,11 +351,15 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
     d->VectorScaleModeLabel->setVisible(true);
     d->VectorScaleModeComboBox->setVisible(true);
   }
+  // The scale factor means something in every mode that scales the field, and it is named
+  // the same in all of them.
+  bool scaleFactorUsed = d->GlyphDisplayNode->IsScaleFactorUsed();
+  d->ScaleFactorLabel->setVisible(scaleFactorUsed);
+  d->ScaleFactorSpinBox->setVisible(scaleFactorUsed);
+
   d->GridSpacingLabel->setVisible(gridMode);
   d->GridSpacingSpinBox->setVisible(gridMode);
   d->GridShowNonWarpedCheckBox->setVisible(gridMode);
-  d->GridScaleLabel->setVisible(gridMode);
-  d->GridScaleSpinBox->setVisible(gridMode);
   d->GridLineDiameterLabel->setVisible(gridMode);
   d->GridLineDiameterSpinBox->setVisible(gridMode);
   d->ContourLevelsLabel->setVisible(contourMode);
@@ -419,6 +419,7 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   d->ColorLabel->setVisible(!colorByScalar);
   d->ColorPickerButton->setVisible(!colorByScalar);
   d->ScalarsDisplayWidget->setVisible(colorByScalar);
+  d->ScalarsDisplayWidget->setThresholdVisible(false);
   // The scalars widget has a visibility check box of its own, which this selector replaces,
   // and an array selector that means nothing for a source whose arrays are fixed.
   for (const char* hiddenChild : { "ScalarsVisibilityLabel", "ScalarsVisibilityCheckBox" })
@@ -439,20 +440,32 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   }
 
   // Thresholding, which hides the parts of the field whose magnitude is outside the range
+  bool thresholdUsed = d->GlyphDisplayNode->IsThresholdUsed();
+  d->FieldThresholdLabel->setVisible(thresholdUsed);
+  d->FieldThresholdCheckBox->setVisible(thresholdUsed);
+  d->FieldThresholdRangeWidget->setVisible(thresholdUsed);
   bool thresholdEnabled = (d->GlyphDisplayNode->GetThresholdEnabled() != 0);
   d->FieldThresholdCheckBox->setChecked(thresholdEnabled);
   d->FieldThresholdRangeWidget->setEnabled(thresholdEnabled);
   double scalarRange[2] = { 0.0, 0.0 };
   d->GlyphDisplayNode->GetScalarRange(scalarRange);
-  if (scalarRange[1] > scalarRange[0])
-  {
-    d->FieldThresholdRangeWidget->setRange(scalarRange[0], scalarRange[1]);
-  }
   double thresholdRange[2] = { 0.0, 0.0 };
   d->GlyphDisplayNode->GetThresholdRange(thresholdRange);
+  // The slider covers the values that are there to choose from and the ones that are chosen,
+  // so that a threshold set outside the scalar range is shown as it is instead of being
+  // clamped to the ends of the slider.
   if (thresholdRange[1] >= thresholdRange[0])
   {
+    double sliderRange[2] = { std::min(scalarRange[0], thresholdRange[0]), std::max(scalarRange[1], thresholdRange[1]) };
+    if (sliderRange[1] > sliderRange[0])
+    {
+      d->FieldThresholdRangeWidget->setRange(sliderRange[0], sliderRange[1]);
+    }
     d->FieldThresholdRangeWidget->setValues(thresholdRange[0], thresholdRange[1]);
+  }
+  else if (scalarRange[1] > scalarRange[0])
+  {
+    d->FieldThresholdRangeWidget->setRange(scalarRange[0], scalarRange[1]);
   }
 
   // 3D display
@@ -466,7 +479,6 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
 
   // Slice display
   d->Visibility2DCheckBox->setChecked(d->GlyphDisplayNode->GetVisibility2D() != 0);
-  d->SliceSlabThicknessSpinBox->setValue(d->GlyphDisplayNode->GetSliceSlabThicknessMm());
   d->SliceLineWidthSpinBox->setValue(d->GlyphDisplayNode->GetSliceIntersectionThickness());
 
   d->IsUpdatingWidgetFromMRML = false;
@@ -526,7 +538,7 @@ void qMRMLVectorFieldDisplayWidget::onScaleFactorChanged(double value)
   {
     return;
   }
-  d->GlyphDisplayNode->SetScaleFactor(value);
+  d->GlyphDisplayNode->SetEffectiveScaleFactor(value);
 }
 
 //------------------------------------------------------------------------------
@@ -692,17 +704,6 @@ void qMRMLVectorFieldDisplayWidget::onGridShowNonWarpedToggled(bool enabled)
 }
 
 //------------------------------------------------------------------------------
-void qMRMLVectorFieldDisplayWidget::onGridScaleChanged(double value)
-{
-  Q_D(qMRMLVectorFieldDisplayWidget);
-  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
-  {
-    return;
-  }
-  d->GlyphDisplayNode->SetGridScalePercent(value);
-}
-
-//------------------------------------------------------------------------------
 void qMRMLVectorFieldDisplayWidget::onGridLineDiameterChanged(double value)
 {
   Q_D(qMRMLVectorFieldDisplayWidget);
@@ -825,17 +826,6 @@ void qMRMLVectorFieldDisplayWidget::onVisibility2DToggled(bool visible)
     return;
   }
   d->GlyphDisplayNode->SetVisibility2D(visible);
-}
-
-//------------------------------------------------------------------------------
-void qMRMLVectorFieldDisplayWidget::onSliceSlabThicknessChanged(double value)
-{
-  Q_D(qMRMLVectorFieldDisplayWidget);
-  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
-  {
-    return;
-  }
-  d->GlyphDisplayNode->SetSliceSlabThicknessMm(value);
 }
 
 //------------------------------------------------------------------------------
