@@ -82,7 +82,6 @@ vtkMRMLVectorFieldDisplayNode::vtkMRMLVectorFieldDisplayNode()
   , GlyphShaftDiameterPercent(30.0)
   , GlyphResolution2D(12)
   , GlyphTipLengthPercent2D(30.0)
-  , SliceSlabThicknessMm(1.0)
   , ThresholdEnabled(false)
 {
   this->ThresholdRange[0] = 0.0;
@@ -132,7 +131,6 @@ void vtkMRMLVectorFieldDisplayNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintFloatMacro(GlyphShaftDiameterPercent);
   vtkMRMLPrintIntMacro(GlyphResolution2D);
   vtkMRMLPrintFloatMacro(GlyphTipLengthPercent2D);
-  vtkMRMLPrintFloatMacro(SliceSlabThicknessMm);
   vtkMRMLPrintBooleanMacro(ThresholdEnabled);
   vtkMRMLPrintVectorMacro(ThresholdRange, double, 2);
   vtkMRMLPrintEndMacro();
@@ -171,7 +169,6 @@ void vtkMRMLVectorFieldDisplayNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLFloatMacro(glyphShaftDiameterPercent, GlyphShaftDiameterPercent);
   vtkMRMLWriteXMLIntMacro(glyphResolution2D, GlyphResolution2D);
   vtkMRMLWriteXMLFloatMacro(glyphTipLengthPercent2D, GlyphTipLengthPercent2D);
-  vtkMRMLWriteXMLFloatMacro(sliceSlabThicknessMm, SliceSlabThicknessMm);
   vtkMRMLWriteXMLBooleanMacro(thresholdEnabled, ThresholdEnabled);
   vtkMRMLWriteXMLVectorMacro(thresholdRange, ThresholdRange, double, 2);
   vtkMRMLWriteXMLEndMacro();
@@ -210,7 +207,6 @@ void vtkMRMLVectorFieldDisplayNode::ReadXMLAttributes(const char** atts)
   vtkMRMLReadXMLFloatMacro(glyphShaftDiameterPercent, GlyphShaftDiameterPercent);
   vtkMRMLReadXMLIntMacro(glyphResolution2D, GlyphResolution2D);
   vtkMRMLReadXMLFloatMacro(glyphTipLengthPercent2D, GlyphTipLengthPercent2D);
-  vtkMRMLReadXMLFloatMacro(sliceSlabThicknessMm, SliceSlabThicknessMm);
   vtkMRMLReadXMLBooleanMacro(thresholdEnabled, ThresholdEnabled);
   vtkMRMLReadXMLVectorMacro(thresholdRange, ThresholdRange, double, 2);
   vtkMRMLReadXMLEndMacro();
@@ -257,7 +253,6 @@ void vtkMRMLVectorFieldDisplayNode::CopyContent(vtkMRMLNode* anode, bool deepCop
   vtkMRMLCopyFloatMacro(GlyphShaftDiameterPercent);
   vtkMRMLCopyIntMacro(GlyphResolution2D);
   vtkMRMLCopyFloatMacro(GlyphTipLengthPercent2D);
-  vtkMRMLCopyFloatMacro(SliceSlabThicknessMm);
   vtkMRMLCopyBooleanMacro(ThresholdEnabled);
   vtkMRMLCopyVectorMacro(ThresholdRange, double, 2);
   vtkMRMLCopyEndMacro();
@@ -686,6 +681,42 @@ bool vtkMRMLVectorFieldDisplayNode::GetSamplePositions(vtkPoints* samplePosition
   }
 
   return false;
+}
+
+//-----------------------------------------------------------
+double vtkMRMLVectorFieldDisplayNode::GetEffectiveScaleFactor()
+{
+  if (this->VisualizationMode == vtkMRMLVectorFieldDisplayNode::VisualizationModeGrid)
+  {
+    return this->GridScalePercent * 0.01;
+  }
+  return this->ScaleFactor;
+}
+
+//-----------------------------------------------------------
+void vtkMRMLVectorFieldDisplayNode::SetEffectiveScaleFactor(double scaleFactor)
+{
+  if (this->VisualizationMode == vtkMRMLVectorFieldDisplayNode::VisualizationModeGrid)
+  {
+    this->SetGridScalePercent(scaleFactor * 100.0);
+    return;
+  }
+  this->SetScaleFactor(scaleFactor);
+}
+
+//-----------------------------------------------------------
+bool vtkMRMLVectorFieldDisplayNode::IsScaleFactorUsed()
+{
+  return (this->VisualizationMode == vtkMRMLVectorFieldDisplayNode::VisualizationModeGlyph || //
+          this->VisualizationMode == vtkMRMLVectorFieldDisplayNode::VisualizationModeGrid);
+}
+
+//-----------------------------------------------------------
+bool vtkMRMLVectorFieldDisplayNode::IsThresholdUsed()
+{
+  // Contours are isosurfaces of the magnitude, so the levels already say which magnitudes
+  // are drawn and a threshold on the same quantity would only be confusing.
+  return (this->VisualizationMode != vtkMRMLVectorFieldDisplayNode::VisualizationModeContour);
 }
 
 //-----------------------------------------------------------

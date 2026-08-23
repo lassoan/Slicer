@@ -77,7 +77,6 @@ protected slots:
   void onSamplePointsNodeChanged(vtkMRMLNode* node);
   void onGridSpacingChanged(double value);
   void onGridShowNonWarpedToggled(bool enabled);
-  void onGridScaleChanged(double value);
   void onGridLineDiameterChanged(double value);
   void onContourLevelsChanged();
   void onMaximumPropagationChanged(double value);
@@ -92,7 +91,6 @@ protected slots:
   void onOpacityChanged(double opacity);
 
   void onVisibility2DToggled(bool visible);
-  void onSliceSlabThicknessChanged(double value);
   void onSliceLineWidthChanged(int value);
 
 protected:

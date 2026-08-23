@@ -48,6 +48,11 @@ public:
   qMRMLScalarsDisplayWidgetPrivate(qMRMLScalarsDisplayWidget& object);
   void init();
 
+  /// Whether the host wants the threshold controls here at all. A host that offers
+  /// thresholding of its own turns them off, and they stay off however the display node
+  /// changes.
+  bool ThresholdVisible{ true };
+
   /// Thresholding helpers that work with any display node type that supports it
   /// (model and glyph display nodes).
   static bool isThresholdSupported(vtkMRMLDisplayNode* displayNode);
@@ -460,13 +465,14 @@ void qMRMLScalarsDisplayWidget::setTresholdEnabled(bool b)
 bool qMRMLScalarsDisplayWidget::isThresholdVisible() const
 {
   Q_D(const qMRMLScalarsDisplayWidget);
-  return d->ThresholdCheckBox->isVisibleTo(const_cast<qMRMLScalarsDisplayWidget*>(this));
+  return d->ThresholdVisible;
 }
 
 //------------------------------------------------------------------------------
 void qMRMLScalarsDisplayWidget::setThresholdVisible(bool visible)
 {
   Q_D(qMRMLScalarsDisplayWidget);
+  d->ThresholdVisible = visible;
   d->ThresholdLabel->setVisible(visible);
   d->ThresholdCheckBox->setVisible(visible);
   d->ThresholdRangeWidget->setVisible(visible);
@@ -532,7 +538,7 @@ void qMRMLScalarsDisplayWidget::updateWidgetFromMRML()
 
   vtkMRMLDisplayNode* firstDisplayNode = (d->CurrentDisplayNodes.size() > 0 ? d->CurrentDisplayNodes[0] : nullptr);
   // The Threshold section is only available for display nodes that support thresholding
-  bool thresholdSupported = qMRMLScalarsDisplayWidgetPrivate::isThresholdSupported(firstDisplayNode);
+  bool thresholdSupported = (qMRMLScalarsDisplayWidgetPrivate::isThresholdSupported(firstDisplayNode) && d->ThresholdVisible);
   d->ThresholdLabel->setVisible(thresholdSupported);
   d->ThresholdCheckBox->setVisible(thresholdSupported);
   d->ThresholdRangeWidget->setVisible(thresholdSupported);

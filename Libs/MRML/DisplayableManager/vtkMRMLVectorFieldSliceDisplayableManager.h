@@ -31,7 +31,7 @@ class vtkMRMLDisplayableNode;
 /// vtkMRMLModelDisplayableManager.
 ///
 /// Only mesh points that are within a slab around the slice plane
-/// (vtkMRMLVectorFieldDisplayNode::SliceSlabThicknessMm) are shown, and the glyphs
+/// (the thickness of the slice) are shown, and the glyphs
 /// are drawn in the slice view's plane.
 class VTK_MRML_DISPLAYABLEMANAGER_EXPORT vtkMRMLVectorFieldSliceDisplayableManager : public vtkMRMLAbstractSliceViewDisplayableManager
 {
