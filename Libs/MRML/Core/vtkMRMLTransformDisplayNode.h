@@ -121,6 +121,10 @@ public:
   /// A transform can be evaluated at any position.
   bool CanSampleAtArbitraryPositions() override;
 
+  /// A transform is sampled into the same two arrays every time, so there is nothing to
+  /// choose between.
+  bool HasFixedFieldArrays() override;
+
   /// Transform display offers glyphs, a deformed grid and contours of the displacement
   /// magnitude, the modes it has always had. Streamlines of a displacement field are not
   /// meaningful: the field is a displacement, not a velocity.

@@ -30,6 +30,7 @@ class vtkIntArray;
 class vtkPoints;
 class vtkMatrix4x4;
 class vtkMRMLVectorFieldModePipeline;
+class vtkMRMLModelNode;
 class vtkMRMLVectorFieldSampler;
 class vtkMRMLVolumeNode;
 
@@ -218,6 +219,11 @@ public:
   /// a glyph that has an axis and a cross section can be, so this is false for a sphere or
   /// a box however ScaleDirectional is set.
   bool IsScaleDirectionalUsed();
+
+  /// The magnitudes that contour mode draws an isosurface at: the ones that were set, or,
+  /// when none were, a handful spread over the range the colors are mapped across, so that
+  /// a field whose magnitudes are not known in advance still shows something.
+  void GetEffectiveContourLevelsMm(std::vector<double>& levels);
 
   /// True if the source can place glyphs the way the mode asks for. A field that is sampled
   /// can only use a lattice or a list of points, and the point data of a mesh can only use
@@ -533,6 +539,12 @@ public:
   /// arrays.
   virtual bool HasFixedFieldArrays();
 
+  /// True if the mesh of the model node has cells that enclose a volume, so that the field
+  /// it carries at its points is defined everywhere inside them and can be interpolated
+  /// there. A surface mesh has no inside, so its vectors exist at its points and nowhere
+  /// else.
+  bool HasVolumetricMesh();
+
   /// Get the name and the number of components of each array that can be used for glyph
   /// orientation, scaling, and coloring. Does not update the pipeline, so it is safe to
   /// call from the GUI.
@@ -586,6 +598,10 @@ protected:
 
   /// Create (if needed) and configure the sampler that reads the field from a vector volume.
   virtual vtkMRMLVectorFieldSampler* UpdateVolumeFieldSampler(vtkMRMLVolumeNode* volumeNode, vtkMRMLVectorFieldSampler* sampler);
+
+  /// Set up a sampler that interpolates the field a mesh carries, inside the cells that
+  /// enclose a volume. Creates it if the given one is not of the right kind.
+  virtual vtkMRMLVectorFieldSampler* UpdateMeshFieldSampler(vtkMRMLModelNode* modelNode, vtkMRMLVectorFieldSampler* sampler);
 
   /// Push the region, the sampling spacing and the sample positions into a sampler.
   void UpdateSamplerRegion(vtkMRMLVectorFieldSampler* sampler);

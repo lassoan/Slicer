@@ -182,6 +182,7 @@ set(MRMLCore_SRCS
   vtkMRMLInteractionEventData.cxx
   vtkMRMLInteractionEventData.h
   vtkMRMLImageFieldSampler.cxx
+  vtkMRMLMeshFieldSampler.cxx
   vtkMRMLInteractionNode.cxx
   vtkMRMLJsonElement.cxx
   vtkMRMLLabelMapVolumeDisplayNode.cxx
