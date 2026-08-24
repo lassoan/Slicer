@@ -12,6 +12,7 @@
 // MRML includes
 #include "vtkMRMLVectorFieldDisplayNode.h"
 #include "vtkMRMLImageFieldSampler.h"
+#include "vtkMRMLMeshFieldSampler.h"
 #include "vtkMRMLMarkupsPlaneNode.h"
 #include "vtkMRMLMarkupsROINode.h"
 #include "vtkMRMLModelNode.h"
@@ -35,7 +36,9 @@
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
 #include <vtkPointData.h>
+#include <vtkCellTypes.h>
 #include <vtkPointSet.h>
+#include <vtkUnstructuredGrid.h>
 #include <vtkPoints.h>
 
 // STD includes
@@ -878,17 +881,42 @@ vtkDataArray* vtkMRMLVectorFieldDisplayNode::GetEffectiveScaleArray()
 }
 
 //-----------------------------------------------------------
+void vtkMRMLVectorFieldDisplayNode::GetEffectiveContourLevelsMm(std::vector<double>& levels)
+{
+  this->GetContourLevelsMm(levels);
+  if (!levels.empty())
+  {
+    return;
+  }
+  // A transform is a displacement in mm and has levels that mean something on their own, but
+  // the magnitudes of an arbitrary field are not known in advance, so the levels are spread
+  // over the range that its colors are mapped across.
+  double scalarRange[2] = { 0.0, -1.0 };
+  this->GetScalarRange(scalarRange);
+  if (scalarRange[1] <= scalarRange[0])
+  {
+    return;
+  }
+  const int numberOfLevels = 5;
+  for (int levelIndex = 1; levelIndex <= numberOfLevels; ++levelIndex)
+  {
+    levels.push_back(scalarRange[0] + (scalarRange[1] - scalarRange[0]) * levelIndex / (numberOfLevels + 1.0));
+  }
+}
+
+//-----------------------------------------------------------
 bool vtkMRMLVectorFieldDisplayNode::IsMaskingModeSupported(int maskingMode)
 {
-  if (this->CanSampleAtArbitraryPositions())
+  // A mesh has points of its own to place glyphs at, and a field that can be interpolated
+  // anywhere can also place them on a lattice or at the points of another node. A mesh whose
+  // cells enclose a volume is both.
+  bool hasOwnPoints = (vtkMRMLModelNode::SafeDownCast(this->GetDisplayableNode()) != nullptr);
+  if (maskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing || //
+      maskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints)
   {
-    // The field has no points of its own, so the glyph positions have to be chosen: either
-    // on a lattice, or at the points of another node.
-    return (maskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing || //
-            maskingMode == vtkMRMLVectorFieldDisplayNode::MaskingModeNodePoints);
+    return this->CanSampleAtArbitraryPositions();
   }
-  // The vectors live at the points of a mesh, so the glyphs can only be placed there
-  return (maskingMode >= 0 && maskingMode < vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing);
+  return (hasOwnPoints && maskingMode >= 0 && maskingMode < vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing);
 }
 
 //-----------------------------------------------------------
@@ -898,8 +926,12 @@ int vtkMRMLVectorFieldDisplayNode::GetEffectiveMaskingMode()
   {
     return this->MaskingMode;
   }
-  return (this->CanSampleAtArbitraryPositions() ? vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing //
-                                                : vtkMRMLVectorFieldDisplayNode::MaskingModeAllPoints);
+  // A mesh shows its own points by default, even when it could also be sampled on a lattice
+  if (vtkMRMLModelNode::SafeDownCast(this->GetDisplayableNode()))
+  {
+    return vtkMRMLVectorFieldDisplayNode::MaskingModeUniformBounds;
+  }
+  return vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing;
 }
 
 //-----------------------------------------------------------
@@ -1000,6 +1032,27 @@ void vtkMRMLVectorFieldDisplayNode::SetDefaultSampledFieldArrayNames()
 }
 
 //-----------------------------------------------------------
+vtkMRMLVectorFieldSampler* vtkMRMLVectorFieldDisplayNode::UpdateMeshFieldSampler(vtkMRMLModelNode* modelNode, vtkMRMLVectorFieldSampler* sampler)
+{
+  if (!modelNode)
+  {
+    return nullptr;
+  }
+  vtkMRMLMeshFieldSampler* meshSampler = vtkMRMLMeshFieldSampler::SafeDownCast(sampler);
+  if (!meshSampler)
+  {
+    vtkNew<vtkMRMLMeshFieldSampler> newSampler;
+    this->FieldSampler = newSampler.GetPointer();
+    meshSampler = newSampler.GetPointer();
+  }
+  meshSampler->SetInputConnection(modelNode->GetMeshConnection());
+  // The array the user chose to read the field from is the one that is interpolated
+  meshSampler->SetMeshVectorArrayName(this->GetOrientationArrayName());
+  this->UpdateSamplerRegion(meshSampler);
+  return meshSampler;
+}
+
+//-----------------------------------------------------------
 vtkMRMLVectorFieldSampler* vtkMRMLVectorFieldDisplayNode::UpdateVolumeFieldSampler(vtkMRMLVolumeNode* volumeNode, vtkMRMLVectorFieldSampler* sampler)
 {
   vtkMRMLImageFieldSampler* imageSampler = vtkMRMLImageFieldSampler::SafeDownCast(sampler);
@@ -1025,10 +1078,21 @@ vtkMRMLVectorFieldSampler* vtkMRMLVectorFieldDisplayNode::UpdateVolumeFieldSampl
 //-----------------------------------------------------------
 vtkAlgorithmOutput* vtkMRMLVectorFieldDisplayNode::GetFieldConnection()
 {
-  // Model point data: the mesh is already a pipeline output, it can be glyphed as it is.
+  // Model point data. A mesh whose cells enclose a volume describes a field that is defined
+  // between its points as well, so it is sampled the way the other sources are when
+  // something other than its own points is being drawn; otherwise the mesh is already a
+  // pipeline output and can be glyphed as it is.
   vtkMRMLModelNode* modelNode = vtkMRMLModelNode::SafeDownCast(this->GetDisplayableNode());
   if (modelNode)
   {
+    if (this->HasVolumetricMesh() && this->GetEffectiveMaskingMode() != vtkMRMLVectorFieldDisplayNode::MaskingModeAllPoints)
+    {
+      vtkMRMLVectorFieldSampler* sampler = this->UpdateMeshFieldSampler(modelNode, this->FieldSampler);
+      if (sampler)
+      {
+        return sampler->GetOutputPort();
+      }
+    }
     return modelNode->GetMeshConnection();
   }
 
@@ -1078,11 +1142,37 @@ vtkAlgorithmOutput* vtkMRMLVectorFieldDisplayNode::GetOutputPolyDataConnection(v
 }
 
 //-----------------------------------------------------------
+bool vtkMRMLVectorFieldDisplayNode::HasVolumetricMesh()
+{
+  vtkMRMLModelNode* modelNode = vtkMRMLModelNode::SafeDownCast(this->GetDisplayableNode());
+  vtkUnstructuredGrid* grid = (modelNode ? vtkUnstructuredGrid::SafeDownCast(modelNode->GetMesh()) : nullptr);
+  if (!grid || grid->GetNumberOfCells() == 0)
+  {
+    return false;
+  }
+  vtkNew<vtkCellTypes> cellTypes;
+  grid->GetCellTypes(cellTypes);
+  for (vtkIdType typeIndex = 0; typeIndex < cellTypes->GetNumberOfTypes(); ++typeIndex)
+  {
+    if (vtkCellTypes::GetDimension(cellTypes->GetCellType(typeIndex)) == 3)
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+//-----------------------------------------------------------
 bool vtkMRMLVectorFieldDisplayNode::CanSampleAtArbitraryPositions()
 {
-  // A vector volume can be interpolated anywhere; a mesh only has values at its own points.
+  // A vector volume can be interpolated anywhere, and so can a mesh whose cells enclose a
+  // volume. A surface mesh only has values at its own points.
   vtkMRMLVolumeNode* volumeNode = vtkMRMLVolumeNode::SafeDownCast(this->GetDisplayableNode());
-  return (volumeNode && volumeNode->GetImageData() && volumeNode->GetImageData()->GetNumberOfScalarComponents() >= 3);
+  if (volumeNode && volumeNode->GetImageData() && volumeNode->GetImageData()->GetNumberOfScalarComponents() >= 3)
+  {
+    return true;
+  }
+  return this->HasVolumetricMesh();
 }
 
 //-----------------------------------------------------------
@@ -1093,6 +1183,13 @@ vtkSmartPointer<vtkMRMLVectorFieldSampler> vtkMRMLVectorFieldDisplayNode::Create
     // Slice views select the points that are near the slice plane instead.
     return nullptr;
   }
+  vtkMRMLModelNode* modelNode = vtkMRMLModelNode::SafeDownCast(this->GetDisplayableNode());
+  if (modelNode)
+  {
+    vtkSmartPointer<vtkMRMLMeshFieldSampler> meshSliceSampler = vtkSmartPointer<vtkMRMLMeshFieldSampler>::New();
+    this->UpdateMeshFieldSampler(modelNode, meshSliceSampler);
+    return meshSliceSampler;
+  }
   vtkMRMLVolumeNode* volumeNode = vtkMRMLVolumeNode::SafeDownCast(this->GetDisplayableNode());
   vtkSmartPointer<vtkMRMLImageFieldSampler> sliceSampler = vtkSmartPointer<vtkMRMLImageFieldSampler>::New();
   this->UpdateVolumeFieldSampler(volumeNode, sliceSampler);
@@ -1102,9 +1199,10 @@ vtkSmartPointer<vtkMRMLVectorFieldSampler> vtkMRMLVectorFieldDisplayNode::Create
 //-----------------------------------------------------------
 bool vtkMRMLVectorFieldDisplayNode::HasFixedFieldArrays()
 {
-  // A field that is sampled always produces the same two arrays, whether or not it is
-  // currently being sampled anywhere; the point data of a mesh can hold anything.
-  return this->CanSampleAtArbitraryPositions();
+  // A sampled image gives the same two arrays every time, so there is nothing to choose
+  // between; the point data of a mesh can hold anything, including several vector arrays,
+  // and that is exactly where the user has to say which one is the field.
+  return (vtkMRMLVolumeNode::SafeDownCast(this->GetDisplayableNode()) != nullptr);
 }
 
 //-----------------------------------------------------------
@@ -1114,10 +1212,13 @@ void vtkMRMLVectorFieldDisplayNode::GetFieldArrayInfo(std::vector<std::string>& 
   numberOfComponents.clear();
 
   // A sampled field always produces the same two arrays. They are reported without
-  // executing the sampler, so that showing the GUI does not sample the field.
+  // executing the sampler, so that showing the GUI does not sample the field. A mesh is
+  // read through a sampler too where its cells enclose a volume, but the arrays to choose
+  // between are still the ones the mesh carries.
   vtkAlgorithmOutput* fieldConnection = this->GetFieldConnection();
   vtkAlgorithm* producer = fieldConnection ? fieldConnection->GetProducer() : nullptr;
-  if (vtkMRMLVectorFieldSampler::SafeDownCast(producer))
+  bool readsFromMesh = (vtkMRMLModelNode::SafeDownCast(this->GetDisplayableNode()) != nullptr);
+  if (!readsFromMesh && vtkMRMLVectorFieldSampler::SafeDownCast(producer))
   {
     arrayNames.emplace_back(vtkMRMLVectorFieldSampler::GetVectorArrayName());
     numberOfComponents.push_back(3);
@@ -1151,6 +1252,14 @@ void vtkMRMLVectorFieldDisplayNode::GetFieldArrayInfo(std::vector<std::string>& 
 //-----------------------------------------------------------
 vtkDataSet* vtkMRMLVectorFieldDisplayNode::GetScalarDataSet()
 {
+  // The arrays of a mesh are the mesh's own, and are there whether or not the field has been
+  // sampled anywhere: a volumetric mesh is read through a sampler, but what the arrays hold
+  // and what range they span is a question about the mesh.
+  vtkMRMLModelNode* modelNode = vtkMRMLModelNode::SafeDownCast(this->GetDisplayableNode());
+  if (modelNode)
+  {
+    return modelNode->GetMesh();
+  }
   vtkAlgorithmOutput* fieldConnection = this->GetFieldConnection();
   if (!fieldConnection)
   {

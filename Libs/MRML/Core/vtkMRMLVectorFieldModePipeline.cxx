@@ -142,7 +142,7 @@ vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateContour(vtkMRMLVectorF
   this->Contour->SetInputConnection(fieldConnection);
   this->Contour->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, vtkMRMLVectorFieldSampler::GetMagnitudeArrayName());
   std::vector<double> levels;
-  displayNode->GetContourLevelsMm(levels);
+  displayNode->GetEffectiveContourLevelsMm(levels);
   this->Contour->SetNumberOfContours(static_cast<int>(levels.size()));
   for (size_t levelIndex = 0; levelIndex < levels.size(); ++levelIndex)
   {

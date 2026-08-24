@@ -245,6 +245,12 @@ bool vtkMRMLTransformDisplayNode::CanSampleAtArbitraryPositions()
 }
 
 //----------------------------------------------------------------------------
+bool vtkMRMLTransformDisplayNode::HasFixedFieldArrays()
+{
+  return true;
+}
+
+//----------------------------------------------------------------------------
 bool vtkMRMLTransformDisplayNode::IsVisualizationModeSupported(int visualizationMode)
 {
   return (visualizationMode >= 0 && visualizationMode < vtkMRMLTransformDisplayNode::VIS_MODE_LAST);
