@@ -68,7 +68,9 @@ protected slots:
   void onMaskingPointsNumberChanged(int value);
   void onVisibilityToggled(bool visible);
   void onColorByChanged(int index);
+  void onFieldArrayChanged(int index);
   void onGlyphDiameterChanged(double value);
+  void onGlyphDiameterAbsoluteToggled(bool absolute);
   void onGlyphShaftDiameterChanged(double value);
   void onGlyphTipLengthChanged(double value);
   void onGlyphResolutionChanged(int value);

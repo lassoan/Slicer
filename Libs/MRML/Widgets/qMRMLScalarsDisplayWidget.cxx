@@ -18,7 +18,11 @@
 // Qt includes
 #include <QDebug>
 
+// Qt includes
+#include <QStandardItem>
+
 // CTK includes
+#include <ctkVTKDataSetModel.h>
 #include "ctkUtils.h"
 
 // qMRML includes
@@ -37,6 +41,15 @@
 #include <vtkPointSet.h>
 
 //-----------------------------------------------------------------------------
+namespace
+{
+/// Marks the item that stands for the array the host chose, so it can be told from the
+/// items that the data set itself provides. It has to stay clear of the roles the data set
+/// model uses for its own bookkeeping (ctkVTK::PointerRole is Qt::UserRole + 1).
+const int DefaultArrayItemRole = Qt::UserRole + 100;
+} // namespace
+
+//-----------------------------------------------------------------------------
 class qMRMLScalarsDisplayWidgetPrivate : public Ui_qMRMLScalarsDisplayWidget
 {
   Q_DECLARE_PUBLIC(qMRMLScalarsDisplayWidget);
@@ -48,7 +61,16 @@ public:
   qMRMLScalarsDisplayWidgetPrivate(qMRMLScalarsDisplayWidget& object);
   void init();
 
-  /// Whether the host wants the threshold controls here at all. A host that offers
+  /// The array the host falls back to, and whether the entry that stands for it is in the
+  /// list at the moment.
+  QString DefaultScalarArrayName;
+  bool DefaultArrayItemInserted{ false };
+
+  /// Put the "(Default)" entry at the top of the list of arrays, or take it out. The list
+  /// is rebuilt from the data set whenever that changes, so this runs after every update.
+  void updateDefaultArrayItem();
+
+  /// Whether the threshold controls are part of this widget at all. A host that offers
   /// thresholding of its own turns them off, and they stay off however the display node
   /// changes.
   bool ThresholdVisible{ true };
@@ -320,6 +342,17 @@ bool qMRMLScalarsDisplayWidget::scalarsVisibility() const
 void qMRMLScalarsDisplayWidget::onCurrentArrayActivated()
 {
   Q_D(qMRMLScalarsDisplayWidget);
+  if (d->DefaultArrayItemInserted && d->ActiveScalarComboBox->currentIndex() == 0)
+  {
+    // The entry that stands for the array the host chose. The array itself is selected
+    // first, because the attribute location that is stored with the name is read from the
+    // selected row, and the row that stands for the default array holds no array.
+    bool wasBlocking = d->ActiveScalarComboBox->blockSignals(true);
+    d->ActiveScalarComboBox->setCurrentArray(d->DefaultScalarArrayName);
+    d->ActiveScalarComboBox->blockSignals(wasBlocking);
+    this->setActiveScalarName(d->DefaultScalarArrayName);
+    return;
+  }
   this->setActiveScalarName(d->ActiveScalarComboBox->currentArrayName());
 }
 
@@ -459,6 +492,59 @@ void qMRMLScalarsDisplayWidget::setTresholdEnabled(bool b)
   {
     qMRMLScalarsDisplayWidgetPrivate::setThresholdEnabled(displayNode, b);
   }
+}
+
+//------------------------------------------------------------------------------
+void qMRMLScalarsDisplayWidgetPrivate::updateDefaultArrayItem()
+{
+  // The list is a view on a model that owns its rows and reads an array out of each one, so
+  // the row is built complete and handed to the model the way the model builds its own rows
+  // for "no array": populating a row that is already in the list would have the model look
+  // for an array in it before it is there.
+  ctkVTKDataSetModel* dataSetModel = qobject_cast<ctkVTKDataSetModel*>(this->ActiveScalarComboBox->model());
+  if (!dataSetModel)
+  {
+    this->DefaultArrayItemInserted = false;
+    return;
+  }
+  bool wanted = !this->DefaultScalarArrayName.isEmpty();
+  QStandardItem* firstItem = dataSetModel->item(0);
+  bool present = (firstItem && firstItem->data(DefaultArrayItemRole).toBool());
+  if (wanted && !present)
+  {
+    QStandardItem* defaultItem = new QStandardItem();
+    defaultItem->setData(QVariant::fromValue(qlonglong(0)), ctkVTK::PointerRole);
+    defaultItem->setData(dataSetModel->nullItemLocation(), ctkVTK::LocationRole);
+    defaultItem->setData(true, DefaultArrayItemRole);
+    defaultItem->setText(qMRMLScalarsDisplayWidget::tr("(Default)"));
+    dataSetModel->insertRow(0, defaultItem);
+    present = true;
+  }
+  else if (!wanted && present)
+  {
+    dataSetModel->removeRow(0);
+    present = false;
+  }
+  this->DefaultArrayItemInserted = present;
+}
+
+//------------------------------------------------------------------------------
+QString qMRMLScalarsDisplayWidget::defaultScalarArrayName() const
+{
+  Q_D(const qMRMLScalarsDisplayWidget);
+  return d->DefaultScalarArrayName;
+}
+
+//------------------------------------------------------------------------------
+void qMRMLScalarsDisplayWidget::setDefaultScalarArrayName(const QString& arrayName)
+{
+  Q_D(qMRMLScalarsDisplayWidget);
+  if (d->DefaultScalarArrayName == arrayName)
+  {
+    return;
+  }
+  d->DefaultScalarArrayName = arrayName;
+  this->updateWidgetFromMRML();
 }
 
 //------------------------------------------------------------------------------
@@ -677,9 +763,16 @@ void qMRMLScalarsDisplayWidget::updateWidgetFromMRML()
     {
       d->ActiveScalarComboBox->setDataSet(firstDisplayNode->GetScalarDataSet());
     }
-    if (d->ActiveScalarComboBox->currentArrayName() != firstDisplayNode->GetActiveScalarName())
+    d->updateDefaultArrayItem();
+    QString activeScalarName = QString::fromUtf8(firstDisplayNode->GetActiveScalarName() ? firstDisplayNode->GetActiveScalarName() : "");
+    if (d->DefaultArrayItemInserted && activeScalarName == d->DefaultScalarArrayName)
     {
-      d->ActiveScalarComboBox->setCurrentArray(firstDisplayNode->GetActiveScalarName());
+      // Following the array the host chose is shown as such, not as that array by name
+      d->ActiveScalarComboBox->setCurrentIndex(0);
+    }
+    else if (d->ActiveScalarComboBox->currentArrayName() != activeScalarName)
+    {
+      d->ActiveScalarComboBox->setCurrentArray(activeScalarName);
       // Array location would need to be set in d->ActiveScalarComboBox if
       // same scalar name is used in multiple locations.
     }

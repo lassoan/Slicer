@@ -382,6 +382,17 @@ void qMRMLModelDisplayNodeWidget::setCurrentSubjectHierarchyItemIDs(QList<vtkIdT
 }
 
 //------------------------------------------------------------------------------
+void qMRMLModelDisplayNodeWidget::addScalarsWidget(QWidget* widget)
+{
+  Q_D(qMRMLModelDisplayNodeWidget);
+  if (!widget)
+  {
+    return;
+  }
+  d->gridLayout->addWidget(widget, d->gridLayout->rowCount(), 0, 1, 2);
+}
+
+//------------------------------------------------------------------------------
 void qMRMLModelDisplayNodeWidget::setMRMLModelDisplayNode(vtkMRMLNode* node)
 {
   this->setMRMLModelDisplayNode(vtkMRMLModelDisplayNode::SafeDownCast(node));
