@@ -69,7 +69,7 @@ vtkMRMLVectorFieldDisplayNode::vtkMRMLVectorFieldDisplayNode()
   , VisualizationMode(vtkMRMLVectorFieldDisplayNode::VisualizationModeGlyph)
   , ScaleDirectional(true)
   , GlyphDiameterMm(5.0)
-  , GlyphDiameterAbsolute(true)
+  , GlyphDiameterAbsolute(false)
   , GlyphDiameterPercent(20.0)
   , GridSpacingMm(0.0)
   , GridShowNonWarped(false)
@@ -816,7 +816,9 @@ void vtkMRMLVectorFieldDisplayNode::SetFieldArrayName(const char* arrayName)
   }
   if (colorFollows)
   {
-    this->SetActiveScalarName(arrayName);
+    // Through SetActiveScalar, not the string setter, because that is what tells the node
+    // that the array the colors are read from has changed
+    this->SetActiveScalar(arrayName, this->GetActiveAttributeLocation());
   }
 
   // A field that has just been chosen should be visible at a sensible size straight away

@@ -68,6 +68,7 @@ vtkMRMLTransformDisplayNode::vtkMRMLTransformDisplayNode()
   // Arrows keep their thickness however long they are, which is what makes a field of
   // displacement vectors readable.
   this->SetScaleDirectional(true);
+  this->SetGlyphDiameterAbsolute(true);
   this->SetGlyphDiameterMm(5.0);
   this->SetScaleFactor(1.0); // 100%
   this->SetGlyphTipLengthPercent(30.0);
