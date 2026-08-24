@@ -45,6 +45,10 @@ class Q_SLICER_QTMODULES_MODELS_WIDGETS_EXPORT qMRMLModelDisplayNodeWidget : pub
   Q_PROPERTY(bool clippingConfigurationButtonVisible READ clippingConfigurationButtonVisible WRITE setClippingConfigurationButtonVisible)
 
 public:
+  /// Add a widget to the Scalars section, for what belongs with the scalars the model is
+  /// colored by (the color legend). The widget is reparented.
+  void addScalarsWidget(QWidget* widget);
+
   typedef qMRMLWidget Superclass;
   qMRMLModelDisplayNodeWidget(QWidget* parent = nullptr);
   ~qMRMLModelDisplayNodeWidget() override;

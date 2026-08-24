@@ -391,6 +391,9 @@
       <item>
        <widget class="qMRMLTransformDisplayNodeWidget" name="TransformDisplayNodeWidget"/>
       </item>
+      <item>
+       <widget class="qMRMLTransformInteractionWidget" name="TransformInteractionWidget"/>
+      </item>
      </layout>
     </widget>
    </item>
@@ -746,6 +749,11 @@
    <class>qMRMLTransformDisplayNodeWidget</class>
    <extends>qMRMLWidget</extends>
    <header>qMRMLTransformDisplayNodeWidget.h</header>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLTransformInteractionWidget</class>
+   <extends>qMRMLWidget</extends>
+   <header>qMRMLTransformInteractionWidget.h</header>
   </customwidget>
   <customwidget>
    <class>qMRMLTransformInfoWidget</class>

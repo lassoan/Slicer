@@ -284,6 +284,7 @@ void qSlicerTransformsModuleWidget::onSubjectHierarchyItemModified(vtkObject* vt
   // Refresh the display node section. This is necessary because it is possible that the display node did not exist yet
   // when the TransformDisplayNodeWidget was set in the widget.
   d->TransformDisplayNodeWidget->setMRMLTransformNode(d->MRMLTransformNode);
+  d->TransformInteractionWidget->setMRMLTransformNode(d->MRMLTransformNode);
 }
 
 //-----------------------------------------------------------------------------
@@ -403,6 +404,7 @@ void qSlicerTransformsModuleWidget::onNodeSelected(vtkMRMLNode* node)
   d->RotationSliders->setMRMLTransformNode(transformNode);
   d->MatrixWidget->setMRMLTransformNode(transformNode);
   d->TransformDisplayNodeWidget->setMRMLTransformNode(transformNode);
+  d->TransformInteractionWidget->setMRMLTransformNode(transformNode);
   d->TransformInfoWidget->setMRMLTransformNode(transformNode);
   this->updateColorLegendFromMRML();
 

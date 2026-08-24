@@ -137,6 +137,8 @@ void qSlicerModelsModuleWidget::setup()
   connect(d->ModelDisplayWidget, SIGNAL(displayNodeChanged()), this, SLOT(onDisplayNodeChanged()));
 
   connect(d->ColorLegendCollapsibleGroupBox, SIGNAL(toggled(bool)), this, SLOT(onColorLegendCollapsibleGroupBoxToggled(bool)));
+  // The legend explains the scalars the model is colored by, so it belongs in that section
+  d->ModelDisplayWidget->addScalarsWidget(d->ColorLegendCollapsibleGroupBox);
 
   this->Superclass::setup();
 }

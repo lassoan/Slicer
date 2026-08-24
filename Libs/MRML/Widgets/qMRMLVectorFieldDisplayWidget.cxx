@@ -125,7 +125,9 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   q->connect(this->ScaleFactorSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onScaleFactorChanged(double)));
   q->connect(this->MaskingModeComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onMaskingModeChanged(int)));
   q->connect(this->ColorByComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onColorByChanged(int)));
+  q->connect(this->FieldArrayComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onFieldArrayChanged(int)));
   q->connect(this->GlyphDiameterSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGlyphDiameterChanged(double)));
+  q->connect(this->GlyphDiameterAbsoluteToolButton, SIGNAL(toggled(bool)), q, SLOT(onGlyphDiameterAbsoluteToggled(bool)));
   q->connect(this->GlyphShaftDiameterSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGlyphShaftDiameterChanged(double)));
   q->connect(this->GlyphTipLengthSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGlyphTipLengthChanged(double)));
   q->connect(this->GlyphResolutionSpinBox, SIGNAL(valueChanged(int)), q, SLOT(onGlyphResolutionChanged(int)));
@@ -246,16 +248,23 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
     d->GlyphDisplayNode->GetOrientationArrayName() ? QString::fromUtf8(d->GlyphDisplayNode->GetOrientationArrayName()) : QString();
   QString currentScaleArrayName = d->GlyphDisplayNode->GetScaleArrayName() ? QString::fromUtf8(d->GlyphDisplayNode->GetScaleArrayName()) : QString();
 
+  QString fieldArrayName = d->GlyphDisplayNode->GetFieldArrayName() ? QString::fromUtf8(d->GlyphDisplayNode->GetFieldArrayName()) : QString();
+
+  bool wasBlockedField = d->FieldArrayComboBox->blockSignals(true);
   bool wasBlockedOrientation = d->OrientationArrayComboBox->blockSignals(true);
   bool wasBlockedScale = d->ScaleArrayComboBox->blockSignals(true);
 
+  d->FieldArrayComboBox->clear();
+  d->FieldArrayComboBox->addItem(qMRMLVectorFieldDisplayWidget::tr("None"), QString());
   d->OrientationArrayComboBox->clear();
+  // The array chosen above is what these follow unless the user picks another one here
+  d->OrientationArrayComboBox->addItem(qMRMLVectorFieldDisplayWidget::tr("(Default)"), fieldArrayName);
   d->OrientationArrayComboBox->addItem(qMRMLVectorFieldDisplayWidget::tr("None"), QString());
   d->ScaleArrayComboBox->clear();
+  d->ScaleArrayComboBox->addItem(qMRMLVectorFieldDisplayWidget::tr("(Default)"), fieldArrayName);
   d->ScaleArrayComboBox->addItem(qMRMLVectorFieldDisplayWidget::tr("None"), QString());
 
   int currentScaleArrayComponents = 0;
-  bool currentOrientationArrayFound = false;
   for (size_t arrayIndex = 0; arrayIndex < arrayNames.size(); ++arrayIndex)
   {
     QString arrayName = QString::fromStdString(arrayNames[arrayIndex]);
@@ -263,25 +272,33 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
     if (numberOfComponents == 3)
     {
       d->OrientationArrayComboBox->addItem(arrayName, arrayName);
+      d->FieldArrayComboBox->addItem(arrayName, arrayName);
     }
     d->ScaleArrayComboBox->addItem(arrayName, arrayName);
     if (arrayName == currentScaleArrayName)
     {
       currentScaleArrayComponents = numberOfComponents;
     }
-    if (arrayName == currentOrientationArrayName)
-    {
-      currentOrientationArrayFound = true;
-    }
   }
 
+  int fieldIndex = d->FieldArrayComboBox->findData(fieldArrayName);
+  d->FieldArrayComboBox->setCurrentIndex(fieldIndex >= 0 ? fieldIndex : 0);
+  // findData finds the "(Default)" entry first when the array is the one chosen above,
+  // which is what shows that it is following it
   int orientationIndex = d->OrientationArrayComboBox->findData(currentOrientationArrayName);
-  d->OrientationArrayComboBox->setCurrentIndex(orientationIndex >= 0 ? orientationIndex : 0);
+  d->OrientationArrayComboBox->setCurrentIndex(orientationIndex >= 0 ? orientationIndex : 1);
   int scaleIndex = d->ScaleArrayComboBox->findData(currentScaleArrayName);
-  d->ScaleArrayComboBox->setCurrentIndex(scaleIndex >= 0 ? scaleIndex : 0);
+  d->ScaleArrayComboBox->setCurrentIndex(scaleIndex >= 0 ? scaleIndex : 1);
 
+  d->FieldArrayComboBox->blockSignals(wasBlockedField);
   d->OrientationArrayComboBox->blockSignals(wasBlockedOrientation);
   d->ScaleArrayComboBox->blockSignals(wasBlockedScale);
+
+  // Choosing the array is only a question where there is more than one to choose from
+  bool hasArrayChoice = (d->FieldArrayComboBox->count() > 1);
+  d->FieldArrayLabel->setVisible(hasArrayChoice);
+  d->FieldArrayComboBox->setVisible(hasArrayChoice);
+  d->SwapOrientationArrayCoordinateSystemButton->setVisible(hasArrayChoice);
 
   int vectorScaleModeIndex = d->VectorScaleModeComboBox->findData(d->GlyphDisplayNode->GetVectorScaleMode());
   d->VectorScaleModeComboBox->setCurrentIndex(vectorScaleModeIndex >= 0 ? vectorScaleModeIndex : 0);
@@ -289,10 +306,10 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   d->VectorScaleModeLabel->setEnabled(scaleArrayIsVector);
   d->VectorScaleModeComboBox->setEnabled(scaleArrayIsVector);
 
-  // Converting between RAS and LPS is only meaningful for the 3-component arrays that can
-  // orient a glyph, and only for sources whose arrays can be edited in place (a mesh);
-  // arrays that a sampler computes are overwritten on the next update.
-  d->SwapOrientationArrayCoordinateSystemButton->setEnabled(currentOrientationArrayFound //
+  // Converting between RAS and LPS is only meaningful for a 3-component array, and only for
+  // sources whose arrays can be edited in place (a mesh); arrays that a sampler computes are
+  // overwritten on the next update. It sits with the array it converts.
+  d->SwapOrientationArrayCoordinateSystemButton->setEnabled(!fieldArrayName.isEmpty() //
                                                             && vtkMRMLModelNode::SafeDownCast(d->DisplayableNode) != nullptr);
 
   d->ScaleFactorSpinBox->setValue(d->GlyphDisplayNode->GetEffectiveScaleFactor());
@@ -433,6 +450,8 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   d->ColorPickerButton->setVisible(!colorByScalar);
   d->ScalarsDisplayWidget->setVisible(colorByScalar);
   d->ScalarsDisplayWidget->setThresholdVisible(false);
+  // The array chosen at the top of the widget is what the coloring falls back to
+  d->ScalarsDisplayWidget->setDefaultScalarArrayName(fieldArrayName);
   // The scalars widget has a visibility check box of its own, which this selector replaces,
   // and an array selector that means nothing for a source whose arrays are fixed.
   for (const char* hiddenChild : { "ScalarsVisibilityLabel", "ScalarsVisibilityCheckBox" })
@@ -490,7 +509,13 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   bool hasDiameter = (isArrow || isCone || glyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeBox ||
                       glyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeCylinder);
   bool hasResolution = (isArrow || isCone || isSphere || glyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeCylinder);
-  d->GlyphDiameterSpinBox->setValue(d->GlyphDisplayNode->GetGlyphDiameterMm());
+  bool diameterAbsolute = d->GlyphDisplayNode->GetGlyphDiameterAbsolute();
+  bool wasBlockedDiameter = d->GlyphDiameterAbsoluteToolButton->blockSignals(true);
+  d->GlyphDiameterAbsoluteToolButton->setChecked(diameterAbsolute);
+  d->GlyphDiameterAbsoluteToolButton->blockSignals(wasBlockedDiameter);
+  d->GlyphDiameterSpinBox->setSuffix(diameterAbsolute ? qMRMLVectorFieldDisplayWidget::tr(" mm") : qMRMLVectorFieldDisplayWidget::tr(" %"));
+  d->GlyphDiameterSpinBox->setValue(diameterAbsolute ? d->GlyphDisplayNode->GetGlyphDiameterMm() //
+                                                     : d->GlyphDisplayNode->GetGlyphDiameterPercent());
   d->GlyphShaftDiameterSpinBox->setValue(d->GlyphDisplayNode->GetGlyphShaftDiameterPercent());
   d->GlyphTipLengthSpinBox->setValue(d->GlyphDisplayNode->GetGlyphTipLengthPercent());
   d->GlyphResolutionSpinBox->setValue(d->GlyphDisplayNode->GetGlyphResolution());
@@ -666,7 +691,25 @@ void qMRMLVectorFieldDisplayWidget::onGlyphDiameterChanged(double value)
   {
     return;
   }
-  d->GlyphDisplayNode->SetGlyphDiameterMm(value);
+  if (d->GlyphDisplayNode->GetGlyphDiameterAbsolute())
+  {
+    d->GlyphDisplayNode->SetGlyphDiameterMm(value);
+  }
+  else
+  {
+    d->GlyphDisplayNode->SetGlyphDiameterPercent(value);
+  }
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onGlyphDiameterAbsoluteToggled(bool absolute)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetGlyphDiameterAbsolute(absolute);
 }
 
 //------------------------------------------------------------------------------
@@ -722,6 +765,18 @@ void qMRMLVectorFieldDisplayWidget::onGlyphResolution2DChanged(int value)
     return;
   }
   d->GlyphDisplayNode->SetGlyphResolution2D(value);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onFieldArrayChanged(int index)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  QString arrayName = d->FieldArrayComboBox->itemData(index).toString();
+  d->GlyphDisplayNode->SetFieldArrayName(arrayName.isEmpty() ? nullptr : arrayName.toUtf8().constData());
 }
 
 //------------------------------------------------------------------------------

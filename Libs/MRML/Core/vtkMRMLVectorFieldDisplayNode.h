@@ -180,6 +180,19 @@ public:
   bool GetSamplePositions(vtkPoints* samplePositions_RAS);
 
   ///@{
+  /// The array that the field is read from. It is what the orientation, scale and color
+  /// arrays follow unless one of them is set to something else, so that choosing a field is
+  /// one choice and not three. Empty by default, which means the source decides.
+  vtkGetStringMacro(FieldArrayName);
+  virtual void SetFieldArrayName(const char* arrayName);
+  ///@}
+
+  /// A scale factor that draws the field at a readable size: the longest vector spans about
+  /// a twentieth of the sampled region. Returns 0 if it cannot be worked out, which is the
+  /// case before anything has been sampled.
+  virtual double ComputeDefaultScaleFactor();
+
+  ///@{
   /// The array that scales the glyphs, and the array itself. It is the scale array when one
   /// is set, and the orientation array otherwise: a vector field is drawn with the length of
   /// its own vectors unless the user asks for something else.
@@ -250,8 +263,28 @@ public:
   ///@}
 
   ///@{
-  /// Thickness of the glyphs, in mm. Only used when ScaleDirectional is enabled; otherwise
-  /// the glyph is scaled uniformly and its thickness follows its length.
+  /// Whether the thickness of the glyphs is a length in mm or a percentage of the length of
+  /// the glyph. An absolute thickness is the same for every glyph, however long it is; a
+  /// relative one grows with the glyph, the way the tip of an arrow does.
+  /// Default is true.
+  vtkGetMacro(GlyphDiameterAbsolute, bool);
+  vtkSetMacro(GlyphDiameterAbsolute, bool);
+  vtkBooleanMacro(GlyphDiameterAbsolute, bool);
+  ///@}
+
+  ///@{
+  /// Glyph geometry: the thickness of the glyphs, in percent of their length.
+  /// Only used when GlyphDiameterAbsolute is false. Default is 20.
+  vtkGetMacro(GlyphDiameterPercent, double);
+  vtkSetMacro(GlyphDiameterPercent, double);
+  ///@}
+
+  /// The radius of the glyph source geometry, which is one unit long: the thickness in mm
+  /// when it is absolute, and the fraction of the length when it is relative.
+  double GetGlyphSourceRadius();
+
+  ///@{
+  /// Thickness of the glyphs, in mm. Only used when GlyphDiameterAbsolute is true.
   /// Default is 5.
   vtkGetMacro(GlyphDiameterMm, double);
   vtkSetClampMacro(GlyphDiameterMm, double, 0.0, VTK_DOUBLE_MAX);
@@ -542,6 +575,7 @@ protected:
   int GlyphType;
   char* OrientationArrayName;
   char* ScaleArrayName;
+  char* FieldArrayName;
   int VectorScaleMode;
   double ScaleFactor;
   int MaskingMode;
@@ -572,6 +606,8 @@ protected:
   int VisualizationMode;
   bool ScaleDirectional;
   double GlyphDiameterMm;
+  bool GlyphDiameterAbsolute;
+  double GlyphDiameterPercent;
   double GridSpacingMm;
   bool GridShowNonWarped;
   double ContourOpacity;

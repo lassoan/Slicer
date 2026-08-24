@@ -38,6 +38,10 @@ class QMRML_WIDGETS_EXPORT qMRMLScalarsDisplayWidget : public qMRMLWidget
   QVTK_OBJECT
 
   Q_PROPERTY(vtkMRMLDisplayNode::ScalarRangeFlagType scalarRangeMode READ scalarRangeMode WRITE setScalarRangeMode)
+  /// The array that the host would use if the user does not choose one here. When it is
+  /// set, the list of arrays offers a "(Default)" entry that stands for it, so that a user
+  /// who has chosen a field elsewhere does not have to choose it again here.
+  Q_PROPERTY(QString defaultScalarArrayName READ defaultScalarArrayName WRITE setDefaultScalarArrayName)
   /// Whether the threshold controls are part of this widget. A host that offers thresholding
   /// of its own, outside the coloring controls, turns them off here.
   Q_PROPERTY(bool thresholdVisible READ isThresholdVisible WRITE setThresholdVisible)
@@ -71,6 +75,9 @@ public:
   /// \sa setThresholdVisible()
   bool isThresholdVisible() const;
 
+  /// \sa setDefaultScalarArrayName()
+  QString defaultScalarArrayName() const;
+
 signals:
   /// Signal sent if the auto/manual value is updated
   void scalarRangeModeValueChanged(vtkMRMLDisplayNode::ScalarRangeFlagType mode);
@@ -96,6 +103,10 @@ public slots:
   void setTresholdEnabled(bool b);
   void setThresholdRange(double min, double max);
   void setThresholdVisible(bool visible);
+
+  /// Offer a "(Default)" entry in the list of arrays that stands for the given array.
+  /// An empty name removes the entry.
+  void setDefaultScalarArrayName(const QString& arrayName);
 
   /// Set Auto/Manual mode
   void setScalarRangeMode(int scalarRangeMode);

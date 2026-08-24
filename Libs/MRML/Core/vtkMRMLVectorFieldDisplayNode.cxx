@@ -61,13 +61,16 @@ vtkMRMLVectorFieldDisplayNode::vtkMRMLVectorFieldDisplayNode()
   : GlyphType(vtkMRMLVectorFieldDisplayNode::GlyphTypeArrow)
   , OrientationArrayName(nullptr)
   , ScaleArrayName(nullptr)
+  , FieldArrayName(nullptr)
   , VectorScaleMode(vtkMRMLVectorFieldDisplayNode::VectorScaleModeByMagnitude)
   , ScaleFactor(10.0)
-  , MaskingMode(vtkMRMLVectorFieldDisplayNode::MaskingModeAllPoints)
-  , MaskingPointsNumber(1000)
+  , MaskingMode(vtkMRMLVectorFieldDisplayNode::MaskingModeUniformBounds)
+  , MaskingPointsNumber(5000)
   , VisualizationMode(vtkMRMLVectorFieldDisplayNode::VisualizationModeGlyph)
   , ScaleDirectional(true)
   , GlyphDiameterMm(5.0)
+  , GlyphDiameterAbsolute(true)
+  , GlyphDiameterPercent(20.0)
   , GridSpacingMm(0.0)
   , GridShowNonWarped(false)
   , ContourOpacity(0.8)
@@ -89,6 +92,8 @@ vtkMRMLVectorFieldDisplayNode::vtkMRMLVectorFieldDisplayNode()
 {
   this->ThresholdRange[0] = 0.0;
   this->ThresholdRange[1] = -1.0; // invalid range by default (same convention as vtkMRMLModelDisplayNode)
+  // A vector field says most when the length of the vectors is visible in their color too
+  this->ScalarVisibility = 1;
   // Glyphs are shown in slice views by default (the base class default is off, because for
   // most display nodes the slice view representation is only an intersection contour).
   this->Visibility2D = 1;
@@ -100,6 +105,7 @@ vtkMRMLVectorFieldDisplayNode::~vtkMRMLVectorFieldDisplayNode()
 {
   this->SetOrientationArrayName(nullptr);
   this->SetScaleArrayName(nullptr);
+  this->SetFieldArrayName(nullptr);
 }
 
 //----------------------------------------------------------------------------
@@ -111,6 +117,7 @@ void vtkMRMLVectorFieldDisplayNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintEnumMacro(GlyphType);
   vtkMRMLPrintStringMacro(OrientationArrayName);
   vtkMRMLPrintStringMacro(ScaleArrayName);
+  vtkMRMLPrintStringMacro(FieldArrayName);
   vtkMRMLPrintEnumMacro(VectorScaleMode);
   vtkMRMLPrintFloatMacro(ScaleFactor);
   vtkMRMLPrintEnumMacro(MaskingMode);
@@ -118,6 +125,8 @@ void vtkMRMLVectorFieldDisplayNode::PrintSelf(ostream& os, vtkIndent indent)
   vtkMRMLPrintEnumMacro(VisualizationMode);
   vtkMRMLPrintBooleanMacro(ScaleDirectional);
   vtkMRMLPrintFloatMacro(GlyphDiameterMm);
+  vtkMRMLPrintBooleanMacro(GlyphDiameterAbsolute);
+  vtkMRMLPrintFloatMacro(GlyphDiameterPercent);
   vtkMRMLPrintFloatMacro(GridSpacingMm);
   vtkMRMLPrintBooleanMacro(GridShowNonWarped);
   vtkMRMLPrintFloatMacro(ContourOpacity);
@@ -149,6 +158,7 @@ void vtkMRMLVectorFieldDisplayNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLEnumMacro(glyphType, GlyphType);
   vtkMRMLWriteXMLStringMacro(orientationArrayName, OrientationArrayName);
   vtkMRMLWriteXMLStringMacro(scaleArrayName, ScaleArrayName);
+  vtkMRMLWriteXMLStringMacro(fieldArrayName, FieldArrayName);
   vtkMRMLWriteXMLEnumMacro(vectorScaleMode, VectorScaleMode);
   vtkMRMLWriteXMLFloatMacro(scaleFactor, ScaleFactor);
   vtkMRMLWriteXMLEnumMacro(maskingMode, MaskingMode);
@@ -156,6 +166,8 @@ void vtkMRMLVectorFieldDisplayNode::WriteXML(ostream& of, int nIndent)
   vtkMRMLWriteXMLEnumMacro(visualizationMode, VisualizationMode);
   vtkMRMLWriteXMLBooleanMacro(scaleDirectional, ScaleDirectional);
   vtkMRMLWriteXMLFloatMacro(glyphDiameterMm, GlyphDiameterMm);
+  vtkMRMLWriteXMLBooleanMacro(glyphDiameterAbsolute, GlyphDiameterAbsolute);
+  vtkMRMLWriteXMLFloatMacro(glyphDiameterPercent, GlyphDiameterPercent);
   vtkMRMLWriteXMLFloatMacro(gridSpacingMm, GridSpacingMm);
   vtkMRMLWriteXMLBooleanMacro(gridShowNonWarped, GridShowNonWarped);
   vtkMRMLWriteXMLFloatMacro(contourOpacity, ContourOpacity);
@@ -187,6 +199,7 @@ void vtkMRMLVectorFieldDisplayNode::ReadXMLAttributes(const char** atts)
   vtkMRMLReadXMLEnumMacro(glyphType, GlyphType);
   vtkMRMLReadXMLStringMacro(orientationArrayName, OrientationArrayName);
   vtkMRMLReadXMLStringMacro(scaleArrayName, ScaleArrayName);
+  vtkMRMLReadXMLStringMacro(fieldArrayName, FieldArrayName);
   vtkMRMLReadXMLEnumMacro(vectorScaleMode, VectorScaleMode);
   vtkMRMLReadXMLFloatMacro(scaleFactor, ScaleFactor);
   vtkMRMLReadXMLEnumMacro(maskingMode, MaskingMode);
@@ -194,6 +207,8 @@ void vtkMRMLVectorFieldDisplayNode::ReadXMLAttributes(const char** atts)
   vtkMRMLReadXMLEnumMacro(visualizationMode, VisualizationMode);
   vtkMRMLReadXMLBooleanMacro(scaleDirectional, ScaleDirectional);
   vtkMRMLReadXMLFloatMacro(glyphDiameterMm, GlyphDiameterMm);
+  vtkMRMLReadXMLBooleanMacro(glyphDiameterAbsolute, GlyphDiameterAbsolute);
+  vtkMRMLReadXMLFloatMacro(glyphDiameterPercent, GlyphDiameterPercent);
   vtkMRMLReadXMLFloatMacro(gridSpacingMm, GridSpacingMm);
   vtkMRMLReadXMLBooleanMacro(gridShowNonWarped, GridShowNonWarped);
   vtkMRMLReadXMLFloatMacro(contourOpacity, ContourOpacity);
@@ -233,6 +248,7 @@ void vtkMRMLVectorFieldDisplayNode::CopyContent(vtkMRMLNode* anode, bool deepCop
   vtkMRMLCopyEnumMacro(GlyphType);
   vtkMRMLCopyStringMacro(OrientationArrayName);
   vtkMRMLCopyStringMacro(ScaleArrayName);
+  vtkMRMLCopyStringMacro(FieldArrayName);
   vtkMRMLCopyEnumMacro(VectorScaleMode);
   vtkMRMLCopyFloatMacro(ScaleFactor);
   vtkMRMLCopyEnumMacro(MaskingMode);
@@ -240,6 +256,8 @@ void vtkMRMLVectorFieldDisplayNode::CopyContent(vtkMRMLNode* anode, bool deepCop
   vtkMRMLCopyEnumMacro(VisualizationMode);
   vtkMRMLCopyBooleanMacro(ScaleDirectional);
   vtkMRMLCopyFloatMacro(GlyphDiameterMm);
+  vtkMRMLCopyBooleanMacro(GlyphDiameterAbsolute);
+  vtkMRMLCopyFloatMacro(GlyphDiameterPercent);
   vtkMRMLCopyFloatMacro(GridSpacingMm);
   vtkMRMLCopyBooleanMacro(GridShowNonWarped);
   vtkMRMLCopyFloatMacro(ContourOpacity);
@@ -706,9 +724,23 @@ bool vtkMRMLVectorFieldDisplayNode::GetSamplePositions(vtkPoints* samplePosition
 }
 
 //-----------------------------------------------------------
+double vtkMRMLVectorFieldDisplayNode::GetGlyphSourceRadius()
+{
+  // The source geometry is one unit long, so a relative thickness is that fraction of it and
+  // grows with the glyph, while an absolute one is a length in mm and only stays that
+  // thickness because such a glyph is stretched along its axis alone.
+  if (this->GlyphDiameterAbsolute)
+  {
+    return 0.5 * this->GlyphDiameterMm;
+  }
+  return 0.5 * 0.01 * this->GlyphDiameterPercent;
+}
+
+//-----------------------------------------------------------
 bool vtkMRMLVectorFieldDisplayNode::IsScaleDirectionalUsed()
 {
-  return (this->ScaleDirectional                                                  //
+  // A thickness in mm is only a thickness in mm if it is not scaled with the glyph
+  return (this->GlyphDiameterAbsolute && this->ScaleDirectional                                                  //
           && (this->GlyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeArrow    //
               || this->GlyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeCone  //
               || this->GlyphType == vtkMRMLVectorFieldDisplayNode::GlyphTypeCylinder));
@@ -748,6 +780,79 @@ bool vtkMRMLVectorFieldDisplayNode::IsThresholdUsed()
   // Contours are isosurfaces of the magnitude, so the levels already say which magnitudes
   // are drawn and a threshold on the same quantity would only be confusing.
   return (this->VisualizationMode != vtkMRMLVectorFieldDisplayNode::VisualizationModeContour);
+}
+
+//-----------------------------------------------------------
+void vtkMRMLVectorFieldDisplayNode::SetFieldArrayName(const char* arrayName)
+{
+  std::string previousName = (this->FieldArrayName ? this->FieldArrayName : "");
+  std::string newName = (arrayName ? arrayName : "");
+  if (previousName == newName)
+  {
+    return;
+  }
+  MRMLNodeModifyBlocker blocker(this);
+
+  // The arrays that were following this one keep following it. An array that was set to
+  // something else stays where the user put it.
+  auto follows = [&previousName](const char* name)
+  {
+    std::string current = (name ? name : "");
+    return (current.empty() || current == previousName);
+  };
+  bool orientationFollows = follows(this->OrientationArrayName);
+  bool scaleFollows = follows(this->ScaleArrayName);
+  bool colorFollows = follows(this->GetActiveScalarName());
+
+  vtkSetStringBodyMacro(FieldArrayName, arrayName);
+
+  if (orientationFollows)
+  {
+    this->SetOrientationArrayName(arrayName);
+  }
+  if (scaleFollows)
+  {
+    this->SetScaleArrayName(arrayName);
+  }
+  if (colorFollows)
+  {
+    this->SetActiveScalarName(arrayName);
+  }
+
+  // A field that has just been chosen should be visible at a sensible size straight away
+  double defaultScaleFactor = this->ComputeDefaultScaleFactor();
+  if (defaultScaleFactor > 0.0)
+  {
+    this->SetScaleFactor(defaultScaleFactor);
+  }
+}
+
+//-----------------------------------------------------------
+double vtkMRMLVectorFieldDisplayNode::ComputeDefaultScaleFactor()
+{
+  vtkDataSet* dataSet = this->GetScalarDataSet();
+  vtkDataArray* vectorArray = this->GetOrientationArray();
+  if (!dataSet || !vectorArray || vectorArray->GetNumberOfComponents() < 2)
+  {
+    return 0.0;
+  }
+  double magnitudeRange[2] = { 0.0, -1.0 };
+  vectorArray->GetRange(magnitudeRange, -1); // -1: L2 norm over all components
+  if (magnitudeRange[1] <= 0.0)
+  {
+    return 0.0;
+  }
+  double bounds[6] = { 0.0, -1.0, 0.0, -1.0, 0.0, -1.0 };
+  dataSet->GetBounds(bounds);
+  double diagonal = sqrt((bounds[1] - bounds[0]) * (bounds[1] - bounds[0]) //
+                  + (bounds[3] - bounds[2]) * (bounds[3] - bounds[2])
+                  + (bounds[5] - bounds[4]) * (bounds[5] - bounds[4]));
+  if (diagonal <= 0.0)
+  {
+    return 0.0;
+  }
+  // The longest vector reaches about a twentieth of the way across what is shown
+  return 0.05 * diagonal / magnitudeRange[1];
 }
 
 //-----------------------------------------------------------
@@ -798,7 +903,18 @@ int vtkMRMLVectorFieldDisplayNode::GetEffectiveMaskingMode()
 //-----------------------------------------------------------
 bool vtkMRMLVectorFieldDisplayNode::IsVisualizationModeSupported(int visualizationMode)
 {
-  return (visualizationMode >= 0 && visualizationMode < vtkMRMLVectorFieldDisplayNode::VisualizationMode_Last);
+  if (visualizationMode < 0 || visualizationMode >= vtkMRMLVectorFieldDisplayNode::VisualizationMode_Last)
+  {
+    return false;
+  }
+  if (visualizationMode == vtkMRMLVectorFieldDisplayNode::VisualizationModeGlyph)
+  {
+    return true;
+  }
+  // A deformed grid, an isosurface of the magnitude and a streamline are all built from a
+  // field sampled through a volume, which the point data of a mesh cannot give: its vectors
+  // exist at its own points and nowhere else.
+  return this->CanSampleAtArbitraryPositions();
 }
 
 //-----------------------------------------------------------

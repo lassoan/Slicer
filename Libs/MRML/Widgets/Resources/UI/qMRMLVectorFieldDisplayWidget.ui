@@ -32,13 +32,41 @@
       <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
      </property>
      <item row="0" column="0">
+      <widget class="QLabel" name="FieldArrayLabel">
+       <property name="text">
+        <string>Vector array:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <layout class="QHBoxLayout" name="fieldArrayLayout">
+       <item>
+        <widget class="QComboBox" name="FieldArrayComboBox">
+         <property name="toolTip">
+          <string>Point data array that holds the vectors. The arrays that orient, scale and color the glyphs follow it unless they are set to something else.</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="SwapOrientationArrayCoordinateSystemButton">
+         <property name="toolTip">
+          <string>Convert the selected orientation array between the RAS and LPS coordinate systems, by inverting the sign of the first two components of each vector. The array of the model node is modified.</string>
+         </property>
+         <property name="text">
+          <string>RAS/LPS</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="1" column="0">
       <widget class="QLabel" name="VisibilityLabel">
        <property name="text">
         <string>Visibility:</string>
        </property>
       </widget>
      </item>
-     <item row="0" column="1">
+     <item row="1" column="1">
       <widget class="QCheckBox" name="VisibilityCheckBox">
        <property name="toolTip">
         <string>Show the vector field in the views.</string>
@@ -48,14 +76,14 @@
        </property>
       </widget>
      </item>
-     <item row="1" column="0">
+     <item row="2" column="0">
       <widget class="QLabel" name="Visibility3DLabel">
        <property name="text">
         <string>Visibility in 3D view:</string>
        </property>
       </widget>
      </item>
-     <item row="1" column="1">
+     <item row="2" column="1">
       <layout class="QHBoxLayout" name="visibility3DLayout">
        <item>
         <widget class="QCheckBox" name="Visibility3DCheckBox">
@@ -101,14 +129,14 @@
        </item>
       </layout>
      </item>
-     <item row="2" column="0">
+     <item row="3" column="0">
       <widget class="QLabel" name="Visibility2DLabel">
        <property name="text">
         <string>Visibility in slice view:</string>
        </property>
       </widget>
      </item>
-     <item row="2" column="1">
+     <item row="3" column="1">
       <widget class="QCheckBox" name="Visibility2DCheckBox">
        <property name="toolTip">
         <string>Show the vector field in slice views.</string>
@@ -118,14 +146,14 @@
        </property>
       </widget>
      </item>
-     <item row="3" column="0">
+     <item row="4" column="0">
       <widget class="QLabel" name="VisualizationModeLabel">
        <property name="text">
         <string>Mode:</string>
        </property>
       </widget>
      </item>
-     <item row="3" column="1">
+     <item row="4" column="1">
       <layout class="QHBoxLayout" name="visualizationModeLayout">
        <item>
         <widget class="QToolButton" name="GlyphModeToolButton">
@@ -281,14 +309,14 @@
        </item>
       </layout>
      </item>
-     <item row="4" column="0">
+     <item row="5" column="0">
       <widget class="QLabel" name="ScaleFactorLabel">
        <property name="text">
         <string>Scale factor:</string>
        </property>
       </widget>
      </item>
-     <item row="4" column="1">
+     <item row="5" column="1">
       <widget class="ctkDoubleSpinBox" name="ScaleFactorSpinBox">
        <property name="toolTip">
         <string>Factor used to scale the glyph geometry.</string>
@@ -307,14 +335,14 @@
        </property>
       </widget>
      </item>
-     <item row="5" column="0">
+     <item row="6" column="0">
       <widget class="QLabel" name="FieldThresholdLabel">
        <property name="text">
         <string>Threshold:</string>
        </property>
       </widget>
      </item>
-     <item row="5" column="1">
+     <item row="6" column="1">
       <layout class="QHBoxLayout" name="thresholdLayout">
        <item>
         <widget class="QCheckBox" name="FieldThresholdCheckBox">
@@ -402,25 +430,11 @@
          </widget>
         </item>
         <item row="2" column="1">
-         <layout class="QHBoxLayout" name="orientationArrayLayout">
-          <item>
-           <widget class="QComboBox" name="OrientationArrayComboBox">
-            <property name="toolTip">
-             <string>3-component point data array used to orient each glyph. If None, glyphs are not oriented.</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QToolButton" name="SwapOrientationArrayCoordinateSystemButton">
-            <property name="toolTip">
-             <string>Convert the selected orientation array between the RAS and LPS coordinate systems, by inverting the sign of the first two components of each vector. The array of the model node is modified.</string>
-            </property>
-            <property name="text">
-             <string>RAS/LPS</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
+         <widget class="QComboBox" name="OrientationArrayComboBox">
+          <property name="toolTip">
+           <string>3-component point data array used to orient each glyph. If None, glyphs are not oriented.</string>
+          </property>
+         </widget>
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="ScaleArrayLabel">
@@ -728,26 +742,46 @@
           </widget>
          </item>
          <item row="2" column="1">
-          <widget class="ctkDoubleSpinBox" name="GlyphDiameterSpinBox">
-           <property name="toolTip">
-            <string>Thickness of the glyphs.</string>
-           </property>
-           <property name="suffix">
-            <string> mm</string>
-           </property>
-           <property name="decimals">
-            <number>2</number>
-           </property>
-           <property name="minimum">
-            <double>0.000000</double>
-           </property>
-           <property name="maximum">
-            <double>1000.000000</double>
-           </property>
-           <property name="singleStep">
-            <double>0.500000</double>
-           </property>
-          </widget>
+          <layout class="QHBoxLayout" name="glyphDiameterLayout">
+           <item>
+            <widget class="QToolButton" name="GlyphDiameterAbsoluteToolButton">
+             <property name="toolTip">
+              <string>When pressed, the thickness is a length in mm that every glyph has. When not, it is a percentage of the length of the glyph, so that a longer glyph is thicker.</string>
+             </property>
+             <property name="text">
+              <string>absolute</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="ctkDoubleSpinBox" name="GlyphDiameterSpinBox">
+             <property name="toolTip">
+              <string>Thickness of the glyphs.</string>
+             </property>
+             <property name="suffix">
+              <string> mm</string>
+             </property>
+             <property name="decimals">
+              <number>2</number>
+             </property>
+             <property name="minimum">
+              <double>0.000000</double>
+             </property>
+             <property name="maximum">
+              <double>1000.000000</double>
+             </property>
+             <property name="singleStep">
+              <double>0.500000</double>
+             </property>
+            </widget>
+           </item>
+          </layout>
          </item>
          <item row="3" column="0">
           <widget class="QLabel" name="GlyphShaftDiameterLabel">

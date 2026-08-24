@@ -471,17 +471,29 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
   pipeline->Glypher->ScalingOn();
   const char* scaleArrayName = fieldDisplayNode->GetEffectiveScaleArrayName();
   bool hasScaleArray = (scaleArrayName && scaleArrayName[0] != '\0');
-  if (fieldDisplayNode->IsScaleDirectionalUsed() && hasOrientationArray)
+  if (fieldDisplayNode->IsScaleDirectionalUsed() && hasOrientationArray && hasScaleArray)
   {
     // Stretch the glyph along its own axis only: the thickness stays the thickness of the
     // source geometry (GlyphDiameterMm), however long the glyph is. The mapper can only
     // scale per axis from an array, so the per-axis factors are computed into one:
-    // (length, 1, 1), with the length already multiplied by the scale factor.
-    std::string scaleExpression = std::to_string(fieldDisplayNode->GetScaleFactor()) + "*mag(" + orientationArrayName + ")*iHat + jHat + kHat";
-    pipeline->DirectionalScaler->SetInputConnection(glyphInputConnection);
+    // (length, 1, 1), with the length already multiplied by the scale factor. The length
+    // comes from the array that scales the glyphs, which is not always the one that orients
+    // them.
+    vtkDataArray* directionalScaleArray = fieldDisplayNode->GetEffectiveScaleArray();
+    bool scaleArrayIsScalar = (directionalScaleArray && directionalScaleArray->GetNumberOfComponents() == 1);
+    std::string lengthExpression = (scaleArrayIsScalar ? std::string(scaleArrayName) : std::string("mag(") + scaleArrayName + ")");
+    std::string scaleExpression = std::to_string(fieldDisplayNode->GetScaleFactor()) + "*" + lengthExpression + "*iHat + jHat + kHat";
+    pipeline->DirectionalScaler->SetInputConnection(pipeline->MaskPoints->GetOutputPort());
     pipeline->DirectionalScaler->SetAttributeTypeToPointData();
     pipeline->DirectionalScaler->RemoveAllVariables();
-    pipeline->DirectionalScaler->AddVectorArrayName(orientationArrayName);
+    if (scaleArrayIsScalar)
+    {
+      pipeline->DirectionalScaler->AddScalarArrayName(scaleArrayName);
+    }
+    else
+    {
+      pipeline->DirectionalScaler->AddVectorArrayName(scaleArrayName);
+    }
     pipeline->DirectionalScaler->SetResultArrayName(DirectionalScaleArrayName);
     pipeline->DirectionalScaler->SetFunction(scaleExpression.c_str());
     pipeline->Glypher->SetInputConnection(pipeline->DirectionalScaler->GetOutputPort());
