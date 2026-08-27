@@ -1019,6 +1019,41 @@ endif()
 # VTK
 #-----------------------------------------------------------------------------
 find_package(VTK REQUIRED)
+
+# VTK works out the version it reports by running "git describe" in its own source tree
+# (see VTKDetermineVersion.cmake), so a clone that was made without the release tags makes
+# VTK declare the version of whatever ancient tag it can still reach. Everything downstream
+# that asks VTK how old it is then draws the wrong conclusion, far from the cause: ITK's
+# VtkGlue falls back to the pre-9 target names and compiles with no VTK include directories
+# at all, vtkAddon asks for variables that VTK 9 does not define, and the find_package below
+# rejects the very VTK that was just built. The mismatch is therefore reported here, before
+# any of that is reached.
+if(NOT "${VTK_VERSION}" MATCHES "^${Slicer_VTK_VERSION_MAJOR}\.${Slicer_VTK_VERSION_MINOR}\.")
+  message(FATAL_ERROR
+    "VTK reports version '${VTK_VERSION}', but Slicer is configured for VTK "
+    "${Slicer_VTK_VERSION_MAJOR}.${Slicer_VTK_VERSION_MINOR}.
+"
+    "VTK found in: ${VTK_DIR}
+"
+    "
+"
+    "VTK takes its version from 'git describe' in its source tree, so this usually means "
+    "that the VTK checkout has no release tags to describe itself from - a fork pushed "
+    "without tags, or a shallow clone. Fetch them and build VTK again:
+"
+    "
+"
+    "    git -C <vtk-source-dir> fetch --tags https://gitlab.kitware.com/vtk/vtk.git
+"
+    "    (then delete <vtk-build-dir>/CMakeCache.txt so VTK is configured again)
+"
+    "
+"
+    "The version is part of the VTK library names, so VTK and everything built against it "
+    "has to be rebuilt after this. If instead you meant to build against this version of "
+    "VTK, set Slicer_VTK_VERSION_MINOR accordingly.")
+endif()
+
 set(VTK_LIBRARIES "")
 find_package(VTK ${Slicer_VTK_MINIMUM_SUPPORTED_VERSION} COMPONENTS ${Slicer_VTK_COMPONENTS} REQUIRED)
 set(VTK_GUI_SUPPORT_QT_TARGET_NAME "VTK::GUISupportQt")

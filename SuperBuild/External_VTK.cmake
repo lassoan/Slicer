@@ -219,6 +219,22 @@ if((NOT DEFINED VTK_DIR OR NOT DEFINED VTK_SOURCE_DIR) AND NOT Slicer_USE_SYSTEM
       ${${proj}_DEPENDENCIES}
     )
 
+  # VTK works out its version by running "git describe" in its own source tree, so a clone
+  # without the release tags builds as the wrong version and breaks ITK and Slicer later on
+  # with errors that mention neither VTK nor the missing tags. Check it here, once the source
+  # is there and before the hours it takes to build it.
+  find_package(Git QUIET)
+  ExternalProject_Add_Step(${proj} verify_version
+    COMMAND ${CMAKE_COMMAND}
+      -DVTK_SOURCE_DIR:PATH=${EP_SOURCE_DIR}
+      -DEXPECTED_VERSION:STRING=${vtk_dist_info_version}
+      -DGIT_EXECUTABLE:FILEPATH=${GIT_EXECUTABLE}
+      -P ${CMAKE_CURRENT_LIST_DIR}/vtk-verify-version.cmake
+    COMMENT "Verifying that VTK reports version ${vtk_dist_info_version}"
+    DEPENDEES update
+    DEPENDERS configure
+    )
+
   if(Slicer_USE_PYTHONQT AND NOT Slicer_USE_SYSTEM_python)
     # Create the vtk-*.dist-info directory to prevent pip from re-installing
     # vtk package as a wheel when listed as dependency in Slicer extension.
