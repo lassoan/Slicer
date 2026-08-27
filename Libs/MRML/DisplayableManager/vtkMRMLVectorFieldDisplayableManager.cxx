@@ -44,7 +44,10 @@
 #include <vtkPolyDataMapper.h>
 #include <vtkLookupTable.h>
 #include <vtkMapper.h>
+#include <vtkBox.h>
+#include <vtkExtractGeometry.h>
 #include <vtkMaskPoints.h>
+#include <vtkTransform.h>
 #include <vtkMatrix4x4.h>
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
@@ -81,6 +84,9 @@ public:
     vtkSmartPointer<vtkGeometryFilter> SurfaceFilter;
     vtkSmartPointer<vtkThresholdPoints> ScalarThreshold;
     vtkSmartPointer<vtkMaskPoints> MaskPoints;
+    /// Limits the glyph points to the region node, where they are not already limited by a sampler
+    vtkSmartPointer<vtkExtractGeometry> RegionClip;
+    vtkSmartPointer<vtkBox> RegionBox;
     /// Computes the per-axis scale of a directionally scaled glyph: the glyph is stretched
     /// along its own axis only, so that its thickness does not grow with its length.
     vtkSmartPointer<vtkArrayCalculator> DirectionalScaler;
@@ -262,6 +268,8 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::AddDisplayNode(vtkMRMLDi
   pipeline->SurfaceFilter = vtkSmartPointer<vtkGeometryFilter>::New();
   pipeline->ScalarThreshold = vtkSmartPointer<vtkThresholdPoints>::New();
   pipeline->MaskPoints = vtkSmartPointer<vtkMaskPoints>::New();
+  pipeline->RegionClip = vtkSmartPointer<vtkExtractGeometry>::New();
+  pipeline->RegionBox = vtkSmartPointer<vtkBox>::New();
   pipeline->DirectionalScaler = vtkSmartPointer<vtkArrayCalculator>::New();
   pipeline->Glypher = vtkSmartPointer<vtkGlyph3DMapper>::New();
   pipeline->PolyDataMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -275,6 +283,10 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::AddDisplayNode(vtkMRMLDi
   pipeline->Glypher->SetInputConnection(pipeline->MaskPoints->GetOutputPort());
   pipeline->Actor->SetMapper(pipeline->Glypher);
   pipeline->Actor->SetVisibility(0);
+  // A drawn field is a picture of the data, not something to grab hold of: picking it would
+  // snap markup control points onto arrowheads and report positions on them, and every pick
+  // in the view would have to walk a glyph for every sampled point on the way past.
+  pipeline->Actor->SetPickable(0);
 
   // Add actor to Renderer and local cache
   this->External->GetRenderer()->AddViewProp(pipeline->Actor);
@@ -398,10 +410,10 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
 
   // Thresholding: only keep points where the active scalar is within the threshold range.
   // It is applied before masking, so that masking subsamples the points that are shown.
-  const char* activeScalarName = fieldDisplayNode->GetActiveScalarName();
+  const char* activeScalarName = fieldDisplayNode->GetRenderedActiveScalarName();
   bool hasActiveScalar = (activeScalarName && activeScalarName[0] != '\0');
   // Multi-component arrays are colored and thresholded by their magnitude
-  vtkDataArray* activeScalarArray = fieldDisplayNode->GetActiveScalarArray();
+  vtkDataArray* activeScalarArray = fieldDisplayNode->GetRenderedActiveScalarArray();
   int numberOfScalarComponents = activeScalarArray ? activeScalarArray->GetNumberOfComponents() : 1;
   bool useScalarMagnitude = (numberOfScalarComponents > 1);
   if (fieldDisplayNode->GetThresholdEnabled() && hasActiveScalar)
@@ -420,6 +432,34 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
   else
   {
     pipeline->ScalarThreshold->SetInputConnection(nullptr);
+  }
+
+  // The region limits where glyphs are drawn. A sampled field is already restricted by its
+  // sampler, but glyphs that sit on the points of a mesh never pass through one, so the
+  // region has to be applied to those points here - otherwise choosing a region has no
+  // effect at all on the "all points" and uniform masking modes.
+  vtkNew<vtkMatrix4x4> regionToRAS;
+  double regionBounds[6] = { 0.0, -1.0, 0.0, -1.0, 0.0, -1.0 };
+  if (!fieldDisplayNode->IsFieldSampled() && fieldDisplayNode->GetRegionBox(regionToRAS, regionBounds))
+  {
+    pipeline->RegionBox->SetBounds(regionBounds);
+    // An implicit function transforms the point it is given before evaluating, so it is the
+    // RAS-to-box direction that has to be set: the point is brought into the box's own
+    // coordinates and tested there.
+    vtkNew<vtkMatrix4x4> rasToBox;
+    vtkMatrix4x4::Invert(regionToRAS, rasToBox);
+    vtkNew<vtkTransform> rasToBoxTransform;
+    rasToBoxTransform->SetMatrix(rasToBox);
+    pipeline->RegionBox->SetTransform(rasToBoxTransform);
+    pipeline->RegionClip->SetInputConnection(glyphInputConnection);
+    pipeline->RegionClip->SetImplicitFunction(pipeline->RegionBox);
+    pipeline->RegionClip->ExtractInsideOn();
+    pipeline->RegionClip->ExtractBoundaryCellsOff();
+    glyphInputConnection = pipeline->RegionClip->GetOutputPort();
+  }
+  else
+  {
+    pipeline->RegionClip->SetInputConnection(nullptr);
   }
 
   pipeline->MaskPoints->SetInputConnection(glyphInputConnection);
@@ -446,6 +486,11 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
     default:
       pipeline->MaskPoints->RandomModeOff();
       pipeline->MaskPoints->SetOnRatio(1);
+      // Every point means every point. The limit has to be lifted explicitly, because the
+      // filter keeps whatever the uniform modes last set on it - and one of those is the
+      // default, so without this the first switch to "all points" still shows only the
+      // number of glyphs that the uniform modes were allowed.
+      pipeline->MaskPoints->SetMaximumNumberOfPoints(VTK_ID_MAX);
       break;
   }
 
@@ -454,7 +499,7 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
   pipeline->Glypher->SetSourceConnection(glyphSource->GetOutputPort());
 
   // Orientation
-  const char* orientationArrayName = fieldDisplayNode->GetOrientationArrayName();
+  const char* orientationArrayName = fieldDisplayNode->GetRenderedOrientationArrayName();
   bool hasOrientationArray = (orientationArrayName && orientationArrayName[0] != '\0');
   if (hasOrientationArray)
   {
@@ -469,7 +514,7 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
 
   // Scale
   pipeline->Glypher->ScalingOn();
-  const char* scaleArrayName = fieldDisplayNode->GetEffectiveScaleArrayName();
+  const char* scaleArrayName = fieldDisplayNode->GetRenderedScaleArrayName();
   bool hasScaleArray = (scaleArrayName && scaleArrayName[0] != '\0');
   if (fieldDisplayNode->IsScaleDirectionalUsed() && hasOrientationArray && hasScaleArray)
   {
@@ -479,7 +524,7 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
     // (length, 1, 1), with the length already multiplied by the scale factor. The length
     // comes from the array that scales the glyphs, which is not always the one that orients
     // them.
-    vtkDataArray* directionalScaleArray = fieldDisplayNode->GetEffectiveScaleArray();
+    vtkDataArray* directionalScaleArray = fieldDisplayNode->GetRenderedScaleArray();
     bool scaleArrayIsScalar = (directionalScaleArray && directionalScaleArray->GetNumberOfComponents() == 1);
     std::string lengthExpression = (scaleArrayIsScalar ? std::string(scaleArrayName) : std::string("mag(") + scaleArrayName + ")");
     std::string scaleExpression = std::to_string(fieldDisplayNode->GetScaleFactor()) + "*" + lengthExpression + "*iHat + jHat + kHat";
@@ -509,7 +554,7 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateDisplayNodePipelin
     if (hasScaleArray)
     {
       pipeline->Glypher->SetScaleArray(scaleArrayName);
-      vtkDataArray* scaleArray = fieldDisplayNode->GetEffectiveScaleArray();
+      vtkDataArray* scaleArray = fieldDisplayNode->GetRenderedScaleArray();
       bool scaleByComponents = (scaleArray && scaleArray->GetNumberOfComponents() == 3 //
                                 && fieldDisplayNode->GetVectorScaleMode() == vtkMRMLVectorFieldDisplayNode::VectorScaleModeByComponents);
       pipeline->Glypher->SetScaleMode(scaleByComponents ? vtkGlyph3DMapper::SCALE_BY_COMPONENTS : vtkGlyph3DMapper::SCALE_BY_MAGNITUDE);
@@ -529,7 +574,7 @@ void vtkMRMLVectorFieldDisplayableManager::vtkInternal::UpdateScalarColoring(vtk
 {
   // Coloring: either by the active point data scalar array through the color node's
   // lookup table, or by the display node's solid color.
-  const char* activeScalarName = displayNode->GetActiveScalarName();
+  const char* activeScalarName = displayNode->GetRenderedActiveScalarName();
   bool hasActiveScalar = (activeScalarName && activeScalarName[0] != 0);
   if (!displayNode->GetScalarVisibility() || !hasActiveScalar)
   {

@@ -43,6 +43,9 @@
 #include <vtkGeneralTransform.h>
 #include <vtkGlyph3D.h>
 #include <vtkLookupTable.h>
+#include <vtkBox.h>
+#include <vtkExtractGeometry.h>
+#include <vtkExtractPolyDataGeometry.h>
 #include <vtkMaskPoints.h>
 #include <vtkMath.h>
 #include <vtkMatrix4x4.h>
@@ -50,6 +53,7 @@
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
 #include <vtkPlane.h>
+#include <vtkPlaneCutter.h>
 #include <vtkPointData.h>
 #include <vtkPolyDataAlgorithm.h>
 #include <vtkPolyDataMapper2D.h>
@@ -93,6 +97,12 @@ public:
     /// do that (volumes, transforms); it is owned by the pipeline and not by the display
     /// node, because the same display node can be shown in several slice views at once.
     vtkSmartPointer<vtkMRMLVectorFieldSampler> SliceSampler;
+    /// Cuts a mesh with the slice plane, so that isolines come from the mesh itself
+    vtkSmartPointer<vtkPlaneCutter> MeshCutter;
+    vtkSmartPointer<vtkPlane> CutPlane;
+    /// Keeps the part of a streamline that runs near enough to the slice plane to belong to it
+    vtkSmartPointer<vtkExtractPolyDataGeometry> SlabClip;
+    vtkSmartPointer<vtkBox> SlabBox;
     /// Geometry of the grid, contour and streamline modes in this slice view.
     vtkSmartPointer<vtkMRMLVectorFieldModePipeline> ModePipeline;
     vtkSmartPointer<vtkGeneralTransform> NodeToWorld;
@@ -103,6 +113,9 @@ public:
     vtkSmartPointer<vtkProjectVectorsToPlane> Projector;
     vtkSmartPointer<vtkThresholdPoints> ScalarThreshold;
     vtkSmartPointer<vtkMaskPoints> MaskPoints;
+    /// Limits the glyph points to the region node, where they are not already limited by a sampler
+    vtkSmartPointer<vtkExtractGeometry> RegionClip;
+    vtkSmartPointer<vtkBox> RegionBox;
     vtkSmartPointer<vtkGlyph3D> Glypher;
     vtkSmartPointer<vtkTransform> TransformToSlice;
     vtkSmartPointer<vtkArrayCalculator> ColorMagnitude;
@@ -113,7 +126,7 @@ public:
     vtkSmartPointer<vtkActor2D> Actor;
   };
 
-  typedef std::map<vtkMRMLDisplayNode*, const Pipeline*> PipelinesCacheType;
+  typedef std::map<vtkMRMLDisplayNode*, Pipeline*> PipelinesCacheType;
   PipelinesCacheType DisplayPipelines;
 
   typedef std::map<vtkMRMLDisplayableNode*, std::set<vtkMRMLDisplayNode*>> ModelToDisplayCacheType;
@@ -131,7 +144,7 @@ public:
   // Display Nodes
   void AddDisplayNode(vtkMRMLDisplayableNode*, vtkMRMLDisplayNode*);
   void UpdateDisplayNode(vtkMRMLDisplayNode* displayNode);
-  void UpdateDisplayNodePipeline(vtkMRMLDisplayNode*, const Pipeline*);
+  void UpdateDisplayNodePipeline(vtkMRMLDisplayNode*, Pipeline*);
   void UpdateSliceMapperColoring(vtkMRMLVectorFieldDisplayNode* fieldDisplayNode, vtkMRMLDisplayNode* effectiveDisplayNode, const Pipeline* pipeline, double hierarchyOpacity);
   void UpdateSliceActorProperties(vtkMRMLDisplayNode* effectiveDisplayNode, const Pipeline* pipeline, double hierarchyOpacity);
   void RemoveDisplayNode(vtkMRMLDisplayNode* displayNode);
@@ -311,13 +324,14 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::AddDisplayNode(vtkM
   }
 
   Pipeline* pipeline = new Pipeline();
-  // Sources that can be resampled in an arbitrary plane get their own sampler for this
-  // slice view. It is created once, here, and only reconfigured afterwards.
-  vtkMRMLVectorFieldDisplayNode* fieldDisplayNode = vtkMRMLVectorFieldDisplayNode::SafeDownCast(displayNode);
-  if (fieldDisplayNode)
-  {
-    pipeline->SliceSampler = fieldDisplayNode->CreateSliceFieldSampler();
-  }
+  // The sampler that resamples the field in this slice view is not created here: whether the
+  // source can be resampled at all depends on data that may not have arrived yet (a model
+  // node is added to the scene before its mesh is read), so UpdateDisplayNodePipeline() asks
+  // for it on every update.
+  pipeline->MeshCutter = vtkSmartPointer<vtkPlaneCutter>::New();
+  pipeline->CutPlane = vtkSmartPointer<vtkPlane>::New();
+  pipeline->SlabClip = vtkSmartPointer<vtkExtractPolyDataGeometry>::New();
+  pipeline->SlabBox = vtkSmartPointer<vtkBox>::New();
   pipeline->NodeToWorld = vtkSmartPointer<vtkGeneralTransform>::New();
   pipeline->ModelWarper = vtkSmartPointer<vtkTransformFilter>::New();
   pipeline->Plane = vtkSmartPointer<vtkPlane>::New();
@@ -325,6 +339,8 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::AddDisplayNode(vtkM
   pipeline->SlabThreshold = vtkSmartPointer<vtkThresholdPoints>::New();
   pipeline->ScalarThreshold = vtkSmartPointer<vtkThresholdPoints>::New();
   pipeline->MaskPoints = vtkSmartPointer<vtkMaskPoints>::New();
+  pipeline->RegionClip = vtkSmartPointer<vtkExtractGeometry>::New();
+  pipeline->RegionBox = vtkSmartPointer<vtkBox>::New();
   pipeline->Projector = vtkSmartPointer<vtkProjectVectorsToPlane>::New();
   pipeline->ModePipeline = vtkSmartPointer<vtkMRMLVectorFieldModePipeline>::New();
   pipeline->Glypher = vtkSmartPointer<vtkGlyph3D>::New();
@@ -336,6 +352,8 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::AddDisplayNode(vtkM
   pipeline->Transformer = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
   pipeline->Mapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
   pipeline->Actor = vtkSmartPointer<vtkActor2D>::New();
+  // Not something to grab hold of, for the same reason as in a 3D view
+  pipeline->Actor->SetPickable(0);
 
   // Set up the static parts of the pipeline. The point selection filters between
   // the slab selection and the glypher are rewired on each update, because
@@ -389,7 +407,7 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNode(v
 }
 
 //---------------------------------------------------------------------------
-void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePipeline(vtkMRMLDisplayNode* displayNode, const Pipeline* pipeline)
+void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePipeline(vtkMRMLDisplayNode* displayNode, Pipeline* pipeline)
 {
   if (!pipeline)
   {
@@ -431,6 +449,13 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
   // arbitrary plane (vector volumes, transforms) are sampled directly in the slice plane,
   // which gives an evenly spaced lattice of glyphs. For the other sources (the point data
   // of a mesh) the points that are within a slab around the slice plane are selected.
+  // A model node reaches the scene before its mesh is read, and a mesh can be replaced by
+  // one that has no volumetric cells, so which of the two paths applies is decided here
+  // rather than when the pipeline was built. Getting this wrong for a volumetric mesh shows
+  // nothing at all in slice views: points sampled through the volume almost never land
+  // within a slice thickness of the plane, so the slab selects none of them.
+  pipeline->SliceSampler = glyphDisplayNode->UpdateSliceFieldSampler(pipeline->SliceSampler);
+
   vtkAlgorithmOutput* glyphInputConnection = nullptr;
   if (pipeline->SliceSampler)
   {
@@ -467,6 +492,10 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
       pipeline->Actor->SetVisibility(false);
       return;
     }
+    // The region is not applied here: it bounds what the 3D view shows, while a slice view
+    // shows the field wherever the slice crosses it. A region node is often a slice node of
+    // another view, and using it here would leave one slice view showing only where another
+    // one happens to be.
     pipeline->ModelWarper->SetInputConnection(fieldConnection);
 
     // Select the points that are within the displayed slab around the slice plane
@@ -497,11 +526,68 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
     {
       pipeline->SliceSampler->GenerateCellsOn();
     }
-    vtkAlgorithmOutput* polyDataConnection = pipeline->ModePipeline->Update(glyphDisplayNode, glyphInputConnection, true);
+    vtkAlgorithmOutput* modeInputConnection = glyphInputConnection;
+    if (glyphDisplayNode->GetVisualizationMode() == vtkMRMLVectorFieldDisplayNode::VisualizationModeContour //
+        && !glyphDisplayNode->NeedsLatticeSampling())
+    {
+      // The isolines of a mesh come from cutting it with the slice plane: the cut carries the
+      // field interpolated onto the plane exactly as the mesh defines it. Sampling the plane
+      // on a lattice instead cannot resolve a mesh that is thinner than the lattice spacing,
+      // and a shell about as thick as one of its own cells then yields no isolines at all.
+      vtkAlgorithmOutput* meshConnection = glyphDisplayNode->GetFieldConnection();
+      if (meshConnection)
+      {
+        this->SetSlicePlaneFromMatrix(this->SliceXYToRAS, pipeline->CutPlane);
+        pipeline->MeshCutter->SetInputConnection(meshConnection);
+        pipeline->MeshCutter->SetPlane(pipeline->CutPlane);
+        modeInputConnection = pipeline->MeshCutter->GetOutputPort();
+      }
+    }
+    // Streamlines follow the field through space, so they are traced in three dimensions and
+    // then cut down to what runs near this slice. Tracing them on an in-plane lattice instead
+    // would confine them to the plane, and a mesh thinner than that lattice would have
+    // nothing in it to trace through at all.
+    bool streamlineMode = (glyphDisplayNode->GetVisualizationMode() == vtkMRMLVectorFieldDisplayNode::VisualizationModeStreamline);
+    if (streamlineMode)
+    {
+      vtkAlgorithmOutput* fieldConnection = glyphDisplayNode->GetFieldConnection();
+      if (!fieldConnection)
+      {
+        pipeline->Actor->SetVisibility(false);
+        return;
+      }
+      modeInputConnection = fieldConnection;
+    }
+    vtkAlgorithmOutput* polyDataConnection = pipeline->ModePipeline->Update(glyphDisplayNode, modeInputConnection, !streamlineMode);
     if (!polyDataConnection)
     {
       pipeline->Actor->SetVisibility(false);
       return;
+    }
+    if (streamlineMode)
+    {
+      // Everything within half a slice thickness of the plane belongs to this slice
+      double sliceFieldOfView[3] = { 0.0, 0.0, 0.0 };
+      this->SliceNode->GetFieldOfView(sliceFieldOfView);
+      double halfThicknessMm = 0.5 * (sliceFieldOfView[2] > 0.0 ? sliceFieldOfView[2] : 1.0);
+      double reach = VTK_DOUBLE_MAX / 4.0;
+      pipeline->SlabBox->SetBounds(-reach, reach, -reach, reach, -halfThicknessMm, halfThicknessMm);
+      vtkNew<vtkMatrix4x4> rasToSlice;
+      vtkMatrix4x4::Invert(this->SliceXYToRAS, rasToSlice);
+      // The slice XY axes carry the zoom, so the distance to the plane is measured in the
+      // unscaled slice frame: only the third row of the inverse is used by the box test.
+      vtkNew<vtkTransform> rasToSliceTransform;
+      rasToSliceTransform->SetMatrix(rasToSlice);
+      pipeline->SlabBox->SetTransform(rasToSliceTransform);
+      pipeline->SlabClip->SetInputConnection(polyDataConnection);
+      pipeline->SlabClip->SetImplicitFunction(pipeline->SlabBox);
+      pipeline->SlabClip->ExtractInsideOn();
+      pipeline->SlabClip->ExtractBoundaryCellsOn();
+      polyDataConnection = pipeline->SlabClip->GetOutputPort();
+    }
+    else
+    {
+      pipeline->SlabClip->SetInputConnection(nullptr);
     }
     pipeline->Transformer->SetInputConnection(polyDataConnection);
     pipeline->Mapper->SetInputConnection(pipeline->Transformer->GetOutputPort());
@@ -514,10 +600,10 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
   pipeline->Mapper->SetInputConnection(pipeline->Glypher->GetOutputPort());
 
   // Optional thresholding by the active scalar array
-  const char* activeScalarName = glyphDisplayNode->GetActiveScalarName();
+  const char* activeScalarName = glyphDisplayNode->GetRenderedActiveScalarName();
   bool hasActiveScalar = (activeScalarName && activeScalarName[0] != '\0');
   // Multi-component arrays are colored and thresholded by their magnitude
-  vtkDataArray* activeScalarArray = glyphDisplayNode->GetActiveScalarArray();
+  vtkDataArray* activeScalarArray = glyphDisplayNode->GetRenderedActiveScalarArray();
   int numberOfScalarComponents = activeScalarArray ? activeScalarArray->GetNumberOfComponents() : 1;
   bool useScalarMagnitude = (numberOfScalarComponents > 1);
   if (glyphDisplayNode->GetThresholdEnabled() && hasActiveScalar)
@@ -556,10 +642,15 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
     default:
       pipeline->MaskPoints->RandomModeOff();
       pipeline->MaskPoints->SetOnRatio(1);
+      // Every point means every point. The limit has to be lifted explicitly, because the
+      // filter keeps whatever the uniform modes last set on it - and one of those is the
+      // default, so without this the first switch to "all points" still shows only the
+      // number of glyphs that the uniform modes were allowed.
+      pipeline->MaskPoints->SetMaximumNumberOfPoints(VTK_ID_MAX);
       break;
   }
 
-  const char* orientationArrayName = glyphDisplayNode->GetOrientationArrayName();
+  const char* orientationArrayName = glyphDisplayNode->GetRenderedOrientationArrayName();
   bool hasOrientationArray = (orientationArrayName && orientationArrayName[0] != '\0');
 
   // Project the vectors onto the slice plane, so that the length of a glyph shows the
@@ -593,8 +684,8 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
   // vectors, so a magnitude taken after it would color the same vector differently in a
   // slice view than in a 3D view. It is computed here, into a scalar array that the
   // transform leaves alone.
-  const char* activeScalarNameForColor = glyphDisplayNode->GetActiveScalarName();
-  vtkDataArray* activeScalarArrayForColor = glyphDisplayNode->GetActiveScalarArray();
+  const char* activeScalarNameForColor = glyphDisplayNode->GetRenderedActiveScalarName();
+  vtkDataArray* activeScalarArrayForColor = glyphDisplayNode->GetRenderedActiveScalarArray();
   bool colorByMagnitude = (activeScalarNameForColor && activeScalarNameForColor[0] != '\0' //
                            && activeScalarArrayForColor && activeScalarArrayForColor->GetNumberOfComponents() > 1);
   if (colorByMagnitude)
@@ -644,9 +735,9 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateDisplayNodePi
   // 3-component scale array can only be used when it is also the array that
   // orients the glyphs; otherwise glyphs are scaled uniformly.
   pipeline->Glypher->SetScaleFactor(glyphDisplayNode->GetScaleFactor());
-  const char* scaleArrayName = glyphDisplayNode->GetEffectiveScaleArrayName();
+  const char* scaleArrayName = glyphDisplayNode->GetRenderedScaleArrayName();
   bool hasScaleArray = (scaleArrayName && scaleArrayName[0] != '\0');
-  vtkDataArray* scaleArray = glyphDisplayNode->GetEffectiveScaleArray();
+  vtkDataArray* scaleArray = glyphDisplayNode->GetRenderedScaleArray();
   int scaleArrayComponents = scaleArray ? scaleArray->GetNumberOfComponents() : 0;
   if (hasScaleArray && scaleArrayComponents == 1)
   {
@@ -682,7 +773,7 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateSliceMapperCo
 {
   // Coloring: either by the active point data scalar array through the color node's
   // lookup table, or by the display node's solid color.
-  const char* activeScalarName = fieldDisplayNode->GetActiveScalarName();
+  const char* activeScalarName = fieldDisplayNode->GetRenderedActiveScalarName();
   bool hasActiveScalar = (activeScalarName && activeScalarName[0] != 0);
   if (!fieldDisplayNode->GetScalarVisibility() || !hasActiveScalar)
   {
@@ -692,9 +783,19 @@ void vtkMRMLVectorFieldSliceDisplayableManager::vtkInternal::UpdateSliceMapperCo
   }
   // Multi-component arrays are colored by their magnitude, which the pipeline computed
   // into a scalar array of its own before the vectors were taken into slice coordinates
-  vtkDataArray* activeScalarArray = fieldDisplayNode->GetActiveScalarArray();
+  vtkDataArray* activeScalarArray = fieldDisplayNode->GetRenderedActiveScalarArray();
   bool useScalarMagnitude = (activeScalarArray && activeScalarArray->GetNumberOfComponents() > 1);
-  std::string colorArrayName = (useScalarMagnitude ? ColorMagnitudeArrayName : activeScalarName);
+  std::string colorArrayName = activeScalarName;
+  if (useScalarMagnitude)
+  {
+    // Grid lines, isosurfaces and streamlines carry the magnitude under the sampler's name,
+    // computed either by the sampler itself or from the vectors of the mesh they were built
+    // on. Only the glyph pipeline computes its own copy, because it has to do so before the
+    // vectors are taken into slice coordinates.
+    colorArrayName = (fieldDisplayNode->IsPolyDataVisualizationMode() //
+                        ? vtkMRMLVectorFieldSampler::GetMagnitudeArrayName()
+                        : ColorMagnitudeArrayName);
+  }
 
   pipeline->Glypher->SetColorModeToColorByScalar();
   pipeline->Glypher->SetInputArrayToProcess(3, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, colorArrayName.c_str());

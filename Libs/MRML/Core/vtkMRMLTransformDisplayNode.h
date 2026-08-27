@@ -194,19 +194,6 @@ public:
   static int ConvertGlyphTypeFromString(const char* typeString);
 
   ///@{
-  /// Distance between the sampled points in grid mode, in mm. The grid lines themselves are
-  /// GridSpacingMm apart; sampling more finely shows how the grid curves in between.
-  vtkSetMacro(GridResolutionMm, double);
-  vtkGetMacro(GridResolutionMm, double);
-  ///@}
-
-  ///@{
-  /// Distance between the sampled points in contour mode, in mm.
-  vtkSetMacro(ContourResolutionMm, double);
-  vtkGetMacro(ContourResolutionMm, double);
-  ///@}
-
-  ///@{
   /// Contour levels, in mm. Forwards to the shared contour levels.
   unsigned int GetNumberOfContourLevels();
   void SetContourLevelsMm(double* levels, int size);
@@ -324,8 +311,6 @@ protected:
   vtkMRMLVectorFieldSampler* UpdateTransformFieldSampler(vtkMRMLVectorFieldSampler* sampler);
 
   double GlyphSpacingMm;
-  double GridResolutionMm;
-  double ContourResolutionMm;
 
 protected:
   vtkMRMLTransformDisplayNode();

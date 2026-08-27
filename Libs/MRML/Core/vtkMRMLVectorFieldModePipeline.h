@@ -31,6 +31,7 @@ class vtkArrayCalculator;
 class vtkContourFilter;
 class vtkMRMLVectorFieldGridLines;
 class vtkMRMLVectorFieldDisplayNode;
+class vtkPolyData;
 class vtkStreamTracer;
 class vtkTubeFilter;
 class vtkWarpVector;
@@ -67,16 +68,28 @@ protected:
   void operator=(const vtkMRMLVectorFieldModePipeline&) = delete;
 
   vtkAlgorithmOutput* UpdateGrid(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection, bool flat);
+  /// Name of the array that holds the vectors in the given connection: the sampler's own
+  /// name when the connection comes from a sampler, the array the user chose otherwise.
+  static const char* GetFieldVectorArrayName(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection);
+
+  /// Connection whose point data has a magnitude array under the sampler's magnitude name,
+  /// computing it from the rendered vectors when the source does not provide one.
+  vtkAlgorithmOutput* GetMagnitudeConnection(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection);
+
   vtkAlgorithmOutput* UpdateContour(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection);
   vtkAlgorithmOutput* UpdateStreamline(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection, bool flat);
 
   vtkSmartPointer<vtkMRMLVectorFieldGridLines> GridLines;
   vtkSmartPointer<vtkWarpVector> Warper;
   vtkSmartPointer<vtkArrayCalculator> NonWarpedGridMagnitude;
+  /// Magnitude of the field, for a source that carries vectors but no magnitude of its own
+  /// (the point data of a mesh). A sampled field already provides one.
+  vtkSmartPointer<vtkArrayCalculator> FieldMagnitude;
   vtkSmartPointer<vtkAppendPolyData> NonWarpedGridAppender;
   vtkSmartPointer<vtkTubeFilter> GridTuber;
   vtkSmartPointer<vtkContourFilter> Contour;
   vtkSmartPointer<vtkStreamTracer> StreamTracer;
+  vtkSmartPointer<vtkPolyData> StreamlineSeeds;
   vtkSmartPointer<vtkTubeFilter> StreamlineTuber;
 };
 

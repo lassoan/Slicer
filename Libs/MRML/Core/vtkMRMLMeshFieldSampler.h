@@ -70,6 +70,9 @@ protected:
   /// evaluating a transform, so the default keeps the count modest.
   double GetDefaultSamplingSpacingMm() override;
 
+  /// The bounds of the mesh.
+  bool GetFieldBounds(double bounds_RAS[6]) override;
+
   /// A lattice over the bounds of the mesh, at the sampling spacing.
   bool GetDefaultSamplePositions(vtkPoints* samplePositions_RAS, int latticeSize[3]) override;
 

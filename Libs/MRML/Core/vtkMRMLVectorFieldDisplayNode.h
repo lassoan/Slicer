@@ -172,13 +172,31 @@ public:
   static int GetMaskingModeFromString(const char* modeString);
   ///@}
 
-  /// The events of a region or sample points node that change where the field is sampled.
+  /// The events of a region, sample points, or seed points node that change where the field
+  /// is sampled or where streamlines start from.
   static void AddSamplingEvents(vtkIntArray* events);
+
+  /// The positions the streamlines are started from, in world coordinates: the points of
+  /// the seed points node. A streamline has to start somewhere that is worth following, so
+  /// the node says where instead of a line being started at every sample.
+  /// Returns false if no node is set or it has no points.
+  bool GetStreamlineSeedPositions(vtkPoints* seedPositions_RAS);
+
+  ///@{
+  /// The node whose points the streamlines are started from: the control points of a point
+  /// list, the points along a curve, a lattice over a plane, or the points of a model.
+  vtkMRMLNode* GetSeedPointsNode();
+  void SetAndObserveSeedPointsNode(vtkMRMLNode* node);
+  ///@}
 
   /// The points of the sample points node, in world coordinates: the control points of a
   /// markups node, the mesh points of a model, or the voxel centers of a volume.
   /// Returns false if there is no such node or it has no points.
   bool GetSamplePositions(vtkPoints* samplePositions_RAS);
+
+  /// The points of any node that has some, in world coordinates: the control points of a
+  /// markups node, the mesh points of a model, or the voxel centers of a volume.
+  static bool GetNodePointPositions(vtkMRMLNode* pointsNode, vtkPoints* positions_RAS);
 
   ///@{
   /// The array that the field is read from. It is what the orientation, scale and color
@@ -224,6 +242,27 @@ public:
   /// when none were, a handful spread over the range the colors are mapped across, so that
   /// a field whose magnitudes are not known in advance still shows something.
   void GetEffectiveContourLevelsMm(std::vector<double>& levels);
+
+  /// True if what is drawn comes out of a sampler rather than straight from the source.
+  /// The arrays of a sampled field are the sampler's own, whatever the arrays of the source
+  /// are called.
+  bool IsFieldSampled();
+
+  ///@{
+  /// The names the arrays have in what is drawn. They are the arrays that were chosen when
+  /// the source is drawn as it is, and the ones the sampler produces when the field is
+  /// sampled: a mesh read through a sampler is glyphed and colored by the sampled vectors,
+  /// not by the array of the mesh they were read from, which is not in the sampled output.
+  const char* GetRenderedOrientationArrayName();
+  const char* GetRenderedScaleArrayName();
+  const char* GetRenderedActiveScalarName();
+  /// What a render has produced from the sampler, or nullptr before the first one.
+  vtkDataSet* GetSampledFieldDataSet();
+  /// The array that GetRenderedActiveScalarName() names, in what is drawn.
+  vtkDataArray* GetRenderedActiveScalarArray();
+  /// The array that GetRenderedScaleArrayName() names, in what is drawn.
+  vtkDataArray* GetRenderedScaleArray();
+  ///@}
 
   /// True if the source can place glyphs the way the mode asks for. A field that is sampled
   /// can only use a lattice or a list of points, and the point data of a mesh can only use
@@ -300,9 +339,26 @@ public:
   /// Grid mode: distance between the grid lines, in mm. The lines themselves follow the
   /// sampled points, so a sampling spacing finer than this shows how the grid curves
   /// between its lines. 0 draws a line through every sampled point.
-  /// Default is 0.
+  /// Default is 3.
   vtkGetMacro(GridSpacingMm, double);
   vtkSetClampMacro(GridSpacingMm, double, 0.0, VTK_DOUBLE_MAX);
+  ///@}
+
+  ///@{
+  /// Grid mode: distance between the sampled points, in mm. The grid lines themselves are
+  /// GridSpacingMm apart; sampling more finely than that is what shows how the grid curves
+  /// in between them. 0 uses the resolution of the source.
+  /// Default is 1.
+  vtkGetMacro(GridResolutionMm, double);
+  vtkSetClampMacro(GridResolutionMm, double, 0.0, VTK_DOUBLE_MAX);
+  ///@}
+
+  ///@{
+  /// Contour mode: distance between the sampled points, in mm. 0 uses the resolution of the
+  /// source.
+  /// Default is 1.
+  vtkGetMacro(ContourResolutionMm, double);
+  vtkSetClampMacro(ContourResolutionMm, double, 0.0, VTK_DOUBLE_MAX);
   ///@}
 
   ///@{
@@ -350,7 +406,7 @@ public:
 
   ///@{
   /// Grid mode: diameter of the grid lines, in mm. 0 draws them as thin lines.
-  /// Default is 1.
+  /// Default is 0.5.
   vtkGetMacro(GridLineDiameterMm, double);
   vtkSetClampMacro(GridLineDiameterMm, double, 0.0, VTK_DOUBLE_MAX);
   ///@}
@@ -367,11 +423,29 @@ public:
   ///@}
 
   ///@{
-  /// Streamline mode: distance between the points that streamlines are started from, in mm.
-  /// 0 uses the sampling spacing.
-  /// Default is 0.
+  /// Streamline mode: distance between the points that streamlines are started from, where
+  /// the seed node describes a shape rather than a set of points: a lattice over a plane, or
+  /// steps along a curve. 0 spaces them by the size of that shape.
+  /// Default is 3.
   vtkGetMacro(SeedSpacingMm, double);
   vtkSetClampMacro(SeedSpacingMm, double, 0.0, VTK_DOUBLE_MAX);
+  ///@}
+
+  ///@{
+  /// Streamline mode: whether a streamline is followed both ways from where it starts, or
+  /// only the way the field points.
+  /// Default is true.
+  vtkGetMacro(StreamlineBidirectional, bool);
+  vtkSetMacro(StreamlineBidirectional, bool);
+  vtkBooleanMacro(StreamlineBidirectional, bool);
+  ///@}
+
+  ///@{
+  /// Streamline mode: the step the integration starts with, in mm. A smaller step follows a
+  /// field that turns sharply more closely, at the cost of taking more of them.
+  /// Default is 0.1.
+  vtkGetMacro(StreamlineInitialIntegrationStepMm, double);
+  vtkSetClampMacro(StreamlineInitialIntegrationStepMm, double, 0.0, VTK_DOUBLE_MAX);
   ///@}
 
   ///@{
@@ -503,6 +577,12 @@ public:
   /// Returns false if no valid region node is set.
   virtual bool GetSamplingRegion(vtkMatrix4x4* regionToRAS, int regionSize[3]);
 
+  /// The region as an oriented box that a point can be tested against: boxToRAS maps the
+  /// coordinates that bounds is expressed in to RAS. It is what limits the glyphs to the
+  /// region when they sit on the points of a mesh, which no sampler passes through.
+  /// Returns false when no region node is set, which means the whole field is shown.
+  bool GetRegionBox(vtkMatrix4x4* boxToRAS, double bounds[6]);
+
   /// Connection that produces the point set the glyphs are placed at, for 3D views.
   /// Returns nullptr if the displayable node cannot provide a vector field.
   virtual vtkAlgorithmOutput* GetFieldConnection();
@@ -525,19 +605,40 @@ public:
   /// fixed locations, such as the point data of a mesh.
   virtual bool CanSampleAtArbitraryPositions();
 
-  /// Create a sampler that resamples the field in the plane of a slice view. Each slice
-  /// view owns its own sampler, because the same display node can be shown in several
-  /// slice views at different positions.
+  ///@{
+  /// A sampler that resamples the field in the plane of a slice view. Each slice view owns
+  /// its own sampler, because the same display node can be shown in several slice views at
+  /// different positions.
   /// Returns nullptr if the field cannot be resampled in an arbitrary plane (for example
-  /// the point data of a mesh); the slice view then selects the points that are within a
-  /// slab around the slice plane instead.
+  /// the point data of a surface mesh); the slice view then selects the points that are
+  /// within a slab around the slice plane instead.
+  /// Whether a source can be resampled is not settled once and for all: a model node is
+  /// added to the scene before its mesh is read, and its mesh can later be replaced by one
+  /// that has no volumetric cells. A slice view therefore passes its sampler back to
+  /// UpdateSliceFieldSampler() on every update and uses whatever comes back, instead of
+  /// deciding once when its pipeline is built.
   virtual vtkSmartPointer<vtkMRMLVectorFieldSampler> CreateSliceFieldSampler();
+  virtual vtkSmartPointer<vtkMRMLVectorFieldSampler> UpdateSliceFieldSampler(vtkMRMLVectorFieldSampler* sampler);
+  ///@}
 
   /// True if the field source always provides the same arrays, so there is nothing for the
   /// user to pick: a sampled field (a vector volume, a transform) always produces one vector
   /// array and its magnitude. False for a mesh, whose point data can hold any number of
   /// arrays.
   virtual bool HasFixedFieldArrays();
+
+  /// True if the field has to be evaluated somewhere other than at the points of the mesh:
+  /// on a lattice, or at the points of another node. The uniform masking modes are not
+  /// among them - they pick a spatially even subset of the points that are already there,
+  /// and taking that subset from a lattice over the bounding box instead would put most of
+  /// the glyphs outside the mesh, where there is no field to draw.
+  bool NeedsSamplingOffMeshPoints();
+
+  /// True if the visualization geometry has to be built on a lattice rather than on the
+  /// cells of the mesh. Only the deformed grid does: isosurfaces and streamlines are built
+  /// on the mesh cells, which is exact, cheaper, and the only thing that works for a mesh
+  /// that is barely thicker than one of its own cells.
+  bool NeedsLatticeSampling();
 
   /// True if the mesh of the model node has cells that enclose a volume, so that the field
   /// it carries at its points is defined everywhere inside them and can be interpolated
@@ -625,6 +726,8 @@ protected:
   bool GlyphDiameterAbsolute;
   double GlyphDiameterPercent;
   double GridSpacingMm;
+  double GridResolutionMm;
+  double ContourResolutionMm;
   bool GridShowNonWarped;
   double ContourOpacity;
   double GridScalePercent;
@@ -632,6 +735,8 @@ protected:
   std::vector<double> ContourLevelsMm;
   double SeedSpacingMm;
   double MaximumPropagationMm;
+  bool StreamlineBidirectional;
+  double StreamlineInitialIntegrationStepMm;
   double StreamlineTubeDiameterMm;
 
   double SamplingSpacingMm;

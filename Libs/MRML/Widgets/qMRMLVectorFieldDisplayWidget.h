@@ -83,16 +83,19 @@ protected slots:
   void onSamplingSpacingChanged(double value);
   void onRegionNodeChanged(vtkMRMLNode* node);
   void onSamplePointsNodeChanged(vtkMRMLNode* node);
+  void onSeedPointsNodeChanged(vtkMRMLNode* node);
+  void onSeedSpacingChanged(double value);
   void onGridSpacingChanged(double value);
   void onGridShowNonWarpedToggled(bool enabled);
   void onGridLineDiameterChanged(double value);
   void onContourLevelsChanged();
   void onMaximumPropagationChanged(double value);
+  void onStreamlineBidirectionalToggled(bool bidirectional);
+  void onStreamlineInitialStepChanged(double value);
   void onStreamlineTubeDiameterChanged(double value);
 
   /// Convert the selected orientation array between the RAS and LPS coordinate
   /// systems by inverting the sign of the first two components of each vector.
-  void swapOrientationArrayCoordinateSystem();
 
   void onVisibility3DToggled(bool visible);
   void onColorChanged(const QColor& color);

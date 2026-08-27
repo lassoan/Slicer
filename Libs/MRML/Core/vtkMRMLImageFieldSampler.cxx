@@ -113,6 +113,44 @@ double vtkMRMLImageFieldSampler::GetDefaultSamplingSpacingMm()
 }
 
 //----------------------------------------------------------------------------
+bool vtkMRMLImageFieldSampler::GetFieldBounds(double bounds_RAS[6])
+{
+  vtkImageData* image = vtkImageData::SafeDownCast(this->GetInput());
+  if (!image)
+  {
+    return false;
+  }
+  int extent[6] = { 0, -1, 0, -1, 0, -1 };
+  image->GetExtent(extent);
+  if (extent[0] > extent[1] || extent[2] > extent[3] || extent[4] > extent[5])
+  {
+    return false;
+  }
+  // The image is a box in IJK, but an arbitrarily oriented one in RAS, so its RAS bounds are
+  // the bounds of its eight corners.
+  for (int axis = 0; axis < 3; ++axis)
+  {
+    bounds_RAS[2 * axis] = VTK_DOUBLE_MAX;
+    bounds_RAS[2 * axis + 1] = VTK_DOUBLE_MIN;
+  }
+  for (int corner = 0; corner < 8; ++corner)
+  {
+    double corner_IJK[4] = { static_cast<double>(extent[corner & 1]),              //
+                             static_cast<double>(extent[2 + ((corner >> 1) & 1)]), //
+                             static_cast<double>(extent[4 + ((corner >> 2) & 1)]), //
+                             1.0 };
+    double corner_RAS[4] = { 0.0, 0.0, 0.0, 1.0 };
+    this->IJKToRAS->MultiplyPoint(corner_IJK, corner_RAS);
+    for (int axis = 0; axis < 3; ++axis)
+    {
+      bounds_RAS[2 * axis] = std::min(bounds_RAS[2 * axis], corner_RAS[axis]);
+      bounds_RAS[2 * axis + 1] = std::max(bounds_RAS[2 * axis + 1], corner_RAS[axis]);
+    }
+  }
+  return true;
+}
+
+//----------------------------------------------------------------------------
 bool vtkMRMLImageFieldSampler::GetDefaultSamplePositions(vtkPoints* samplePositions_RAS, int latticeSize[3])
 {
   vtkImageData* image = vtkImageData::SafeDownCast(this->GetInput());

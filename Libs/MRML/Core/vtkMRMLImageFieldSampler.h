@@ -72,6 +72,9 @@ protected:
   /// Follows the resolution of the image: the largest of its voxel dimensions.
   double GetDefaultSamplingSpacingMm() override;
 
+  /// The bounds of the image, in RAS.
+  bool GetFieldBounds(double bounds_RAS[6]) override;
+
   /// A lattice over the whole image, stepping over voxels so that the samples are
   /// SamplingSpacingMm apart.
   bool GetDefaultSamplePositions(vtkPoints* samplePositions_RAS, int latticeSize[3]) override;

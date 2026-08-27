@@ -30,6 +30,10 @@
 #include <vtkPointData.h>
 #include <vtkPointSet.h>
 #include <vtkPolyData.h>
+#include <vtkUnsignedCharArray.h>
+
+// STD includes
+#include <vector>
 
 //----------------------------------------------------------------------------
 vtkStandardNewMacro(vtkMRMLVectorFieldGridLines);
@@ -86,8 +90,17 @@ int vtkMRMLVectorFieldGridLines::RequestData(vtkInformation* vtkNotUsed(request)
   auto pointId = [&latticeSize](int i, int j, int k)
   { return static_cast<vtkIdType>(i) + static_cast<vtkIdType>(j) * latticeSize[0] + static_cast<vtkIdType>(k) * latticeSize[0] * latticeSize[1]; };
 
+  // Where the field had no value there is nothing to deform, so a grid line stops there and
+  // starts again on the other side instead of running undeformed through the empty space
+  // that surrounds the field inside its bounding box.
+  vtkUnsignedCharArray* validSamples =
+    vtkUnsignedCharArray::SafeDownCast(input->GetPointData()->GetArray(vtkMRMLVectorFieldSampler::GetValidSampleArrayName()));
+  auto sampleIsValid = [validSamples](vtkIdType id)
+  { return (!validSamples || (id < validSamples->GetNumberOfValues() && validSamples->GetValue(id) != 0)); };
+
   vtkNew<vtkCellArray> lines;
   int index[3] = { 0, 0, 0 };
+  std::vector<vtkIdType> run;
   // One polyline along each axis, for every Subdivision-th row of the two other axes
   for (int lineAxis = 0; lineAxis < 3; ++lineAxis)
   {
@@ -104,11 +117,25 @@ int vtkMRMLVectorFieldGridLines::RequestData(vtkInformation* vtkNotUsed(request)
       {
         index[firstOtherAxis] = first;
         index[secondOtherAxis] = second;
-        lines->InsertNextCell(latticeSize[lineAxis]);
+        run.clear();
         for (int along = 0; along < latticeSize[lineAxis]; ++along)
         {
           index[lineAxis] = along;
-          lines->InsertCellPoint(pointId(index[0], index[1], index[2]));
+          vtkIdType id = pointId(index[0], index[1], index[2]);
+          if (sampleIsValid(id))
+          {
+            run.push_back(id);
+            continue;
+          }
+          if (run.size() > 1)
+          {
+            lines->InsertNextCell(static_cast<int>(run.size()), run.data());
+          }
+          run.clear();
+        }
+        if (run.size() > 1)
+        {
+          lines->InsertNextCell(static_cast<int>(run.size()), run.data());
         }
       }
     }

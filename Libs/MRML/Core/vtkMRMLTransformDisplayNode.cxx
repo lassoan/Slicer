@@ -52,8 +52,6 @@ vtkMRMLNodeNewMacro(vtkMRMLTransformDisplayNode);
 //----------------------------------------------------------------------------
 vtkMRMLTransformDisplayNode::vtkMRMLTransformDisplayNode()
   : GlyphSpacingMm(10.0)
-  , GridResolutionMm(5.0)
-  , ContourResolutionMm(5.0)
 {
   this->SetVisualizationMode(vtkMRMLTransformDisplayNode::VIS_MODE_GLYPH);
   this->SetScalarVisibility(1);
@@ -81,6 +79,8 @@ vtkMRMLTransformDisplayNode::vtkMRMLTransformDisplayNode()
   this->SetThresholdRange(0.01, 100.0);
 
   this->SetGridSpacingMm(15.0);
+  this->SetGridResolutionMm(5.0);
+  this->SetContourResolutionMm(5.0);
   // A transform is sampled, so the glyphs sit on a lattice rather than on mesh points
   this->SetMaskingMode(vtkMRMLVectorFieldDisplayNode::MaskingModeFixedSpacing);
   this->SetGridScalePercent(100.0);
@@ -108,8 +108,6 @@ void vtkMRMLTransformDisplayNode::PrintSelf(ostream& os, vtkIndent indent)
 
   vtkMRMLPrintBeginMacro(os, indent);
   vtkMRMLPrintFloatMacro(GlyphSpacingMm);
-  vtkMRMLPrintFloatMacro(GridResolutionMm);
-  vtkMRMLPrintFloatMacro(ContourResolutionMm);
   vtkMRMLPrintEndMacro();
 }
 
@@ -126,8 +124,6 @@ void vtkMRMLTransformDisplayNode::WriteXML(ostream& of, int nIndent)
   of << " GlyphDisplayRangeMaxMm=\"" << this->GetGlyphDisplayRangeMaxMm() << "\"";
   of << " GlyphDisplayRangeMinMm=\"" << this->GetGlyphDisplayRangeMinMm() << "\"";
   of << " GlyphType=\"" << ConvertGlyphTypeToString(this->GetGlyphType()) << "\"";
-  of << " GridResolutionMm=\"" << this->GridResolutionMm << "\"";
-  of << " ContourResolutionMm=\"" << this->ContourResolutionMm << "\"";
 }
 
 #define READ_FROM_ATT(varName)           \
@@ -177,8 +173,8 @@ void vtkMRMLTransformDisplayNode::ReadXMLAttributes(const char** atts)
     continue;
   }
   READ_FROM_ATT(GlyphSpacingMm);
-  READ_FROM_ATT(GridResolutionMm);
-  READ_FROM_ATT(ContourResolutionMm);
+  READ_FROM_ATT_INTO(GridResolutionMm, SetGridResolutionMm);
+  READ_FROM_ATT_INTO(ContourResolutionMm, SetContourResolutionMm);
   READ_FROM_ATT_INTO(GlyphScalePercent, SetGlyphScalePercent);
   READ_FROM_ATT_INTO(GlyphDisplayRangeMaxMm, SetGlyphDisplayRangeMaxMm);
   READ_FROM_ATT_INTO(GlyphDisplayRangeMinMm, SetGlyphDisplayRangeMinMm);
@@ -229,8 +225,6 @@ void vtkMRMLTransformDisplayNode::CopyContent(vtkMRMLNode* anode, bool deepCopy 
 
   vtkMRMLCopyBeginMacro(anode);
   vtkMRMLCopyFloatMacro(GlyphSpacingMm);
-  vtkMRMLCopyFloatMacro(GridResolutionMm);
-  vtkMRMLCopyFloatMacro(ContourResolutionMm);
   vtkMRMLCopyEndMacro();
 }
 
