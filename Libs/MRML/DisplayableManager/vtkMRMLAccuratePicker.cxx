@@ -20,10 +20,9 @@
 // VTK includes
 #include <vtkAbstractCellLocator.h>
 #include <vtkActor.h>
+#include <vtkDataSet.h>
 #include <vtkMapper.h>
 #include <vtkObjectFactory.h>
-#include <vtkPolyData.h>
-#include <vtkPolyDataMapper.h>
 #include <vtkPropCollection.h>
 #include <vtkRenderer.h>
 #include <vtkStaticCellLocator.h>
@@ -57,7 +56,7 @@ void vtkMRMLAccuratePicker::UpdateLocators(vtkRenderer* renderer)
     return;
   }
 
-  std::set<vtkPolyData*> shownSurfaces;
+  std::set<vtkDataSet*> shownSurfaces;
   vtkPropCollection* props = renderer->GetViewProps();
   vtkCollectionSimpleIterator propIterator;
   props->InitTraversal(propIterator);
@@ -72,38 +71,43 @@ void vtkMRMLAccuratePicker::UpdateLocators(vtkRenderer* renderer)
     {
       continue;
     }
-    vtkPolyDataMapper* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper());
+    // Any mapper, and the data set it was given: that is what vtkCellPicker scans and what
+    // it matches a locator against, by identity. Asking for a vtkPolyDataMapper instead
+    // would miss the mappers that are not one - an unstructured grid model is drawn through
+    // a vtkDataSetMapper - and those meshes would silently keep the unindexed linear scan
+    // that this class exists to avoid.
+    vtkMapper* mapper = vtkMapper::SafeDownCast(actor->GetMapper());
     if (!mapper)
     {
       continue;
     }
-    vtkPolyData* polyData = vtkPolyData::SafeDownCast(mapper->GetInput());
-    if (!polyData || polyData->GetNumberOfCells() < this->MinimumCellCountToIndex)
+    vtkDataSet* dataSet = mapper->GetInput();
+    if (!dataSet || dataSet->GetNumberOfCells() < this->MinimumCellCountToIndex)
     {
       continue;
     }
 
-    shownSurfaces.insert(polyData);
-    CachedLocator& cached = this->Locators[polyData];
+    shownSurfaces.insert(dataSet);
+    CachedLocator& cached = this->Locators[dataSet];
     if (!cached.Locator)
     {
       vtkNew<vtkStaticCellLocator> locator;
-      locator->SetDataSet(polyData);
+      locator->SetDataSet(dataSet);
       cached.Locator = locator;
       cached.BuildMTime = 0;
     }
-    // Build once, and rebuild only when the surface itself changes, so repeated
-    // picks over an unchanging surface pay the build cost at most once.
-    if (cached.BuildMTime != polyData->GetMTime())
+    // Build once, and rebuild only when the mesh itself changes, so repeated
+    // picks over an unchanging mesh pay the build cost at most once.
+    if (cached.BuildMTime != dataSet->GetMTime())
     {
       cached.Locator->BuildLocator();
-      cached.BuildMTime = polyData->GetMTime();
+      cached.BuildMTime = dataSet->GetMTime();
     }
     this->AddLocator(cached.Locator);
   }
 
-  // Release locators for surfaces that are no longer shown (a cached locator
-  // holds a reference to its poly data).
+  // Release locators for meshes that are no longer shown (a cached locator
+  // holds a reference to its data set).
   for (auto it = this->Locators.begin(); it != this->Locators.end();)
   {
     if (shownSurfaces.find(it->first) == shownSurfaces.end())

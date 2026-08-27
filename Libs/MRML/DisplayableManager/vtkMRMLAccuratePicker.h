@@ -29,7 +29,7 @@
 #include <map>
 
 class vtkAbstractCellLocator;
-class vtkPolyData;
+class vtkDataSet;
 class vtkRenderer;
 
 /// \brief A cell picker that stays fast when large surfaces are shown.
@@ -84,7 +84,7 @@ protected:
     vtkSmartPointer<vtkAbstractCellLocator> Locator;
     vtkMTimeType BuildMTime{ 0 };
   };
-  std::map<vtkPolyData*, CachedLocator> Locators;
+  std::map<vtkDataSet*, CachedLocator> Locators;
 
   vtkIdType MinimumCellCountToIndex{ 10000 };
 
