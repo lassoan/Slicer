@@ -333,7 +333,9 @@ void vtkMRMLModelDisplayNode::SetThresholdEnabled(bool enabled)
     vtkDataArray* dataArray = this->GetActiveScalarArray();
     if (dataArray)
     {
-      dataArray->GetRange(dataRange);
+      // Multi-component arrays are thresholded by magnitude, the same value they are
+      // coloured by; VTK spells the magnitude as component -1.
+      dataArray->GetRange(dataRange, dataArray->GetNumberOfComponents() > 1 ? -1 : 0);
     }
     if (dataRange[0] <= dataRange[1])
     {

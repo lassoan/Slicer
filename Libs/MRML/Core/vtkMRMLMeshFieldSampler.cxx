@@ -95,6 +95,18 @@ double vtkMRMLMeshFieldSampler::GetDefaultSamplingSpacingMm()
 }
 
 //----------------------------------------------------------------------------
+bool vtkMRMLMeshFieldSampler::GetFieldBounds(double bounds_RAS[6])
+{
+  vtkPointSet* mesh = vtkPointSet::SafeDownCast(this->GetInputDataObject(0, 0));
+  if (!mesh || mesh->GetNumberOfPoints() == 0)
+  {
+    return false;
+  }
+  mesh->GetBounds(bounds_RAS);
+  return (bounds_RAS[0] <= bounds_RAS[1]);
+}
+
+//----------------------------------------------------------------------------
 bool vtkMRMLMeshFieldSampler::GetDefaultSamplePositions(vtkPoints* samplePositions_RAS, int latticeSize[3])
 {
   vtkPointSet* mesh = vtkPointSet::SafeDownCast(this->GetInputDataObject(0, 0));
@@ -205,27 +217,41 @@ int vtkMRMLMeshFieldSampler::RequestData(vtkInformation* vtkNotUsed(request), vt
   vtkNew<vtkDoubleArray> vectors_RAS;
   vectors_RAS->SetNumberOfComponents(3);
   vectors_RAS->SetNumberOfTuples(numberOfSamples);
-  vtkUnsignedCharArray* validMask =
-    vtkUnsignedCharArray::SafeDownCast(probedPointData->GetArray(probe->GetValidPointMaskArrayName()));
+  // Read through vtkDataArray rather than a concrete type: vtkProbeFilter stores this mask
+  // as a vtkCharArray, and asking for the wrong type gives a null array and a mask that is
+  // silently never applied.
+  vtkDataArray* validMask = probedPointData->GetArray(probe->GetValidPointMaskArrayName());
+  if (!validMask)
+  {
+    vtkWarningMacro("vtkMRMLMeshFieldSampler: the probe reported no valid-point mask, "
+                    "samples outside the mesh cannot be told apart from samples with a zero vector");
+  }
+  // Which samples the mesh actually had a value at. A sample that fell outside the cells
+  // gets a zero vector so that it draws no glyph, and is marked invalid so that grid lines
+  // and lattice cells stop there instead of spanning the empty space in the bounding box.
+  vtkNew<vtkUnsignedCharArray> validSamples;
+  validSamples->SetName(vtkMRMLVectorFieldSampler::GetValidSampleArrayName());
+  validSamples->SetNumberOfValues(numberOfSamples);
   for (vtkIdType sampleIndex = 0; sampleIndex < numberOfSamples; ++sampleIndex)
   {
-    // A position that falls outside the cells has no field at it, and a zero vector draws
-    // nothing there
-    if (validMask && validMask->GetValue(sampleIndex) == 0)
+    if (validMask && validMask->GetComponent(sampleIndex, 0) == 0)
     {
       vectors_RAS->SetTuple3(sampleIndex, 0.0, 0.0, 0.0);
+      validSamples->SetValue(sampleIndex, 0);
       continue;
     }
     double vector[3] = { 0.0, 0.0, 0.0 };
     probedVectors->GetTuple(sampleIndex, vector);
     vectors_RAS->SetTuple(sampleIndex, vector);
+    validSamples->SetValue(sampleIndex, 1);
   }
 
   output->SetPoints(samplePositions_RAS);
   vtkMRMLVectorFieldSampler::SetOutputVectors(output, vectors_RAS);
+  output->GetPointData()->AddArray(validSamples);
   if (this->GenerateCells)
   {
-    vtkMRMLVectorFieldSampler::GenerateLatticeCells(output, latticeSize);
+    vtkMRMLVectorFieldSampler::GenerateLatticeCells(output, latticeSize, validSamples);
   }
   return 1;
 }

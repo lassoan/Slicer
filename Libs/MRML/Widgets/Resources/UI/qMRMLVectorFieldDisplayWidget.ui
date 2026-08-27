@@ -47,16 +47,6 @@
          </property>
         </widget>
        </item>
-       <item>
-        <widget class="QToolButton" name="SwapOrientationArrayCoordinateSystemButton">
-         <property name="toolTip">
-          <string>Convert the selected orientation array between the RAS and LPS coordinate systems, by inverting the sign of the first two components of each vector. The array of the model node is modified.</string>
-         </property>
-         <property name="text">
-          <string>RAS/LPS</string>
-         </property>
-        </widget>
-       </item>
       </layout>
      </item>
      <item row="1" column="0">
@@ -118,6 +108,9 @@
           </property>
           <property name="noneEnabled">
            <bool>true</bool>
+          </property>
+          <property name="noneDisplay">
+           <string>(Entire model)</string>
           </property>
           <property name="addEnabled">
            <bool>false</bool>
@@ -319,10 +312,13 @@
      <item row="5" column="1">
       <widget class="ctkDoubleSpinBox" name="ScaleFactorSpinBox">
        <property name="toolTip">
-        <string>Factor used to scale the glyph geometry.</string>
+        <string>Factor used to scale the glyph geometry. Three decimals are shown; typing more digits keeps them.</string>
+       </property>
+       <property name="decimals">
+        <number>3</number>
        </property>
        <property name="decimalsOption">
-        <set>ctkDoubleSpinBox::DecimalsByShortcuts|ctkDoubleSpinBox::InsertDecimals|ctkDoubleSpinBox::ReplaceDecimals</set>
+        <set>ctkDoubleSpinBox::DecimalsByKey|ctkDoubleSpinBox::DecimalsByShortcuts|ctkDoubleSpinBox::InsertDecimals|ctkDoubleSpinBox::ReplaceDecimals</set>
        </property>
        <property name="minimum">
         <double>0.000000000000000</double>
@@ -331,7 +327,7 @@
         <double>1000000.000000000000000</double>
        </property>
        <property name="singleStep">
-        <double>1.000000000000000</double>
+        <double>0.100000000000000</double>
        </property>
       </widget>
      </item>
@@ -382,14 +378,14 @@
         <property name="fieldGrowthPolicy">
          <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
         </property>
-       <item row="0" column="0">
+       <item row="10" column="0">
         <widget class="QLabel" name="SamplingSpacingLabel">
          <property name="text">
           <string>Resolution:</string>
          </property>
         </widget>
        </item>
-       <item row="0" column="1">
+       <item row="10" column="1">
         <widget class="ctkDoubleSpinBox" name="SamplingSpacingSpinBox">
          <property name="toolTip">
           <string>Distance between the sampled points. 0 follows the resolution of the field (the voxel size of a vector volume). Not used for the point data of a model, which is sampled at the points of the mesh.</string>
@@ -408,77 +404,77 @@
          </property>
         </widget>
        </item>
-        <item row="1" column="0">
+        <item row="0" column="0">
          <widget class="QLabel" name="GlyphTypeLabel">
           <property name="text">
            <string>Glyph type:</string>
           </property>
          </widget>
         </item>
-        <item row="1" column="1">
+        <item row="0" column="1">
          <widget class="QComboBox" name="GlyphTypeComboBox">
           <property name="toolTip">
            <string>Shape used to represent each glyph.</string>
           </property>
          </widget>
         </item>
-        <item row="2" column="0">
+        <item row="1" column="0">
          <widget class="QLabel" name="OrientationArrayLabel">
           <property name="text">
            <string>Orientation array:</string>
           </property>
          </widget>
         </item>
-        <item row="2" column="1">
+        <item row="1" column="1">
          <widget class="QComboBox" name="OrientationArrayComboBox">
           <property name="toolTip">
            <string>3-component point data array used to orient each glyph. If None, glyphs are not oriented.</string>
           </property>
          </widget>
         </item>
-        <item row="3" column="0">
+        <item row="2" column="0">
          <widget class="QLabel" name="ScaleArrayLabel">
           <property name="text">
            <string>Scale array:</string>
           </property>
          </widget>
         </item>
-        <item row="3" column="1">
+        <item row="2" column="1">
          <widget class="QComboBox" name="ScaleArrayComboBox">
           <property name="toolTip">
            <string>Point data array used to scale each glyph. If None, glyphs are only scaled by Scale factor.</string>
           </property>
          </widget>
         </item>
-        <item row="4" column="0">
+        <item row="3" column="0">
          <widget class="QLabel" name="VectorScaleModeLabel">
           <property name="text">
            <string>Vector scale mode:</string>
           </property>
          </widget>
         </item>
-        <item row="4" column="1">
+        <item row="3" column="1">
          <widget class="QComboBox" name="VectorScaleModeComboBox">
           <property name="toolTip">
            <string>How to use a 3-component scale array to scale the glyph. Only enabled if the selected scale array has 3 components.</string>
           </property>
          </widget>
         </item>
-        <item row="5" column="0">
+        <item row="4" column="0">
          <widget class="QLabel" name="MaskingModeLabel">
           <property name="text">
            <string>Show glyphs at:</string>
           </property>
          </widget>
         </item>
-        <item row="5" column="1">
+        <item row="4" column="1">
          <widget class="QComboBox" name="MaskingModeComboBox">
           <property name="toolTip">
            <string>Determines which mesh points get a glyph.</string>
           </property>
          </widget>
         </item>
-        <item row="6" column="0">
+        <item row="5" column="0">
          <widget class="QLabel" name="GlyphSpacingLabel">
        <property name="indent">
         <number>16</number>
@@ -488,7 +484,7 @@
           </property>
          </widget>
         </item>
-        <item row="6" column="1">
+        <item row="5" column="1">
          <widget class="ctkDoubleSpinBox" name="GlyphSpacingSpinBox">
           <property name="toolTip">
            <string>Distance between the glyphs.</string>
@@ -507,7 +503,7 @@
           </property>
          </widget>
         </item>
-        <item row="7" column="0">
+        <item row="6" column="0">
          <widget class="QLabel" name="SamplePointsLabel">
        <property name="indent">
         <number>16</number>
@@ -517,7 +513,7 @@
           </property>
          </widget>
         </item>
-        <item row="7" column="1">
+        <item row="6" column="1">
          <widget class="qMRMLNodeComboBox" name="SamplePointsNodeComboBox">
           <property name="toolTip">
            <string>Node whose points are used as glyph positions: the control points of a markups node, the mesh points of a model, or the voxel centers of a volume.</string>
@@ -540,7 +536,7 @@
           </property>
          </widget>
         </item>
-        <item row="8" column="0">
+        <item row="7" column="0">
          <widget class="QLabel" name="MaskingPointsNumberLabel">
        <property name="indent">
         <number>16</number>
@@ -550,7 +546,7 @@
           </property>
          </widget>
         </item>
-        <item row="8" column="1">
+        <item row="7" column="1">
          <widget class="QSpinBox" name="MaskingPointsNumberSpinBox">
           <property name="toolTip">
            <string>Maximum number of randomly sampled glyphs to show.</string>
@@ -566,14 +562,14 @@
           </property>
          </widget>
         </item>
-        <item row="9" column="0">
+        <item row="8" column="0">
          <widget class="QLabel" name="GridSpacingLabel">
           <property name="text">
            <string>Grid spacing:</string>
           </property>
          </widget>
         </item>
-        <item row="9" column="1">
+        <item row="8" column="1">
          <widget class="ctkDoubleSpinBox" name="GridSpacingSpinBox">
           <property name="toolTip">
            <string>Distance between the grid lines. The sampling spacing only controls how finely the lines follow the field in between.</string>
@@ -592,7 +588,7 @@
           </property>
          </widget>
         </item>
-        <item row="10" column="1">
+        <item row="9" column="1">
          <widget class="QCheckBox" name="GridShowNonWarpedCheckBox">
           <property name="toolTip">
            <string>Show the undeformed grid next to the deformed one, in slice views.</string>
@@ -616,14 +612,124 @@
           </property>
          </widget>
         </item>
+        <item row="13" column="0">
+         <widget class="QLabel" name="SeedSpacingLabel">
+          <property name="indent">
+           <number>16</number>
+          </property>
+          <property name="text">
+           <string>Sampling distance:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="13" column="1">
+         <widget class="ctkDoubleSpinBox" name="SeedSpacingSpinBox">
+          <property name="toolTip">
+           <string>Distance between the points that streamlines are started from, where the seed node describes a shape rather than a set of points: a lattice over a plane, or steps along a curve. 0 spaces them by the size of the seed shape.</string>
+          </property>
+          <property name="suffix">
+           <string> mm</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="decimalsOption">
+           <set>ctkDoubleSpinBox::DecimalsByKey|ctkDoubleSpinBox::DecimalsByShortcuts|ctkDoubleSpinBox::InsertDecimals|ctkDoubleSpinBox::ReplaceDecimals</set>
+          </property>
+          <property name="minimum">
+           <double>0.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+         </widget>
+        </item>
         <item row="12" column="0">
+         <widget class="QLabel" name="SeedPointsLabel">
+          <property name="text">
+           <string>Seed points:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="12" column="1">
+         <widget class="qMRMLNodeComboBox" name="SeedPointsNodeComboBox">
+          <property name="toolTip">
+           <string>Node whose points the streamlines are started from: the control points of a point list, the points along a curve, a lattice over a plane or over what a slice view shows, or the points of a model.</string>
+          </property>
+          <property name="nodeTypes">
+           <stringlist>
+            <string>vtkMRMLMarkupsFiducialNode</string>
+            <string>vtkMRMLMarkupsCurveNode</string>
+            <string>vtkMRMLMarkupsPlaneNode</string>
+            <string>vtkMRMLSliceNode</string>
+            <string>vtkMRMLModelNode</string>
+           </stringlist>
+          </property>
+          <property name="noneEnabled">
+           <bool>true</bool>
+          </property>
+          <property name="addEnabled">
+           <bool>false</bool>
+          </property>
+          <property name="removeEnabled">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="14" column="0">
+         <widget class="QLabel" name="StreamlineBidirectionalLabel">
+          <property name="text">
+           <string>Bidirectional:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="14" column="1">
+         <widget class="QCheckBox" name="StreamlineBidirectionalCheckBox">
+          <property name="toolTip">
+           <string>Follow the streamline both ways from where it starts, instead of only the way the field points.</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item row="15" column="0">
+         <widget class="QLabel" name="StreamlineInitialStepLabel">
+          <property name="text">
+           <string>Initial step:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="15" column="1">
+         <widget class="ctkDoubleSpinBox" name="StreamlineInitialStepSpinBox">
+          <property name="toolTip">
+           <string>The step the integration starts with. A smaller step follows a field that turns sharply more closely, at the cost of taking more of them.</string>
+          </property>
+          <property name="suffix">
+           <string> mm</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="minimum">
+           <double>0.001000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.100000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="16" column="0">
          <widget class="QLabel" name="MaximumPropagationLabel">
           <property name="text">
            <string>Maximum length:</string>
           </property>
          </widget>
         </item>
-        <item row="12" column="1">
+        <item row="16" column="1">
          <widget class="ctkDoubleSpinBox" name="MaximumPropagationSpinBox">
           <property name="toolTip">
            <string>Maximum length of a streamline.</string>
@@ -642,14 +748,14 @@
           </property>
          </widget>
         </item>
-        <item row="13" column="0">
+        <item row="17" column="0">
          <widget class="QLabel" name="StreamlineTubeDiameterLabel">
           <property name="text">
            <string>Streamline diameter:</string>
           </property>
          </widget>
         </item>
-        <item row="13" column="1">
+        <item row="17" column="1">
          <widget class="ctkDoubleSpinBox" name="StreamlineTubeDiameterSpinBox">
           <property name="toolTip">
            <string>Diameter of the streamline tubes. 0 draws them as thin lines.</string>
@@ -1059,6 +1165,22 @@
   <include location="../qMRMLWidgets.qrc"/>
  </resources>
  <connections>
+  <connection>
+   <sender>qMRMLVectorFieldDisplayWidget</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>SeedPointsNodeComboBox</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>140</x>
+     <y>5</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>62</x>
+     <y>260</y>
+    </hint>
+   </hints>
+  </connection>
   <connection>
    <sender>qMRMLVectorFieldDisplayWidget</sender>
    <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>

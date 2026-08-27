@@ -868,7 +868,12 @@ void vtkMRMLDisplayNode::UpdateScalarRange()
     vtkDataArray* dataArray = this->GetActiveScalarArray();
     if (dataArray)
     {
-      dataArray->GetRange(newScalarRange);
+      // An array with more than one component is coloured by the length of its tuples, so
+      // the range that the colours are mapped across is the range of those lengths. VTK
+      // spells the magnitude as component -1; component 0 would be the range of the first
+      // component alone, which says nothing about how long the vectors are.
+      int magnitudeComponent = (dataArray->GetNumberOfComponents() > 1 ? -1 : 0);
+      dataArray->GetRange(newScalarRange, magnitudeComponent);
     }
   }
   else if (flag == vtkMRMLDisplayNode::UseColorNodeScalarRange)

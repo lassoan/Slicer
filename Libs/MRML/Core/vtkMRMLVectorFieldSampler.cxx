@@ -41,6 +41,7 @@ namespace
 const char VectorArrayName[] = "Vector";
 const char MagnitudeArrayName[] = "Magnitude";
 const char LatticeSizeArrayName[] = "LatticeSize";
+const char ValidSampleArrayName[] = "ValidSample";
 } // namespace
 
 //----------------------------------------------------------------------------
@@ -89,6 +90,12 @@ const char* vtkMRMLVectorFieldSampler::GetMagnitudeArrayName()
 const char* vtkMRMLVectorFieldSampler::GetLatticeSizeArrayName()
 {
   return LatticeSizeArrayName;
+}
+
+//----------------------------------------------------------------------------
+const char* vtkMRMLVectorFieldSampler::GetValidSampleArrayName()
+{
+  return ValidSampleArrayName;
 }
 
 //----------------------------------------------------------------------------
@@ -313,22 +320,80 @@ void vtkMRMLVectorFieldSampler::GetSamplePositions(vtkPoints* samplePositions_RA
     {
       return;
     }
+    // The origin of a slice view's XY coordinate system is a corner of the view, not its
+    // center, so the lattice is laid out from that corner.
+    double viewSizeX_XY = this->FieldOfViewSizeMm[0] / xAxisLengthMm;
+    double viewSizeY_XY = this->FieldOfViewSizeMm[1] / yAxisLengthMm;
+    double latticeMin_XY[2] = { 0.0, 0.0 };
+    double latticeMax_XY[2] = { viewSizeX_XY, viewSizeY_XY };
+
+    // The lattice covers the part of the view where the field actually is, not the whole
+    // view. Without this, a small object in a wide view is sampled almost entirely outside
+    // itself: a mesh a few mm across, shown in a 250 mm view at a spacing derived from its
+    // own size, needs millions of probes to place a few hundred glyphs. That does not draw
+    // anything wrong, it just never finishes, which looks exactly like nothing being drawn.
+    double fieldBounds_RAS[6] = { 0.0, -1.0, 0.0, -1.0, 0.0, -1.0 };
+    if (this->GetFieldBounds(fieldBounds_RAS) && fieldBounds_RAS[0] <= fieldBounds_RAS[1])
+    {
+      vtkNew<vtkMatrix4x4> rasToSliceXY;
+      vtkMatrix4x4::Invert(this->SliceXYToRAS, rasToSliceXY);
+      double fieldMin_XY[2] = { VTK_DOUBLE_MAX, VTK_DOUBLE_MAX };
+      double fieldMax_XY[2] = { VTK_DOUBLE_MIN, VTK_DOUBLE_MIN };
+      for (int corner = 0; corner < 8; ++corner)
+      {
+        double corner_RAS[4] = { fieldBounds_RAS[corner & 1],              //
+                                 fieldBounds_RAS[2 + ((corner >> 1) & 1)], //
+                                 fieldBounds_RAS[4 + ((corner >> 2) & 1)], //
+                                 1.0 };
+        double corner_XY[4] = { 0.0, 0.0, 0.0, 1.0 };
+        rasToSliceXY->MultiplyPoint(corner_RAS, corner_XY);
+        for (int axis = 0; axis < 2; ++axis)
+        {
+          fieldMin_XY[axis] = std::min(fieldMin_XY[axis], corner_XY[axis]);
+          fieldMax_XY[axis] = std::max(fieldMax_XY[axis], corner_XY[axis]);
+        }
+      }
+      // One step of margin, so that the glyphs at the edge of the object are not left out
+      latticeMin_XY[0] = std::max(latticeMin_XY[0], fieldMin_XY[0] - spacingMm / xAxisLengthMm);
+      latticeMin_XY[1] = std::max(latticeMin_XY[1], fieldMin_XY[1] - spacingMm / yAxisLengthMm);
+      latticeMax_XY[0] = std::min(latticeMax_XY[0], fieldMax_XY[0] + spacingMm / xAxisLengthMm);
+      latticeMax_XY[1] = std::min(latticeMax_XY[1], fieldMax_XY[1] + spacingMm / yAxisLengthMm);
+      if (latticeMin_XY[0] >= latticeMax_XY[0] || latticeMin_XY[1] >= latticeMax_XY[1])
+      {
+        // The field is not within this view at all
+        return;
+      }
+    }
+
     // The lattice holds a whole number of groups, so that grid visualization draws complete
-    // grid cells and never a partial one at the edge of the view.
+    // grid cells and never a partial one at the edge.
     int groupSize = std::max(1, this->LatticeGroupSize);
-    int numberOfStepsX = std::max(groupSize, static_cast<int>(this->FieldOfViewSizeMm[0] / (spacingMm * groupSize)) * groupSize);
-    int numberOfStepsY = std::max(groupSize, static_cast<int>(this->FieldOfViewSizeMm[1] / (spacingMm * groupSize)) * groupSize);
+    double latticeSizeX_Mm = (latticeMax_XY[0] - latticeMin_XY[0]) * xAxisLengthMm;
+    double latticeSizeY_Mm = (latticeMax_XY[1] - latticeMin_XY[1]) * yAxisLengthMm;
+    auto numberOfStepsForSpacing = [groupSize](double sizeMm, double spacing) //
+    { return std::max(groupSize, static_cast<int>(sizeMm / (spacing * groupSize)) * groupSize); };
+    int numberOfStepsX = numberOfStepsForSpacing(latticeSizeX_Mm, spacingMm);
+    int numberOfStepsY = numberOfStepsForSpacing(latticeSizeY_Mm, spacingMm);
+
+    // A spacing much finer than what the view can show asks for an unbounded number of
+    // samples, and a sampler that does not return is indistinguishable from one that draws
+    // nothing, so the spacing is coarsened rather than the request being honoured literally.
+    const double maximumNumberOfSamples = 100000.0;
+    double numberOfSamples = static_cast<double>(numberOfStepsX + 1) * (numberOfStepsY + 1);
+    if (numberOfSamples > maximumNumberOfSamples)
+    {
+      spacingMm *= std::sqrt(numberOfSamples / maximumNumberOfSamples);
+      numberOfStepsX = numberOfStepsForSpacing(latticeSizeX_Mm, spacingMm);
+      numberOfStepsY = numberOfStepsForSpacing(latticeSizeY_Mm, spacingMm);
+    }
+
     int numberOfPointsX = numberOfStepsX + 1;
     int numberOfPointsY = numberOfStepsY + 1;
     double stepX_XY = spacingMm / xAxisLengthMm;
     double stepY_XY = spacingMm / yAxisLengthMm;
-    // The origin of a slice view's XY coordinate system is a corner of the view, not its
-    // center, so the lattice starts at that corner and covers the whole field of view. The
-    // leftover of the last step is split between the two sides to center it.
-    double viewSizeX_XY = this->FieldOfViewSizeMm[0] / xAxisLengthMm;
-    double viewSizeY_XY = this->FieldOfViewSizeMm[1] / yAxisLengthMm;
-    double startX_XY = 0.5 * (viewSizeX_XY - (numberOfPointsX - 1) * stepX_XY);
-    double startY_XY = 0.5 * (viewSizeY_XY - (numberOfPointsY - 1) * stepY_XY);
+    // The leftover of the last step is split between the two sides, to center the lattice
+    double startX_XY = latticeMin_XY[0] + 0.5 * ((latticeMax_XY[0] - latticeMin_XY[0]) - (numberOfPointsX - 1) * stepX_XY);
+    double startY_XY = latticeMin_XY[1] + 0.5 * ((latticeMax_XY[1] - latticeMin_XY[1]) - (numberOfPointsY - 1) * stepY_XY);
 
     vtkNew<vtkMatrix4x4> latticeToRAS;
     latticeToRAS->DeepCopy(this->SliceXYToRAS);
@@ -391,7 +456,7 @@ void vtkMRMLVectorFieldSampler::SetOutputVectors(vtkPointSet* outputPointSet, vt
 }
 
 //----------------------------------------------------------------------------
-void vtkMRMLVectorFieldSampler::GenerateLatticeCells(vtkUnstructuredGrid* outputGrid, const int latticeSize[3])
+void vtkMRMLVectorFieldSampler::GenerateLatticeCells(vtkUnstructuredGrid* outputGrid, const int latticeSize[3], vtkUnsignedCharArray* validSamples /*=nullptr*/)
 {
   if (!outputGrid || !latticeSize)
   {
@@ -417,6 +482,24 @@ void vtkMRMLVectorFieldSampler::GenerateLatticeCells(vtkUnstructuredGrid* output
   auto pointId = [&latticeSize](int i, int j, int k)
   { return static_cast<vtkIdType>(i) + static_cast<vtkIdType>(j) * latticeSize[0] + static_cast<vtkIdType>(k) * latticeSize[0] * latticeSize[1]; };
 
+  // A cell whose corners are not all inside the field would interpolate between a real value
+  // and nothing, which draws grid lines and isosurfaces through empty space.
+  auto allSamplesValid = [validSamples](const vtkIdType* cornerIds, int numberOfCorners)
+  {
+    if (!validSamples)
+    {
+      return true;
+    }
+    for (int corner = 0; corner < numberOfCorners; ++corner)
+    {
+      if (cornerIds[corner] >= validSamples->GetNumberOfValues() || validSamples->GetValue(cornerIds[corner]) == 0)
+      {
+        return false;
+      }
+    }
+    return true;
+  };
+
   vtkNew<vtkCellArray> cells;
   if (numberOfAxesWithCells == 3)
   {
@@ -430,6 +513,10 @@ void vtkMRMLVectorFieldSampler::GenerateLatticeCells(vtkUnstructuredGrid* output
           // VTK_VOXEL point order
           vtkIdType voxelPointIds[8] = { pointId(i, j, k),         pointId(i + 1, j, k),         pointId(i, j + 1, k),         pointId(i + 1, j + 1, k),
                                          pointId(i, j, k + 1),     pointId(i + 1, j, k + 1),     pointId(i, j + 1, k + 1),     pointId(i + 1, j + 1, k + 1) };
+          if (!allSamplesValid(voxelPointIds, 8))
+          {
+            continue;
+          }
           cells->InsertNextCell(8, voxelPointIds);
         }
       }
@@ -467,6 +554,10 @@ void vtkMRMLVectorFieldSampler::GenerateLatticeCells(vtkUnstructuredGrid* output
                                     pointId(corner10[0], corner10[1], corner10[2]),
                                     pointId(corner11[0], corner11[1], corner11[2]),
                                     pointId(corner01[0], corner01[1], corner01[2]) };
+      if (!allSamplesValid(quadPointIds, 4))
+      {
+        continue;
+      }
       cells->InsertNextCell(4, quadPointIds);
     }
   }

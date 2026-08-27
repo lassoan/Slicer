@@ -30,6 +30,7 @@ class vtkDataArray;
 class vtkMatrix4x4;
 class vtkPointSet;
 class vtkPoints;
+class vtkUnsignedCharArray;
 class vtkUnstructuredGrid;
 
 /// \brief Produces the point set that a vector field visualization is built from.
@@ -62,6 +63,14 @@ public:
   /// arranged in. Filters downstream (the grid lines) need it to know how the points are
   /// connected; it is absent when the samples do not form a lattice.
   static const char* GetLatticeSizeArrayName();
+
+  /// Name of the point data array that says whether the field had a value at each sample:
+  /// 1 where it did, 0 where the sample fell outside the field. A field that is defined
+  /// everywhere it is asked about (a transform) does not write it, and a missing array means
+  /// that every sample is valid. Grid lines and lattice cells stop at the invalid samples,
+  /// so that the geometry ends where the field does instead of continuing through the empty
+  /// space inside the bounding box.
+  static const char* GetValidSampleArrayName();
 
   ///@{
   /// Region that is sampled, in the RAS coordinate system. regionToRAS defines the origin
@@ -151,6 +160,12 @@ protected:
   /// follow the resolution of what they sample.
   virtual double GetDefaultSamplingSpacingMm() { return 1.0; }
 
+  /// Bounds of the region where the field has values, in RAS. Used to keep a slice view from
+  /// sampling the whole of its field of view when the field only occupies a small part of it.
+  /// Returns false for a field that has no bounds of its own, such as a transform, which is
+  /// defined everywhere.
+  virtual bool GetFieldBounds(double vtkNotUsed(bounds_RAS)[6]) { return false; }
+
   /// Positions to sample when neither sample positions, a slice plane, nor a region is set.
   /// Sources that have a natural extent of their own (an image) reimplement this; sources
   /// that do not (a transform is defined everywhere) show nothing until a region is given.
@@ -167,7 +182,10 @@ protected:
   /// Connect the points of a lattice of the given size with voxel cells, so that the output
   /// can be contoured and interpolated. The points must be ordered with the first axis
   /// varying fastest.
-  static void GenerateLatticeCells(vtkUnstructuredGrid* outputGrid, const int latticeSize[3]);
+  /// validSamples, when given, says which points the field had a value at; a cell is only
+  /// created where all of its corners did, so that the cells cover the field and not the
+  /// whole bounding box around it.
+  static void GenerateLatticeCells(vtkUnstructuredGrid* outputGrid, const int latticeSize[3], vtkUnsignedCharArray* validSamples = nullptr);
 
   /// Set by subclasses at the end of RequestData. Also stores the size in the field data of
   /// the output, so that downstream filters can use it.

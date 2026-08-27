@@ -56,6 +56,7 @@
 #include <vtkImplicitFunction.h>
 #include <vtkImplicitFunctionCollection.h>
 #include <vtkLookupTable.h>
+#include <vtkScalarsToColors.h>
 #include <vtkMatrix4x4.h>
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
@@ -1408,6 +1409,18 @@ void vtkMRMLModelDisplayableManager::UpdateMapperProperties(vtkMRMLModelNode* mo
       vtkSmartPointer<vtkLookupTable> dNodeLUT =
         vtkSmartPointer<vtkLookupTable>::Take(displayNode->GetColorNode() ? displayNode->GetColorNode()->CreateLookupTableCopy() : nullptr);
       mapper->SetLookupTable(dNodeLUT);
+
+      // An array with more than one component is coloured by how long its tuples are. Left
+      // alone, a lookup table maps the first component, which for a vector array is one
+      // direction's worth of it and not a quantity anyone asked to see. This is set on the
+      // table the mapper ends up with rather than on dNodeLUT, because with no color node
+      // there is no copy to set it on and the mapper falls back to one of its own.
+      vtkDataArray* activeScalarArray = displayNode->GetActiveScalarArray();
+      vtkScalarsToColors* mapperLookupTable = mapper->GetLookupTable();
+      if (mapperLookupTable && activeScalarArray && activeScalarArray->GetNumberOfComponents() > 1)
+      {
+        mapperLookupTable->SetVectorModeToMagnitude();
+      }
     }
 
     // Set scalar range

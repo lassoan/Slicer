@@ -27,12 +27,15 @@
 #include <vtkArrayCalculator.h>
 #include <vtkContourFilter.h>
 #include <vtkObjectFactory.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
 #include <vtkStreamTracer.h>
 #include <vtkTubeFilter.h>
 #include <vtkWarpVector.h>
 
 // STD includes
 #include <algorithm>
+#include <string>
 #include <vector>
 
 //----------------------------------------------------------------------------
@@ -44,11 +47,13 @@ vtkMRMLVectorFieldModePipeline::vtkMRMLVectorFieldModePipeline()
   this->GridLines = vtkSmartPointer<vtkMRMLVectorFieldGridLines>::New();
   this->Warper = vtkSmartPointer<vtkWarpVector>::New();
   this->NonWarpedGridMagnitude = vtkSmartPointer<vtkArrayCalculator>::New();
+  this->FieldMagnitude = vtkSmartPointer<vtkArrayCalculator>::New();
   this->NonWarpedGridMagnitude->SetAttributeTypeToPointData();
   this->NonWarpedGridAppender = vtkSmartPointer<vtkAppendPolyData>::New();
   this->GridTuber = vtkSmartPointer<vtkTubeFilter>::New();
   this->Contour = vtkSmartPointer<vtkContourFilter>::New();
   this->StreamTracer = vtkSmartPointer<vtkStreamTracer>::New();
+  this->StreamlineSeeds = vtkSmartPointer<vtkPolyData>::New();
   this->StreamlineTuber = vtkSmartPointer<vtkTubeFilter>::New();
 
   this->GridTuber->SetNumberOfSides(8);
@@ -95,14 +100,14 @@ vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateGrid(vtkMRMLVectorFiel
   this->GridLines->SetSubdivision(displayNode->GetGridSubdivision());
 
   this->Warper->SetInputConnection(this->GridLines->GetOutputPort());
-  this->Warper->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, vtkMRMLVectorFieldSampler::GetVectorArrayName());
+  this->Warper->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
+                                      vtkMRMLVectorFieldModePipeline::GetFieldVectorArrayName(displayNode, fieldConnection));
   this->Warper->SetScaleFactor(displayNode->GetGridScalePercent() * 0.01);
 
   vtkAlgorithmOutput* gridConnection = this->Warper->GetOutputPort();
 
-  // Showing the undeformed grid next to the deformed one makes the deformation easier to
-  // read. It is only offered in slice views: in a 3D view it makes the image unreadable.
-  if (flat && displayNode->GetGridShowNonWarped())
+  // Showing the undeformed grid next to the deformed one makes the deformation easier to read
+  if (displayNode->GetGridShowNonWarped())
   {
     // The undeformed grid is drawn in the color that the color map gives to a zero
     // displacement, which sets it apart from the deformed grid without needing a second
@@ -135,11 +140,51 @@ vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateGrid(vtkMRMLVectorFiel
 }
 
 //----------------------------------------------------------------------------
+const char* vtkMRMLVectorFieldModePipeline::GetFieldVectorArrayName(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection)
+{
+  // Which array holds the vectors is a property of the connection that was handed in, not of
+  // the display node: the same display node feeds a 3D view from the mesh itself and each
+  // slice view from a sampler of its own, and a sampler renames the arrays it produces.
+  vtkAlgorithm* producer = (fieldConnection ? fieldConnection->GetProducer() : nullptr);
+  if (vtkMRMLVectorFieldSampler::SafeDownCast(producer))
+  {
+    return vtkMRMLVectorFieldSampler::GetVectorArrayName();
+  }
+  return (displayNode ? displayNode->GetOrientationArrayName() : nullptr);
+}
+
+//----------------------------------------------------------------------------
+vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::GetMagnitudeConnection(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection)
+{
+  // A sampled field comes with its magnitude already computed. The point data of a mesh does
+  // not: it carries whatever arrays the file had, so the magnitude that the isosurfaces are
+  // levels of has to be computed from the vectors that are being rendered.
+  vtkAlgorithm* producer = (fieldConnection ? fieldConnection->GetProducer() : nullptr);
+  if (vtkMRMLVectorFieldSampler::SafeDownCast(producer))
+  {
+    return fieldConnection;
+  }
+  const char* vectorArrayName = vtkMRMLVectorFieldModePipeline::GetFieldVectorArrayName(displayNode, fieldConnection);
+  if (!vectorArrayName || vectorArrayName[0] == '\0')
+  {
+    return fieldConnection;
+  }
+  this->FieldMagnitude->SetInputConnection(fieldConnection);
+  this->FieldMagnitude->SetAttributeTypeToPointData();
+  this->FieldMagnitude->RemoveAllVariables();
+  this->FieldMagnitude->AddVectorArrayName(vectorArrayName);
+  this->FieldMagnitude->SetResultArrayName(vtkMRMLVectorFieldSampler::GetMagnitudeArrayName());
+  std::string function = std::string("mag(") + vectorArrayName + ")";
+  this->FieldMagnitude->SetFunction(function.c_str());
+  return this->FieldMagnitude->GetOutputPort();
+}
+
+//----------------------------------------------------------------------------
 vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateContour(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection)
 {
   // Isosurfaces of the magnitude. In a slice view the sampled field is a single layer of
   // cells, so the same filter produces isolines.
-  this->Contour->SetInputConnection(fieldConnection);
+  this->Contour->SetInputConnection(this->GetMagnitudeConnection(displayNode, fieldConnection));
   this->Contour->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, vtkMRMLVectorFieldSampler::GetMagnitudeArrayName());
   std::vector<double> levels;
   displayNode->GetEffectiveContourLevelsMm(levels);
@@ -154,14 +199,36 @@ vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateContour(vtkMRMLVectorF
 //----------------------------------------------------------------------------
 vtkAlgorithmOutput* vtkMRMLVectorFieldModePipeline::UpdateStreamline(vtkMRMLVectorFieldDisplayNode* displayNode, vtkAlgorithmOutput* fieldConnection, bool flat)
 {
-  // Curves that follow the field. The sampled points are used as seeds, which puts a
-  // streamline everywhere a glyph would be.
+  // Curves that follow the field, started from the points of the node that says where they
+  // should start. A streamline is only worth following from somewhere chosen, so without
+  // such a node there is nothing to draw.
+  vtkNew<vtkPoints> seedPositions_RAS;
+  if (!displayNode->GetStreamlineSeedPositions(seedPositions_RAS))
+  {
+    return nullptr;
+  }
+  this->StreamlineSeeds->Initialize();
+  this->StreamlineSeeds->SetPoints(seedPositions_RAS);
   this->StreamTracer->SetInputConnection(fieldConnection);
-  this->StreamTracer->SetSourceConnection(fieldConnection);
-  this->StreamTracer->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, vtkMRMLVectorFieldSampler::GetVectorArrayName());
-  this->StreamTracer->SetIntegrationDirectionToBoth();
+  this->StreamTracer->SetSourceData(this->StreamlineSeeds);
+  this->StreamTracer->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
+                                            vtkMRMLVectorFieldModePipeline::GetFieldVectorArrayName(displayNode, fieldConnection));
+  if (displayNode->GetStreamlineBidirectional())
+  {
+    this->StreamTracer->SetIntegrationDirectionToBoth();
+  }
+  else
+  {
+    this->StreamTracer->SetIntegrationDirectionToForward();
+  }
   this->StreamTracer->SetIntegratorTypeToRungeKutta45();
   this->StreamTracer->SetMaximumPropagation(displayNode->GetMaximumPropagationMm());
+  double initialStepMm = displayNode->GetStreamlineInitialIntegrationStepMm();
+  if (initialStepMm > 0.0)
+  {
+    this->StreamTracer->SetIntegrationStepUnit(vtkStreamTracer::LENGTH_UNIT);
+    this->StreamTracer->SetInitialIntegrationStep(initialStepMm);
+  }
 
   double tubeDiameterMm = displayNode->GetStreamlineTubeDiameterMm();
   if (flat || tubeDiameterMm <= 0.0)

@@ -120,7 +120,6 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   q->connect(this->GlyphTypeComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onGlyphTypeChanged(int)));
   q->connect(this->OrientationArrayComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onOrientationArrayChanged(int)));
   q->connect(this->ScaleArrayComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onScaleArrayChanged(int)));
-  q->connect(this->SwapOrientationArrayCoordinateSystemButton, SIGNAL(clicked()), q, SLOT(swapOrientationArrayCoordinateSystem()));
   q->connect(this->VectorScaleModeComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onVectorScaleModeChanged(int)));
   q->connect(this->ScaleFactorSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onScaleFactorChanged(double)));
   q->connect(this->MaskingModeComboBox, SIGNAL(currentIndexChanged(int)), q, SLOT(onMaskingModeChanged(int)));
@@ -147,11 +146,15 @@ void qMRMLVectorFieldDisplayWidgetPrivate::init()
   q->connect(this->SamplingSpacingSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onSamplingSpacingChanged(double)));
   q->connect(this->RegionNodeComboBox, SIGNAL(currentNodeChanged(vtkMRMLNode*)), q, SLOT(onRegionNodeChanged(vtkMRMLNode*)));
   q->connect(this->SamplePointsNodeComboBox, SIGNAL(currentNodeChanged(vtkMRMLNode*)), q, SLOT(onSamplePointsNodeChanged(vtkMRMLNode*)));
+  q->connect(this->SeedPointsNodeComboBox, SIGNAL(currentNodeChanged(vtkMRMLNode*)), q, SLOT(onSeedPointsNodeChanged(vtkMRMLNode*)));
+  q->connect(this->SeedSpacingSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onSeedSpacingChanged(double)));
   q->connect(this->GridSpacingSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGridSpacingChanged(double)));
   q->connect(this->GridShowNonWarpedCheckBox, SIGNAL(toggled(bool)), q, SLOT(onGridShowNonWarpedToggled(bool)));
   q->connect(this->GridLineDiameterSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onGridLineDiameterChanged(double)));
   q->connect(this->ContourLevelsLineEdit, SIGNAL(editingFinished()), q, SLOT(onContourLevelsChanged()));
   q->connect(this->MaximumPropagationSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onMaximumPropagationChanged(double)));
+  q->connect(this->StreamlineBidirectionalCheckBox, SIGNAL(toggled(bool)), q, SLOT(onStreamlineBidirectionalToggled(bool)));
+  q->connect(this->StreamlineInitialStepSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onStreamlineInitialStepChanged(double)));
   q->connect(this->StreamlineTubeDiameterSpinBox, SIGNAL(valueChanged(double)), q, SLOT(onStreamlineTubeDiameterChanged(double)));
 
   // 3D display
@@ -298,19 +301,12 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   bool hasArrayChoice = (d->FieldArrayComboBox->count() > 1);
   d->FieldArrayLabel->setVisible(hasArrayChoice);
   d->FieldArrayComboBox->setVisible(hasArrayChoice);
-  d->SwapOrientationArrayCoordinateSystemButton->setVisible(hasArrayChoice);
 
   int vectorScaleModeIndex = d->VectorScaleModeComboBox->findData(d->GlyphDisplayNode->GetVectorScaleMode());
   d->VectorScaleModeComboBox->setCurrentIndex(vectorScaleModeIndex >= 0 ? vectorScaleModeIndex : 0);
   bool scaleArrayIsVector = (currentScaleArrayComponents == 3);
   d->VectorScaleModeLabel->setEnabled(scaleArrayIsVector);
   d->VectorScaleModeComboBox->setEnabled(scaleArrayIsVector);
-
-  // Converting between RAS and LPS is only meaningful for a 3-component array, and only for
-  // sources whose arrays can be edited in place (a mesh); arrays that a sampler computes are
-  // overwritten on the next update. It sits with the array it converts.
-  d->SwapOrientationArrayCoordinateSystemButton->setEnabled(!fieldArrayName.isEmpty() //
-                                                            && vtkMRMLModelNode::SafeDownCast(d->DisplayableNode) != nullptr);
 
   d->ScaleFactorSpinBox->setValue(d->GlyphDisplayNode->GetEffectiveScaleFactor());
 
@@ -353,6 +349,8 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   d->GridLineDiameterSpinBox->setValue(d->GlyphDisplayNode->GetGridLineDiameterMm());
   d->ContourLevelsLineEdit->setText(QString::fromStdString(d->GlyphDisplayNode->GetContourLevelsMmAsString()));
   d->MaximumPropagationSpinBox->setValue(d->GlyphDisplayNode->GetMaximumPropagationMm());
+  d->StreamlineBidirectionalCheckBox->setChecked(d->GlyphDisplayNode->GetStreamlineBidirectional());
+  d->StreamlineInitialStepSpinBox->setValue(d->GlyphDisplayNode->GetStreamlineInitialIntegrationStepMm());
   d->StreamlineTubeDiameterSpinBox->setValue(d->GlyphDisplayNode->GetStreamlineTubeDiameterMm());
 
   bool glyphMode = (visualizationMode == vtkMRMLVectorFieldDisplayNode::VisualizationModeGlyph);
@@ -394,8 +392,25 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   d->GridLineDiameterSpinBox->setVisible(gridMode);
   d->ContourLevelsLabel->setVisible(contourMode);
   d->ContourLevelsLineEdit->setVisible(contourMode);
+  d->SeedPointsLabel->setVisible(streamlineMode);
+  d->SeedPointsNodeComboBox->setVisible(streamlineMode);
+  d->SeedPointsNodeComboBox->setCurrentNode(d->GlyphDisplayNode->GetSeedPointsNode());
+  // A plane and a curve describe a shape that the seeds are spread over, so how far apart to
+  // put them is a question. A point list and a model already say where each seed goes.
+  vtkMRMLNode* seedPointsNode = d->GlyphDisplayNode->GetSeedPointsNode();
+  bool seedSpacingUsed = (streamlineMode && seedPointsNode                    //
+                          && (seedPointsNode->IsA("vtkMRMLMarkupsPlaneNode")   //
+                              || seedPointsNode->IsA("vtkMRMLMarkupsCurveNode") //
+                              || seedPointsNode->IsA("vtkMRMLSliceNode")));
+  d->SeedSpacingLabel->setVisible(seedSpacingUsed);
+  d->SeedSpacingSpinBox->setVisible(seedSpacingUsed);
+  d->SeedSpacingSpinBox->setValue(d->GlyphDisplayNode->GetSeedSpacingMm());
   d->MaximumPropagationLabel->setVisible(streamlineMode);
   d->MaximumPropagationSpinBox->setVisible(streamlineMode);
+  d->StreamlineBidirectionalLabel->setVisible(streamlineMode);
+  d->StreamlineBidirectionalCheckBox->setVisible(streamlineMode);
+  d->StreamlineInitialStepLabel->setVisible(streamlineMode);
+  d->StreamlineInitialStepSpinBox->setVisible(streamlineMode);
   d->StreamlineTubeDiameterLabel->setVisible(streamlineMode);
   d->StreamlineTubeDiameterSpinBox->setVisible(streamlineMode);
 
@@ -404,7 +419,6 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   bool hasFixedArrays = d->GlyphDisplayNode->HasFixedFieldArrays();
   for (QWidget* arrayWidget : { static_cast<QWidget*>(d->OrientationArrayLabel),
                                 static_cast<QWidget*>(d->OrientationArrayComboBox),
-                                static_cast<QWidget*>(d->SwapOrientationArrayCoordinateSystemButton),
                                 static_cast<QWidget*>(d->ScaleArrayLabel),
                                 static_cast<QWidget*>(d->ScaleArrayComboBox) })
   {
@@ -432,14 +446,17 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   // field without drawing glyphs, where it reads as a resolution rather than a spacing.
   d->SamplingSpacingLabel->setVisible(usesLattice && !showGlyphSpacing);
   d->SamplingSpacingSpinBox->setVisible(usesLattice && !showGlyphSpacing);
-  d->RegionNodeComboBox->setVisible(isSampledSource);
+  // The region bounds every source, not only the sampled ones: glyphs that sit on the points
+  // of a mesh are limited to it as well, so it is offered whatever the field is carried by.
+  d->RegionLabel->setVisible(true);
+  d->RegionNodeComboBox->setVisible(true);
+  d->RegionNodeComboBox->setCurrentNode(d->GlyphDisplayNode->GetRegionNode());
   d->SamplePointsLabel->setVisible(usesNodePoints);
   d->SamplePointsNodeComboBox->setVisible(usesNodePoints);
   if (isSampledSource)
   {
     d->SamplingSpacingSpinBox->setValue(d->GlyphDisplayNode->GetEffectiveSamplingSpacingMm());
     d->GlyphSpacingSpinBox->setValue(d->GlyphDisplayNode->GetEffectiveSamplingSpacingMm());
-    d->RegionNodeComboBox->setCurrentNode(d->GlyphDisplayNode->GetRegionNode());
   }
   d->SamplePointsNodeComboBox->setCurrentNode(d->GlyphDisplayNode->GetSamplePointsNode());
 
@@ -523,6 +540,8 @@ void qMRMLVectorFieldDisplayWidget::updateWidgetFromMRML()
   d->GlyphResolution2DSpinBox->setValue(d->GlyphDisplayNode->GetGlyphResolution2D());
   d->GlyphDiameterLabel->setVisible(glyphMode && hasDiameter);
   d->GlyphDiameterSpinBox->setVisible(glyphMode && hasDiameter);
+  // The toggle only says what unit the spin box next to it is in, so it goes with it
+  d->GlyphDiameterAbsoluteToolButton->setVisible(glyphMode && hasDiameter);
   d->GlyphShaftDiameterLabel->setVisible(glyphMode && isArrow);
   d->GlyphShaftDiameterSpinBox->setVisible(glyphMode && isArrow);
   d->GlyphTipLengthLabel->setVisible(glyphMode && isArrow);
@@ -835,6 +854,28 @@ void qMRMLVectorFieldDisplayWidget::onRegionNodeChanged(vtkMRMLNode* node)
 }
 
 //------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onSeedSpacingChanged(double value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetSeedSpacingMm(value);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onSeedPointsNodeChanged(vtkMRMLNode* node)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetAndObserveSeedPointsNode(node);
+}
+
+//------------------------------------------------------------------------------
 void qMRMLVectorFieldDisplayWidget::onSamplePointsNodeChanged(vtkMRMLNode* node)
 {
   Q_D(qMRMLVectorFieldDisplayWidget);
@@ -890,6 +931,28 @@ void qMRMLVectorFieldDisplayWidget::onContourLevelsChanged()
 }
 
 //------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onStreamlineBidirectionalToggled(bool bidirectional)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetStreamlineBidirectional(bidirectional);
+}
+
+//------------------------------------------------------------------------------
+void qMRMLVectorFieldDisplayWidget::onStreamlineInitialStepChanged(double value)
+{
+  Q_D(qMRMLVectorFieldDisplayWidget);
+  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
+  {
+    return;
+  }
+  d->GlyphDisplayNode->SetStreamlineInitialIntegrationStepMm(value);
+}
+
+//------------------------------------------------------------------------------
 void qMRMLVectorFieldDisplayWidget::onMaximumPropagationChanged(double value)
 {
   Q_D(qMRMLVectorFieldDisplayWidget);
@@ -909,43 +972,6 @@ void qMRMLVectorFieldDisplayWidget::onStreamlineTubeDiameterChanged(double value
     return;
   }
   d->GlyphDisplayNode->SetStreamlineTubeDiameterMm(value);
-}
-
-//------------------------------------------------------------------------------
-void qMRMLVectorFieldDisplayWidget::swapOrientationArrayCoordinateSystem()
-{
-  Q_D(qMRMLVectorFieldDisplayWidget);
-  if (!d->GlyphDisplayNode.GetPointer() || d->IsUpdatingWidgetFromMRML)
-  {
-    return;
-  }
-  vtkDataArray* orientationArray = d->GlyphDisplayNode->GetOrientationArray();
-  if (!orientationArray || orientationArray->GetNumberOfComponents() != 3)
-  {
-    return;
-  }
-
-  // RAS and LPS differ in the sign of the first two axes
-  vtkIdType numberOfTuples = orientationArray->GetNumberOfTuples();
-  for (vtkIdType tupleIndex = 0; tupleIndex < numberOfTuples; ++tupleIndex)
-  {
-    double vector[3] = { 0.0, 0.0, 0.0 };
-    orientationArray->GetTuple(tupleIndex, vector);
-    vector[0] = -vector[0];
-    vector[1] = -vector[1];
-    orientationArray->SetTuple(tupleIndex, vector);
-  }
-  orientationArray->Modified();
-
-  // The array belongs to the model node's mesh: notify its observers (display
-  // pipelines) that the mesh data changed.
-  vtkMRMLModelNode* modelNode = vtkMRMLModelNode::SafeDownCast(d->DisplayableNode);
-  vtkDataSet* mesh = modelNode ? modelNode->GetMesh() : nullptr;
-  if (mesh)
-  {
-    mesh->GetPointData()->Modified();
-    mesh->Modified();
-  }
 }
 
 //------------------------------------------------------------------------------
