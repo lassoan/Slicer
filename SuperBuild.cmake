@@ -200,7 +200,7 @@ endmacro()
 
 Slicer_Remote_Add(vtkAddon
   GIT_REPOSITORY "${EP_GIT_PROTOCOL}://github.com/lassoan/vtkAddon"
-  GIT_TAG 6b6859ce94d276c464998ed40668764ec2465775
+  GIT_TAG scattered-bspline-transform
   OPTION_NAME Slicer_BUILD_vtkAddon
   )
 list_conditional_append(Slicer_BUILD_vtkAddon Slicer_REMOTE_DEPENDENCIES vtkAddon)
