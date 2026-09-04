@@ -100,6 +100,11 @@ public:
   /// Find first picked node from prop3Ds in cell picker and set PickedNodeID in Internal
   void FindFirstPickedDisplayNodeFromPickerProp3Ds();
 
+  /// Whether a display node is shown clipped: clipping is on for it (or for the folder whose
+  /// display overrides it), it has a clip node, and at least one of that clip node's clipping
+  /// nodes is in use. This is what UpdateModelMesh decides on, and what DisplayedClipState records.
+  bool IsClipped(vtkMRMLDisplayNode* displayNode);
+
 public:
   vtkMRMLModelDisplayableManager* External;
 
@@ -111,6 +116,7 @@ public:
   std::map<std::string, vtkWeakPointer<vtkMRMLDisplayableNode>> DisplayableNodes;
   std::map<std::string, vtkSmartPointer<vtkTransformFilter>>    DisplayNodeTransformFilters;
   std::map<std::string, vtkSmartPointer<vtkAlgorithm>>          Clippers;
+  std::map<std::string, vtkSmartPointer<vtkImplicitBoolean>>    ClipFunctions;
   std::map<std::string, vtkSmartPointer<vtkCapPolyData>>        Cappers;
   std::map<std::string, vtkSmartPointer<vtkProp3D>>             DisplayedCapActors;
   std::map<std::string, vtkSmartPointer<vtkTransformFilter>>    DisplayNodeCapTransformFilters;
@@ -169,6 +175,40 @@ void vtkMRMLModelDisplayableManager::vtkInternal::ResetPick()
   }
   this->PickedCellID = -1;
   this->PickedPointID = -1;
+}
+
+//---------------------------------------------------------------------------
+bool vtkMRMLModelDisplayableManager::vtkInternal::IsClipped(vtkMRMLDisplayNode* displayNode)
+{
+  vtkMRMLModelDisplayNode* modelDisplayNode = vtkMRMLModelDisplayNode::SafeDownCast(displayNode);
+  if (!modelDisplayNode)
+  {
+    return false;
+  }
+  vtkMRMLClipNode* clipNode = modelDisplayNode->GetClipNode();
+  if (!clipNode || !clipNode->GetImplicitFunctionWorld())
+  {
+    return false;
+  }
+  int clipping = modelDisplayNode->GetClipping();
+  vtkMRMLDisplayableNode* displayableNode = modelDisplayNode->GetDisplayableNode();
+  vtkMRMLDisplayNode* hierarchyDisplayNode = displayableNode ? vtkMRMLFolderDisplayNode::GetOverridingHierarchyDisplayNode(displayableNode) : nullptr;
+  if (hierarchyDisplayNode)
+  {
+    clipping = hierarchyDisplayNode->GetClipping();
+  }
+  if (!clipping)
+  {
+    return false;
+  }
+  for (int i = 0; i < clipNode->GetNumberOfClippingNodes(); ++i)
+  {
+    if (clipNode->GetNthClippingNodeState(i) != vtkMRMLClipNode::ClipOff)
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 //---------------------------------------------------------------------------
@@ -685,6 +725,7 @@ void vtkMRMLModelDisplayableManager::ClearDisplayMaps()
   }
   this->Internal->DisplayNodeTransformFilters.clear();
   this->Internal->Clippers.clear();
+  this->Internal->ClipFunctions.clear();
   this->Internal->Cappers.clear();
   if (this->GetRenderer())
   {
@@ -811,8 +852,28 @@ void vtkMRMLModelDisplayableManager::UpdateModelMesh(vtkMRMLDisplayableNode* dis
       vtkImplicitFunction* implicitFunction = clipNode->GetImplicitFunctionWorld();
       if (implicitFunction)
       {
-        implicitBoolean = vtkSmartPointer<vtkImplicitBoolean>::New();
-        implicitBoolean->AddFunction(implicitFunction);
+        // The clip function is kept from one update to the next and only changed when the clip
+        // node's function or the model's transform has changed. A new one on every update would
+        // modify the clipper and the cap filter, and so clip the whole mesh again on the next
+        // render - and this method runs on every modified event of the model, of its display node
+        // and of its clip node, and on every node added to or removed from the scene. Clipping a
+        // large mesh takes seconds.
+        auto clipFunctionIter = this->Internal->ClipFunctions.find(modelDisplayNode->GetID());
+        if (clipFunctionIter != this->Internal->ClipFunctions.end())
+        {
+          implicitBoolean = clipFunctionIter->second;
+        }
+        else
+        {
+          implicitBoolean = vtkSmartPointer<vtkImplicitBoolean>::New();
+          this->Internal->ClipFunctions[modelDisplayNode->GetID()] = implicitBoolean;
+        }
+        vtkImplicitFunctionCollection* functions = implicitBoolean->GetFunction();
+        if (functions->GetNumberOfItems() != 1 || functions->GetItemAsObject(0) != implicitFunction)
+        {
+          functions->RemoveAllItems();
+          implicitBoolean->AddFunction(implicitFunction);
+        }
 
         vtkSmartPointer<vtkAlgorithm> oldClipper = nullptr;
         if (this->Internal->Clippers.find(modelDisplayNode->GetID()) != this->Internal->Clippers.end())
@@ -821,14 +882,46 @@ void vtkMRMLModelDisplayableManager::UpdateModelMesh(vtkMRMLDisplayableNode* dis
         }
         clipper = this->GetClipper(modelDisplayNode, meshType, implicitBoolean, clipNode->GetClippingMethod());
         filterUpdateNeeded = oldClipper != clipper;
-      }
 
-      if (tnode && !hasNonLinearTransform)
-      {
-        // If the transform is non-linear, worldTransform will have already been set.
-        // Only need to calculate here for linear transforms.
-        tnode->GetTransformToWorld(worldTransform);
-        implicitBoolean->SetTransform(worldTransform);
+        // A linear transform of the model is applied by the clip function; a non-linear one has
+        // already been applied to the mesh by the transform filter. The matrix is compared and
+        // only set when it has changed: setting it modifies the function, and with it the clipper.
+        if (tnode && !hasNonLinearTransform)
+        {
+          vtkNew<vtkMatrix4x4> matrixToWorld;
+          tnode->GetMatrixTransformToWorld(matrixToWorld);
+          vtkTransform* clipTransform = vtkTransform::SafeDownCast(implicitBoolean->GetTransform());
+          if (!clipTransform)
+          {
+            vtkNew<vtkTransform> newClipTransform;
+            newClipTransform->SetMatrix(matrixToWorld);
+            implicitBoolean->SetTransform(newClipTransform);
+          }
+          else
+          {
+            bool sameMatrix = true;
+            vtkMatrix4x4* currentMatrix = clipTransform->GetMatrix();
+            for (int row = 0; row < 4 && sameMatrix; ++row)
+            {
+              for (int column = 0; column < 4; ++column)
+              {
+                if (currentMatrix->GetElement(row, column) != matrixToWorld->GetElement(row, column))
+                {
+                  sameMatrix = false;
+                  break;
+                }
+              }
+            }
+            if (!sameMatrix)
+            {
+              clipTransform->SetMatrix(matrixToWorld);
+            }
+          }
+        }
+        else if (implicitBoolean->GetTransform() != nullptr)
+        {
+          implicitBoolean->SetTransform(static_cast<vtkAbstractTransform*>(nullptr));
+        }
       }
     }
 
@@ -875,7 +968,8 @@ void vtkMRMLModelDisplayableManager::UpdateModelMesh(vtkMRMLDisplayableNode* dis
       {
         cit = this->Internal->DisplayedClipState.find(modelDisplayNode->GetID());
       }
-      if (cit != this->Internal->DisplayedClipState.end() && cit->second == clipping)
+      // DisplayedClipState records whether a clipper was built, which is what is compared here.
+      if (cit != this->Internal->DisplayedClipState.end() && cit->second == (clipper ? 1 : 0))
       {
         // make sure that we are looking at the current mesh (most of the code in here
         // assumes a display node will never change what mesh it wants to view and hence
@@ -886,11 +980,28 @@ void vtkMRMLModelDisplayableManager::UpdateModelMesh(vtkMRMLDisplayableNode* dis
         if (actor && actor->GetMapper())
         {
           vtkMapper* mapper = actor->GetMapper();
-          if (transformFilter)
+          if (clipper)
+          {
+            // The clipper and the cap filter take the mesh from the transform filter if the model
+            // has a non-linear transform and from the model otherwise, and the mapper takes the
+            // clipper's output. Each is a no-op where already so connected, so a clipped model
+            // keeps its mapper - and the surface the mapper has extracted from the clipped mesh -
+            // from one update to the next. It used to be rebuilt on every update of a clipped
+            // model under a transform, which extracted that surface again each time.
+            vtkAlgorithmOutput* clipperInput = transformFilter ? transformFilter->GetOutputPort() : meshConnection;
+            clipper->SetInputConnection(clipperInput);
+            auto capIter = this->Internal->Cappers.find(displayNode->GetID());
+            if (capIter != this->Internal->Cappers.end())
+            {
+              capIter->second->SetInputConnection(clipperInput);
+            }
+            mapper->SetInputConnection(clipper->GetOutputPort());
+          }
+          else if (transformFilter)
           {
             mapper->SetInputConnection(transformFilter->GetOutputPort());
           }
-          else if (mapper && !clipping)
+          else
           {
             mapper->SetInputConnection(meshConnection);
           }
@@ -901,8 +1012,7 @@ void vtkMRMLModelDisplayableManager::UpdateModelMesh(vtkMRMLDisplayableNode* dis
           }
         }
 
-        vtkMRMLTransformNode* tnode = displayableNode->GetParentTransformNode();
-        if ((!clipping || tnode == nullptr) && !mapperUpdateNeeded && !filterUpdateNeeded)
+        if (!mapperUpdateNeeded && !filterUpdateNeeded)
         {
           continue;
         }
@@ -1086,11 +1196,6 @@ void vtkMRMLModelDisplayableManager::RemoveModelProps()
     }
     else
     {
-      int clipModel = 0;
-      if (modelDisplayNode != nullptr)
-      {
-        clipModel = modelDisplayNode->GetClipping();
-      }
       auto clipIter = this->Internal->DisplayedClipState.find(iter->first);
       if (clipIter == this->Internal->DisplayedClipState.end())
       {
@@ -1098,8 +1203,13 @@ void vtkMRMLModelDisplayableManager::RemoveModelProps()
       }
       else
       {
-
-        if (clipIter->second || (modelDisplayNode->GetClipping() && clipIter->second != clipModel))
+        // The props are removed only when the model's clipping state has changed since they were
+        // built, so that UpdateModelMesh builds them for the new state. Removing every clipped
+        // model's props, as was done before, threw away its clipper and the clipped mesh held in
+        // it, and had the whole mesh clipped again on the next render - on every update from the
+        // scene, which is every node added to or removed from it.
+        int clipModel = this->Internal->IsClipped(modelDisplayNode) ? 1 : 0;
+        if (clipIter->second != clipModel)
         {
           removedIDs.push_back(iter->first);
         }
@@ -1170,6 +1280,12 @@ void vtkMRMLModelDisplayableManager::RemoveDisplayedID(const std::string& id)
   if (clipperIter != this->Internal->Clippers.end())
   {
     this->Internal->Clippers.erase(clipperIter);
+  }
+
+  auto clipFunctionIter = this->Internal->ClipFunctions.find(id);
+  if (clipFunctionIter != this->Internal->ClipFunctions.end())
+  {
+    this->Internal->ClipFunctions.erase(clipFunctionIter);
   }
 
   auto capIter = this->Internal->Cappers.find(id);
@@ -1937,10 +2053,7 @@ vtkAlgorithm* vtkMRMLModelDisplayableManager::GetClipper(vtkMRMLDisplayNode* dno
       }
       extractGeometry->SetImplicitFunction(clipFunction);
       extractGeometry->ExtractInsideOff();
-      if (clippingMethod == vtkMRMLClipNode::WholeCellsWithBoundary)
-      {
-        extractGeometry->ExtractBoundaryCellsOn();
-      }
+      extractGeometry->SetExtractBoundaryCells(clippingMethod == vtkMRMLClipNode::WholeCellsWithBoundary);
     }
   }
   else
@@ -1966,10 +2079,7 @@ vtkAlgorithm* vtkMRMLModelDisplayableManager::GetClipper(vtkMRMLDisplayNode* dno
       }
       extractPolyDataGeometry->SetImplicitFunction(clipFunction);
       extractPolyDataGeometry->ExtractInsideOff();
-      if (clippingMethod == vtkMRMLClipNode::WholeCellsWithBoundary)
-      {
-        extractPolyDataGeometry->ExtractBoundaryCellsOn();
-      }
+      extractPolyDataGeometry->SetExtractBoundaryCells(clippingMethod == vtkMRMLClipNode::WholeCellsWithBoundary);
     }
   }
 

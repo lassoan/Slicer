@@ -37,6 +37,8 @@
 
 // STD includes
 #include <sstream>
+#include <vector>
+#include <utility>
 
 const char* vtkMRMLClipNode::ClippingNodeReferenceRole = "clipping";
 const char* vtkMRMLClipNode::ClippingNodeReferenceRef = "clippingRef";
@@ -377,9 +379,9 @@ void vtkMRMLClipNode::OnNodeReferenceModified(vtkMRMLNodeReference* reference)
 //----------------------------------------------------------------------------
 void vtkMRMLClipNode::UpdateImplicitFunction()
 {
-  vtkImplicitFunctionCollection* functions = this->ImplicitFunction->GetFunction();
-  functions->RemoveAllItems();
-
+  // What the function is to be made of: one invertable boolean per clipping node in use, holding
+  // that node's own implicit function and inverted where the node clips its negative space.
+  std::vector<std::pair<vtkImplicitFunction*, bool>> wantedFunctions;
   int numClipNodes = this->GetNumberOfClippingNodes();
   for (int n = 0; n < numClipNodes; n++)
   {
@@ -391,41 +393,63 @@ void vtkMRMLClipNode::UpdateImplicitFunction()
       continue;
     }
 
-    vtkNew<vtkImplicitInvertableBoolean> invertableBoolean;
-    if (clippingState == ClipNegativeSpace)
-    {
-      invertableBoolean->InvertOn();
-    }
-    this->ImplicitFunction->AddFunction(invertableBoolean);
-
+    vtkImplicitFunction* implicitFunction = nullptr;
     vtkMRMLTransformableNode* transformableNode = vtkMRMLTransformableNode::SafeDownCast(clippingNode);
+    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(clippingNode);
+    vtkMRMLClipNode* clipNode = vtkMRMLClipNode::SafeDownCast(clippingNode);
     if (transformableNode && transformableNode->GetImplicitFunctionWorld())
     {
-      invertableBoolean->AddFunction(transformableNode->GetImplicitFunctionWorld());
-      continue;
+      implicitFunction = transformableNode->GetImplicitFunctionWorld();
     }
-
-    vtkMRMLSliceNode* sliceNode = vtkMRMLSliceNode::SafeDownCast(clippingNode);
-    if (sliceNode)
+    else if (sliceNode)
     {
-      vtkImplicitFunction* implicitFunction = sliceNode->GetImplicitFunctionWorld();
-      if (implicitFunction)
-      {
-        invertableBoolean->AddFunction(implicitFunction);
-      }
-      continue;
+      implicitFunction = sliceNode->GetImplicitFunctionWorld();
     }
-
-    vtkMRMLClipNode* clipNode = vtkMRMLClipNode::SafeDownCast(clippingNode);
-    if (clipNode)
+    else if (clipNode)
     {
-      vtkImplicitFunction* implicitFunction = clipNode->GetImplicitFunctionWorld();
-      if (implicitFunction)
-      {
-        invertableBoolean->AddFunction(implicitFunction);
-      }
-      continue;
+      implicitFunction = clipNode->GetImplicitFunctionWorld();
     }
+    wantedFunctions.emplace_back(implicitFunction, clippingState == ClipNegativeSpace);
+  }
+
+  // Nothing to do if that is what it is made of already. The nodes update their functions in
+  // place, so a clipping node that moved is seen through the function's modified time; rebuilding
+  // the boolean here would mark it modified whether or not anything moved, and have every model
+  // clipped by it clipped again on the next render, which takes seconds on a large mesh. This
+  // node is told of every modified event of its clipping nodes, and most of them move nothing.
+  vtkImplicitFunctionCollection* functions = this->ImplicitFunction->GetFunction();
+  bool unchanged = static_cast<size_t>(functions->GetNumberOfItems()) == wantedFunctions.size();
+  for (size_t i = 0; unchanged && i < wantedFunctions.size(); ++i)
+  {
+    vtkImplicitInvertableBoolean* current = vtkImplicitInvertableBoolean::SafeDownCast(functions->GetItemAsObject(static_cast<int>(i)));
+    if (!current || current->GetInvert() != wantedFunctions[i].second)
+    {
+      unchanged = false;
+      break;
+    }
+    vtkImplicitFunctionCollection* currentFunctions = current->GetFunction();
+    int wantedCount = wantedFunctions[i].first ? 1 : 0;
+    if (currentFunctions->GetNumberOfItems() != wantedCount //
+        || (wantedCount == 1 && currentFunctions->GetItemAsObject(0) != wantedFunctions[i].first))
+    {
+      unchanged = false;
+    }
+  }
+  if (unchanged)
+  {
+    return;
+  }
+
+  functions->RemoveAllItems();
+  for (const auto& wanted : wantedFunctions)
+  {
+    vtkNew<vtkImplicitInvertableBoolean> invertableBoolean;
+    invertableBoolean->SetInvert(wanted.second);
+    if (wanted.first)
+    {
+      invertableBoolean->AddFunction(wanted.first);
+    }
+    this->ImplicitFunction->AddFunction(invertableBoolean);
   }
 
   this->ImplicitFunction->Modified();
