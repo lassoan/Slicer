@@ -16,6 +16,11 @@
 #include "vtkMRMLSliceLogic.h"
 #include "vtkMRMLVolumeRenderingDisplayNode.h"
 #include "vtkSlicerVolumeRenderingLogic.h"
+#include "vtkSlicerShaderPropertyReader.h"
+#include "vtkSlicerVolumeRenderingReader.h"
+#include <vtkMRMLI18N.h>
+#include <vtkMRMLFileIOManager.h>
+#include <vtkNew.h>
 #include "vtkMRMLCPURayCastVolumeRenderingDisplayNode.h"
 #include "vtkMRMLGPURayCastVolumeRenderingDisplayNode.h"
 #include "vtkMRMLMultiVolumeRenderingDisplayNode.h"
@@ -1643,4 +1648,19 @@ bool vtkSlicerVolumeRenderingLogic::SetRecommendedVolumeRenderingProperties(vtkM
   }
 
   return false;
+}
+
+//----------------------------------------------------------------------------
+void vtkSlicerVolumeRenderingLogic::RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager)
+{
+  vtkNew<vtkSlicerVolumeRenderingReader> volumeRenderingReader;
+  volumeRenderingReader->SetVolumeRenderingLogic(this);
+  fileIOManager->RegisterReader(volumeRenderingReader);
+  fileIOManager->RegisterNodeWriter(
+    vtkMRMLTr("qSlicerVolumeRenderingModule", "Transfer Function").c_str(), "TransferFunctionFile", { "vtkMRMLVolumePropertyNode" }, true);
+  vtkNew<vtkSlicerShaderPropertyReader> shaderPropertyReader;
+  shaderPropertyReader->SetVolumeRenderingLogic(this);
+  fileIOManager->RegisterReader(shaderPropertyReader);
+  fileIOManager->RegisterNodeWriter(
+    vtkMRMLTr("qSlicerVolumeRenderingModule", "Shader Property").c_str(), "ShaderPropertyFile", { "vtkMRMLShaderPropertyNode" }, true);
 }

@@ -17,6 +17,11 @@
 
 // Markups includes
 #include "vtkSlicerMarkupsLogic.h"
+#include "vtkSlicerAnnotationsReader.h"
+#include "vtkSlicerMarkupsReader.h"
+#include "vtkSlicerMarkupsWriter.h"
+#include <vtkMRMLFileIOManager.h>
+#include <vtkNew.h>
 #include "vtkSlicerMarkupsWidget.h"
 
 // Markups MRML includes
@@ -2677,4 +2682,16 @@ char* vtkSlicerMarkupsLogic::LoadAnnotation(const char* filename, const char* na
   }
 
   return nodeID;
+}
+
+//----------------------------------------------------------------------------
+void vtkSlicerMarkupsLogic::RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager)
+{
+  vtkNew<vtkSlicerMarkupsReader> markupsReader;
+  markupsReader->SetMarkupsLogic(this);
+  fileIOManager->RegisterReader(markupsReader);
+  vtkNew<vtkSlicerAnnotationsReader> annotationsReader;
+  annotationsReader->SetMarkupsLogic(this);
+  fileIOManager->RegisterReader(annotationsReader);
+  fileIOManager->RegisterWriter(vtkNew<vtkSlicerMarkupsWriter>());
 }

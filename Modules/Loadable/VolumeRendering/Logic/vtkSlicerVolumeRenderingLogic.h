@@ -328,6 +328,9 @@ public:
   vtkGetMacro(DefaultROIClassName, std::string);
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerVolumeRenderingLogic();
   ~vtkSlicerVolumeRenderingLogic() override;
 

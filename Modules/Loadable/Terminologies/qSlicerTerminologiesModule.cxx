@@ -23,7 +23,6 @@
 // Terminologies includes
 #include "qSlicerTerminologiesModule.h"
 #include "qSlicerTerminologiesModuleWidget.h"
-#include "qSlicerTerminologiesReader.h"
 #include "vtkSlicerTerminologiesModuleLogic.h"
 
 // Qt includes
@@ -33,7 +32,6 @@
 // Slicer includes
 #include <qSlicerApplication.h>
 #include <qSlicerModuleManager.h>
-#include "qSlicerIOManager.h"
 
 //-----------------------------------------------------------------------------
 class qSlicerTerminologiesModulePrivate
@@ -101,11 +99,7 @@ void qSlicerTerminologiesModule::setup()
 {
   this->Superclass::setup();
 
-  vtkSlicerTerminologiesModuleLogic* terminologiesLogic = vtkSlicerTerminologiesModuleLogic::SafeDownCast(this->logic());
 
-  // Register IOs
-  qSlicerIOManager* ioManager = qSlicerApplication::application()->ioManager();
-  ioManager->registerIO(new qSlicerTerminologiesReader(terminologiesLogic, this));
 }
 
 //-----------------------------------------------------------------------------

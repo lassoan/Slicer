@@ -42,6 +42,9 @@ public:
   void PrintSelf(ostream& os, vtkIndent indent) override { Superclass::PrintSelf(os, indent); }
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerTextsLogic();
   ~vtkSlicerTextsLogic() override;
   vtkSlicerTextsLogic(const vtkSlicerTextsLogic&);

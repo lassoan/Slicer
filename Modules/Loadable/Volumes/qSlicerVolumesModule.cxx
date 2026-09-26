@@ -23,13 +23,11 @@
 #include <qSlicerCoreApplication.h>
 #include <qSlicerIOManager.h>
 #include <qSlicerModuleManager.h>
-#include <qSlicerNodeWriter.h>
 
 // Volumes Logic includes
 #include <vtkSlicerVolumesLogic.h>
 
 // Volumes QTModule includes
-#include "qSlicerVolumesReader.h"
 #include "qSlicerVolumesModule.h"
 #include "qSlicerVolumesModuleWidget.h"
 
@@ -129,11 +127,7 @@ void qSlicerVolumesModule::setup()
 {
   this->Superclass::setup();
 
-  vtkSlicerVolumesLogic* volumesLogic = vtkSlicerVolumesLogic::SafeDownCast(this->logic());
 
-  qSlicerCoreIOManager* ioManager = qSlicerCoreApplication::application()->coreIOManager();
-  ioManager->registerIO(new qSlicerVolumesReader(volumesLogic, this));
-  ioManager->registerIO(new qSlicerNodeWriter("Volumes", QString("VolumeFile"), QStringList() << "vtkMRMLVolumeNode", true, this));
 
   // Register Subject Hierarchy core plugins
   qSlicerSubjectHierarchyPluginHandler::instance()->registerPlugin(new qSlicerSubjectHierarchyVolumesPlugin());

@@ -27,6 +27,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QImage>
 #include <QVariant>
 
 // QtCore includes
@@ -35,9 +36,17 @@
 
 class qSlicerIOOptions;
 class qSlicerIOPrivate;
+class vtkImageData;
 class vtkMRMLMessageCollection;
+class vtkMRMLFileIOHandler;
+class vtkMRMLIOProperties;
 
 /// Base class for qSlicerFileReader and qSlicerFileWriter
+///
+/// \deprecated Reading and writing is implemented in VTK-based classes (vtkMRMLFileReader, vtkMRMLFileWriter)
+/// and managed by vtkMRMLFileIOManager. Qt-based readers and writers are only kept for backward compatibility
+/// and to provide Qt-based options widgets.
+/// If an IO handler is set (see ioHandler()) then all calls are delegated to the VTK-based IO handler.
 class Q_SLICER_BASE_QTCORE_EXPORT qSlicerIO
   : public QObject
   , public qSlicerObject
@@ -53,10 +62,12 @@ public:
   typedef QVariantMap IOProperties;
 
   /// Unique name of the reader/writer
-  Q_INVOKABLE virtual QString description() const = 0;
+  /// By default it returns the description of the VTK-based IO handler.
+  Q_INVOKABLE virtual QString description() const;
 
   /// Multiple readers can share the same file type
-  Q_INVOKABLE virtual qSlicerIO::IOFileType fileType() const = 0;
+  /// By default it returns the file type of the VTK-based IO handler.
+  Q_INVOKABLE virtual qSlicerIO::IOFileType fileType() const;
 
   /// Returns a list of options for the reader. qSlicerIOOptions can be
   /// derived and have a UI associated to it (i.e. qSlicerIOOptionsWidget).
@@ -66,6 +77,33 @@ public:
 
   /// Additional warning or error messages occurred during IO operation.
   Q_INVOKABLE vtkMRMLMessageCollection* userMessages() const;
+
+  /// VTK-based reader or writer that performs all the tasks of this class.
+  /// Returns nullptr if this is a legacy Qt-based reader or writer that implements reading or writing itself.
+  Q_INVOKABLE vtkMRMLFileIOHandler* ioHandler() const;
+
+  /// Set the scene of this object and the VTK-based IO handler.
+  void setMRMLScene(vtkMRMLScene* scene) override;
+
+  /// Returns true if the VTK-based IO handler can be used directly instead of this object.
+  /// It is true if this object delegates all tasks to the VTK-based IO handler, i.e., this object
+  /// is a class that sets the IO handler and it is not a subclass that may override methods.
+  bool isIOHandlerUsableDirectly() const;
+
+  /// Convert Qt properties to VTK properties. QImage and QPixmap values are converted to vtkImageData.
+  static void toVTKProperties(const IOProperties& properties, vtkMRMLIOProperties* vtkProperties);
+  /// Convert VTK properties to Qt properties. vtkImageData values are converted to QImage.
+  static IOProperties fromVTKProperties(vtkMRMLIOProperties* vtkProperties);
+
+  /// Convert Qt image to VTK image (RGBA, unsigned char).
+  static bool qImageToVTKImageData(const QImage& image, vtkImageData* imageData);
+  /// Convert VTK image (unsigned char, 1, 3, or 4 components) to Qt image.
+  static QImage vtkImageDataToQImage(vtkImageData* imageData);
+
+protected:
+  /// Set the VTK-based reader or writer that performs all the tasks of this class.
+  /// Must be called from the constructor of the class that delegates all tasks to the VTK-based IO handler.
+  void setIOHandler(vtkMRMLFileIOHandler* handler);
 
 protected:
   QScopedPointer<qSlicerIOPrivate> d_ptr;

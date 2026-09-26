@@ -415,6 +415,9 @@ public:
   //@}
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerMarkupsLogic();
   ~vtkSlicerMarkupsLogic() override;
 

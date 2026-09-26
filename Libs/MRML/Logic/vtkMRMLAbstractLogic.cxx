@@ -14,7 +14,9 @@
 
 // MRMLLogic includes
 #include "vtkMRMLAbstractLogic.h"
-// #include "vtkMRMLApplicationLogic.h"
+#include "vtkMRMLApplicationLogic.h"
+#include "vtkMRMLFileIOHandler.h"
+#include "vtkMRMLFileIOManager.h"
 
 // MRML includes
 #include "vtkMRMLNode.h"
@@ -22,11 +24,15 @@
 
 // VTK includes
 #include <vtkCallbackCommand.h>
+#include <vtkNew.h>
 #include <vtkObjectFactory.h>
 #include <vtkSmartPointer.h>
+#include <vtkWeakPointer.h>
 
 // STD includes
 #include <cassert>
+#include <cstdio>
+#include <vector>
 
 //---------------------------------------------------------------------------
 vtkStandardNewMacro(vtkMRMLAbstractLogic);
@@ -54,6 +60,12 @@ public:
 
   bool DisableModifiedEvent;
   int ModifiedEventPending;
+
+  /// File IO manager where readers and writers of this logic are registered
+  vtkWeakPointer<vtkMRMLFileIOManager> RegisteredFileIOManager;
+  /// Owner string used for registering readers and writers (stored because
+  /// the class name is not available in the destructor)
+  std::string RegisteredFileIOHandlersOwner;
 };
 
 //----------------------------------------------------------------------------
@@ -117,6 +129,7 @@ vtkMRMLAbstractLogic::vtkMRMLAbstractLogic()
 //----------------------------------------------------------------------------
 vtkMRMLAbstractLogic::~vtkMRMLAbstractLogic()
 {
+  this->UnregisterFileIOHandlers();
   this->SetMRMLScene(nullptr);
   delete this->Internal;
 }
@@ -145,6 +158,80 @@ void vtkMRMLAbstractLogic::SetMRMLApplicationLogic(vtkMRMLApplicationLogic* logi
   }
   this->Internal->MRMLApplicationLogic = logic;
   this->Modified();
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLAbstractLogic::RegisterFileIOHandlersInManager(vtkMRMLFileIOManager* fileIOManager)
+{
+  if (fileIOManager == this->Internal->RegisteredFileIOManager)
+  {
+    // already registered
+    return;
+  }
+  // Remove readers and writers registered in the previous file IO manager
+  this->UnregisterFileIOHandlers();
+  if (!fileIOManager)
+  {
+    return;
+  }
+
+  // Collect the readers and writers that are registered by this logic
+  std::vector<vtkWeakPointer<vtkMRMLFileIOHandler>> registeredHandlers;
+  vtkNew<vtkCallbackCommand> handlerRegisteredCallback;
+  handlerRegisteredCallback->SetClientData(&registeredHandlers);
+  handlerRegisteredCallback->SetCallback(
+    [](vtkObject*, unsigned long, void* clientData, void* callData)
+    {
+      auto* handlers = static_cast<std::vector<vtkWeakPointer<vtkMRMLFileIOHandler>>*>(clientData);
+      handlers->push_back(static_cast<vtkMRMLFileIOHandler*>(callData));
+    });
+  unsigned long observerTag = fileIOManager->AddObserver(vtkMRMLFileIOManager::HandlerRegisteredEvent, handlerRegisteredCallback);
+  this->RegisterFileIOHandlers(fileIOManager);
+  fileIOManager->RemoveObserver(observerTag);
+
+  // Set owner of the newly registered readers and writers (unless the logic set an owner)
+  // so that they can be unregistered when the logic is deleted.
+  const std::string owner = this->GetFileIOHandlersOwner();
+  for (vtkMRMLFileIOHandler* handler : registeredHandlers)
+  {
+    if (handler && (!handler->GetOwner() || !handler->GetOwner()[0]))
+    {
+      handler->SetOwner(owner.c_str());
+    }
+  }
+  this->Internal->RegisteredFileIOManager = fileIOManager;
+  this->Internal->RegisteredFileIOHandlersOwner = owner;
+}
+
+//----------------------------------------------------------------------------
+vtkMRMLFileIOManager* vtkMRMLAbstractLogic::GetRegisteredFileIOManager() const
+{
+  return this->Internal->RegisteredFileIOManager;
+}
+
+//----------------------------------------------------------------------------
+std::string vtkMRMLAbstractLogic::GetFileIOHandlersOwner()
+{
+  char address[32];
+  snprintf(address, sizeof(address), "%p", static_cast<void*>(this));
+  return std::string("logic:") + this->GetClassName() + ":" + address;
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLAbstractLogic::RegisterFileIOHandlers(vtkMRMLFileIOManager* vtkNotUsed(fileIOManager))
+{
+  // no readers or writers by default
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLAbstractLogic::UnregisterFileIOHandlers()
+{
+  if (this->Internal->RegisteredFileIOManager)
+  {
+    this->Internal->RegisteredFileIOManager->UnregisterOwner(this->Internal->RegisteredFileIOHandlersOwner.c_str());
+  }
+  this->Internal->RegisteredFileIOManager = nullptr;
+  this->Internal->RegisteredFileIOHandlersOwner.clear();
 }
 
 //----------------------------------------------------------------------------

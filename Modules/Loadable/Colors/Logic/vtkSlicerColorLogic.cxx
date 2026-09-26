@@ -9,6 +9,9 @@
 
 // Colors
 #include "vtkSlicerColorLogic.h"
+#include "vtkSlicerColorsReader.h"
+#include <vtkMRMLFileIOManager.h>
+#include <vtkNew.h>
 
 // MRML
 #include "vtkMRMLApplicationLogic.h"
@@ -359,4 +362,13 @@ vtkMRMLDisplayNode* vtkSlicerColorLogic::GetFirstNonColorLegendDisplayNode(vtkMR
     }
   }
   return nullptr;
+}
+
+//----------------------------------------------------------------------------
+void vtkSlicerColorLogic::RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager)
+{
+  vtkNew<vtkSlicerColorsReader> colorsReader;
+  colorsReader->SetColorLogic(this);
+  fileIOManager->RegisterReader(colorsReader);
+  fileIOManager->RegisterNodeWriter("Colors", "ColorTableFile", { "vtkMRMLColorNode" }, true);
 }

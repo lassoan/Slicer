@@ -24,6 +24,7 @@
 // Qt Core includes
 #include "qSlicerCoreApplication.h"
 #include "qSlicerCoreIOManager.h"
+#include "qSlicerFileReader.h"
 
 // MRML includes
 #include <vtkMRMLMessageCollection.h>
@@ -36,6 +37,42 @@
 // STD includes
 #include <iostream>
 
+namespace
+{
+/// Legacy Qt-based reader (without Q_OBJECT macro)
+class qSlicerSharedTestFileReader : public qSlicerFileReader
+{
+public:
+  qSlicerSharedTestFileReader(QObject* parent = nullptr)
+    : qSlicerFileReader(parent)
+  {
+  }
+  QString description() const override { return "Shared test reader"; }
+  IOFileType fileType() const override { return "SharedTestFile"; }
+  QStringList extensions() const override { return QStringList() << "Shared test (*.sharedtest)"; }
+  bool load(const IOProperties& vtkNotUsed(properties)) override { return true; }
+};
+} // namespace
+
+//-----------------------------------------------------------------------------
+int TestSharedQtReaders()
+{
+  // All IO manager instances share the application logic's file IO manager.
+  // The original Qt-based reader must be returned by all instances (not a generic wrapper).
+  qSlicerCoreIOManager otherManager;
+  {
+    qSlicerCoreIOManager registeringManager;
+    qSlicerSharedTestFileReader* reader = new qSlicerSharedTestFileReader;
+    registeringManager.registerIO(reader);
+    CHECK_POINTER(registeringManager.reader("Shared test reader"), reader);
+    CHECK_POINTER(otherManager.reader("Shared test reader"), reader);
+  }
+  // The reader is deleted with the manager that registered it
+  CHECK_NULL(otherManager.reader("Shared test reader"));
+  return EXIT_SUCCESS;
+}
+
+//-----------------------------------------------------------------------------
 int TestLongNodeNameSaving(const char* temporaryDirectory)
 {
   vtkNew<vtkMRMLScene> scene;
@@ -94,6 +131,8 @@ int qSlicerCoreIOManagerTest1(int argc, char* argv[])
   qSlicerCoreApplication app(argc, argv);
 
   qSlicerCoreIOManager manager;
+
+  CHECK_EXIT_SUCCESS(TestSharedQtReaders());
 
   // get all the writable file extensions
   QStringList allWritableExtensions = manager.allWritableFileExtensions();

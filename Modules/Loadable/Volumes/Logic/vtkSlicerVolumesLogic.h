@@ -285,6 +285,9 @@ public:
   VolumeDisplayPreset GetVolumeDisplayPreset(const std::string& presetId);
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerVolumesLogic();
   ~vtkSlicerVolumesLogic() override;
   vtkSlicerVolumesLogic(const vtkSlicerVolumesLogic&);

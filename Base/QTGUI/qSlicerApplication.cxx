@@ -362,6 +362,9 @@ void qSlicerApplicationPrivate::init()
 
   this->Superclass::init();
 
+  // Reset 3D views when requested by the logic (for example, after the first model is loaded)
+  q->qvtkConnect(this->AppLogic, vtkMRMLApplicationLogic::ResetThreeDViewsRequestEvent, q, SLOT(onResetThreeDViewsRequested()));
+
   this->ErrorLogModel->setMsgHandlerEnabled(ctkErrorLogStreamMessageHandler::HandlerName, true);
 
 #if !defined(Q_OS_WIN32) || defined(Slicer_BUILD_WIN32_CONSOLE)
@@ -697,6 +700,15 @@ ctkQtTestingUtility* qSlicerApplication::testingUtility()
   return d->TestingUtility;
 }
 #endif
+
+//-----------------------------------------------------------------------------
+void qSlicerApplication::onResetThreeDViewsRequested()
+{
+  if (this->layoutManager())
+  {
+    this->layoutManager()->resetThreeDViews();
+  }
+}
 
 //-----------------------------------------------------------------------------
 void qSlicerApplication::setLayoutManager(qSlicerLayoutManager* layoutManager)

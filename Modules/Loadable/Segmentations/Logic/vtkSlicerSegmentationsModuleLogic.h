@@ -537,6 +537,9 @@ public:
   static bool IsSegmentationExentOutsideReferenceGeometry(vtkOrientedImageData* referenceGeometry, vtkOrientedImageData* segmentationGeometry);
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   void SetMRMLSceneInternal(vtkMRMLScene* newScene) override;
 
   /// Register MRML Node classes to Scene. Gets called automatically when the MRMLScene is attached to this logic class.

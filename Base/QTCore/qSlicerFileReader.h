@@ -30,6 +30,17 @@
 
 class qSlicerFileReaderOptions;
 class qSlicerFileReaderPrivate;
+class vtkMRMLFileReader;
+
+/// Qt interface of a file reader.
+///
+/// \deprecated File readers are implemented in VTK-based classes (vtkMRMLFileReader subclasses).
+/// This class is kept for backward compatibility and to provide Qt options widget for the reader (see options()).
+/// If a VTK-based reader is set (see fileReader()) then all methods are delegated to it.
+///
+/// If a subclass overrides methods (for example, load() or write()) then the IO manager detects it
+/// (from its C++ type) and calls the overridden methods through an adapter, instead of calling
+/// the VTK-based reader directly.
 
 class Q_SLICER_BASE_QTCORE_EXPORT qSlicerFileReader : public qSlicerIO
 {
@@ -38,6 +49,10 @@ public:
   typedef qSlicerIO Superclass;
   explicit qSlicerFileReader(QObject* parent = nullptr);
   ~qSlicerFileReader() override;
+
+  /// VTK-based reader that performs all the tasks of this class.
+  /// Returns nullptr if this is a legacy Qt-based reader that implements reading itself.
+  Q_INVOKABLE vtkMRMLFileReader* fileReader() const;
 
   /// Return  a list of the supported extensions. Please read
   /// QFileDialog::nameFilters for the allowed formats

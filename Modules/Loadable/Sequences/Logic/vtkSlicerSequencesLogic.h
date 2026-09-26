@@ -101,6 +101,9 @@ public:
   vtkMRMLSequenceBrowserNode* GetFirstBrowserNodeForProxyNode(vtkMRMLNode* proxyNode);
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerSequencesLogic();
   ~vtkSlicerSequencesLogic() override;
 

@@ -87,6 +87,9 @@ public:
   void SetAllModelsVisibility(int flag);
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerModelsLogic();
   ~vtkSlicerModelsLogic() override;
   vtkSlicerModelsLogic(const vtkSlicerModelsLogic&);

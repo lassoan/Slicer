@@ -22,6 +22,9 @@
 
 // Tables Logic includes
 #include "vtkSlicerTablesLogic.h"
+#include "vtkSlicerTablesReader.h"
+#include <vtkMRMLFileIOManager.h>
+#include <vtkNew.h>
 
 // MRML includes
 #include <vtkMRMLLayoutNode.h>
@@ -182,4 +185,13 @@ int vtkSlicerTablesLogic::GetLayoutWithTable(int currentLayout)
     case vtkMRMLLayoutNode::SlicerLayoutThreeOverThreePlotView: return vtkMRMLLayoutNode::SlicerLayoutFourUpPlotTableView;
     default: return vtkMRMLLayoutNode::SlicerLayoutFourUpTableView;
   }
+}
+
+//----------------------------------------------------------------------------
+void vtkSlicerTablesLogic::RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager)
+{
+  vtkNew<vtkSlicerTablesReader> tablesReader;
+  tablesReader->SetTablesLogic(this);
+  fileIOManager->RegisterReader(tablesReader);
+  fileIOManager->RegisterNodeWriter("Table", "TableFile", { "vtkMRMLTableNode" }, false);
 }

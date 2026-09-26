@@ -21,14 +21,12 @@
 // Segmentations includes
 #include "qSlicerSegmentationsModule.h"
 #include "qSlicerSegmentationsModuleWidget.h"
-#include "qSlicerSegmentationsReader.h"
 #include "qSlicerSegmentationsSettingsPanel.h"
 #include "qSlicerSubjectHierarchySegmentationsPlugin.h"
 #include "qSlicerSubjectHierarchySegmentsPlugin.h"
 #include "vtkSlicerSegmentationsModuleLogic.h"
 #include "vtkMRMLSegmentationsDisplayableManager3D.h"
 #include "vtkMRMLSegmentationsDisplayableManager2D.h"
-#include "qSlicerSegmentationsNodeWriter.h"
 
 // Segment editor effects includes
 #include "qSlicerSegmentEditorEffectFactory.h"
@@ -38,7 +36,6 @@
 
 // Slicer includes
 #include <qSlicerIOManager.h>
-#include <qSlicerNodeWriter.h>
 #include <vtkMRMLThreeDViewDisplayableManagerFactory.h>
 #include <vtkMRMLSliceViewDisplayableManagerFactory.h>
 #include <qSlicerCoreApplication.h>
@@ -53,6 +50,12 @@
 
 // MRML includes
 #include <vtkMRMLScene.h>
+
+// Slicer Logic includes
+#include <vtkSlicerApplicationLogic.h>
+#include <vtkMRMLFileIOManager.h>
+#include <vtkMRMLFileReader.h>
+#include <vtkMRMLIOProperties.h>
 #include <vtkMRMLSubjectHierarchyNode.h>
 
 // PythonQt includes
@@ -62,6 +65,7 @@
 
 // Qt includes
 #include <QDebug>
+#include <QSettings>
 
 // DisplayableManager initialization
 #include <vtkAutoInit.h>
@@ -166,17 +170,38 @@ void qSlicerSegmentationsModule::setup()
   qSlicerSubjectHierarchyPluginHandler::instance()->registerPlugin(new qSlicerSubjectHierarchySegmentationsPlugin());
   qSlicerSubjectHierarchyPluginHandler::instance()->registerPlugin(new qSlicerSubjectHierarchySegmentsPlugin());
 
-  // Register IOs
-  qSlicerIOManager* ioManager = qSlicerApplication::application()->ioManager();
-  ioManager->registerIO(new qSlicerSegmentationsNodeWriter(this));
-  ioManager->registerIO(new qSlicerSegmentationsReader(segmentationsLogic, this));
-
   // Register settings panel
   if (qSlicerApplication::application())
   {
     qSlicerSegmentationsSettingsPanel* panel = new qSlicerSegmentationsSettingsPanel();
     qSlicerApplication::application()->settingsDialog()->addPanel(tr("Segmentations"), panel);
     panel->setSegmentationsLogic(segmentationsLogic);
+
+    // Default value of automatic segment opacities option of the reader is specified in the application settings
+    vtkSmartPointer<vtkMRMLFileIOHandler> readerHandler =
+      this->appLogic() ? this->appLogic()->GetFileIOManager()->GetReaderByClassName("vtkSlicerSegmentationsReader") : nullptr;
+    QSettings* settings = qSlicerApplication::application()->settingsDialog()->settings();
+    if (!readerHandler)
+    {
+      if (this->appLogic())
+      {
+        qCritical() << Q_FUNC_INFO << ": segmentations reader is not found";
+      }
+    }
+    else if (settings && settings->contains("Segmentations/AutoOpacities"))
+    {
+      readerHandler->GetOptionDefaults()->SetBoolProperty("autoOpacities", settings->value("Segmentations/AutoOpacities").toBool());
+    }
+    QObject::connect(panel,
+                     &ctkSettingsPanel::settingChanged,
+                     this,
+                     [readerHandler](const QString& key, const QVariant& value)
+                     {
+                       if (key == "Segmentations/AutoOpacities" && readerHandler)
+                       {
+                         readerHandler->GetOptionDefaults()->SetBoolProperty("autoOpacities", value.toBool());
+                       }
+                     });
   }
 
   // Use the displayable manager class to make sure the the containing library is loaded

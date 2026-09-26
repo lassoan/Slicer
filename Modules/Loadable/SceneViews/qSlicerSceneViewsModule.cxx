@@ -1,11 +1,9 @@
 
 // QTGUI includes
 #include <qSlicerApplication.h>
-#include <qSlicerCoreIOManager.h>
 #include <qSlicerIOManager.h>
 #include <qSlicerLayoutManager.h>
 #include <qSlicerMainWindow.h>
-#include <qSlicerNodeWriter.h>
 
 #include <QMenuBar>
 #include <QSettings>
@@ -71,8 +69,6 @@ void qSlicerSceneViewsModule::setup()
 {
   Q_D(qSlicerSceneViewsModule);
 
-  qSlicerCoreIOManager* ioManager = qSlicerApplication::application()->coreIOManager();
-  ioManager->registerIO(new qSlicerNodeWriter("SceneViews", QString("SceneViewFile"), QStringList() << "vtkMRMLSceneViewNode", true, this));
 
   d->addToolBar();
 }

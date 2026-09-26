@@ -449,6 +449,9 @@ public:
   vtkSetStringMacro(UserContextsPath);
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerTerminologiesModuleLogic();
   ~vtkSlicerTerminologiesModuleLogic() override;
 

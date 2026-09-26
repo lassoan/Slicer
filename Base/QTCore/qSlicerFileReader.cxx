@@ -18,17 +18,16 @@
 
 ==============================================================================*/
 
-/// Qt includes
-#include <QFileInfo>
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-# include <QRegularExpression>
-#endif
-
-// CTK includes
-#include <ctkUtils.h>
-
 /// QtCore includes
 #include "qSlicerFileReader.h"
+
+// Slicer includes
+#include <vtkMRMLFileReader.h>
+#include <vtkMRMLIOProperties.h>
+
+// VTK includes
+#include <vtkNew.h>
+#include <vtkStringArray.h>
 
 //-----------------------------------------------------------------------------
 class qSlicerFileReaderPrivate
@@ -36,6 +35,31 @@ class qSlicerFileReaderPrivate
 public:
   QStringList LoadedNodes;
 };
+
+namespace
+{
+//----------------------------------------------------------------------------
+std::vector<std::string> toStdStringVector(const QStringList& list)
+{
+  std::vector<std::string> result;
+  for (const QString& item : list)
+  {
+    result.push_back(item.toStdString());
+  }
+  return result;
+}
+
+//----------------------------------------------------------------------------
+QStringList toQStringList(vtkStringArray* array)
+{
+  QStringList result;
+  for (vtkIdType i = 0; array && i < array->GetNumberOfValues(); ++i)
+  {
+    result << QString::fromStdString(array->GetValue(i));
+  }
+  return result;
+}
+} // namespace
 
 //----------------------------------------------------------------------------
 qSlicerFileReader::qSlicerFileReader(QObject* _parent)
@@ -48,76 +72,67 @@ qSlicerFileReader::qSlicerFileReader(QObject* _parent)
 qSlicerFileReader::~qSlicerFileReader() = default;
 
 //----------------------------------------------------------------------------
+vtkMRMLFileReader* qSlicerFileReader::fileReader() const
+{
+  return vtkMRMLFileReader::SafeDownCast(this->ioHandler());
+}
+
+//----------------------------------------------------------------------------
 QStringList qSlicerFileReader::extensions() const
 {
+  vtkMRMLFileReader* reader = this->fileReader();
+  if (reader)
+  {
+    QStringList nameFilters;
+    for (const std::string& nameFilter : reader->GetNameFilters())
+    {
+      nameFilters << QString::fromStdString(nameFilter);
+    }
+    return nameFilters;
+  }
   return QStringList() << "*.*";
 }
 
 //----------------------------------------------------------------------------
 bool qSlicerFileReader::canLoadFile(const QString& fileName) const
 {
-  QStringList res = this->supportedNameFilters(fileName);
-  return res.count() > 0;
+  vtkMRMLFileReader* reader = this->fileReader();
+  if (reader)
+  {
+    return reader->CanLoadFile(fileName.toUtf8().constData());
+  }
+  return this->supportedNameFilters(fileName).count() > 0;
 }
 
 //----------------------------------------------------------------------------
 double qSlicerFileReader::canLoadFileConfidence(const QString& fileName) const
 {
+  vtkMRMLFileReader* reader = this->fileReader();
+  if (reader)
+  {
+    return reader->CanLoadFileConfidence(fileName.toUtf8().constData());
+  }
   if (!this->canLoadFile(fileName))
   {
     return 0.0;
   }
   int longestExtensionMatch = 0;
-  QStringList res = this->supportedNameFilters(fileName, &longestExtensionMatch);
+  this->supportedNameFilters(fileName, &longestExtensionMatch);
   // If longer extension is matched then the confidence that this is a good reader is
   // slightly higher. For example, for "somefile.seg.nrrd", a reader that is specifically
   // for ".seg.nrrd" files get slightly higher confidence than readers that of generic ".nrrd" files.
-  double confidence = 0.5 + 0.01 * longestExtensionMatch;
-  return confidence;
+  return 0.5 + 0.01 * longestExtensionMatch;
 }
 
 //----------------------------------------------------------------------------
 QStringList qSlicerFileReader::supportedNameFilters(const QString& fileName, int* longestExtensionMatchPtr /* =nullptr */) const
 {
-  if (longestExtensionMatchPtr)
-  {
-    (*longestExtensionMatchPtr) = 0;
-  }
   QStringList matchingNameFilters;
-  QFileInfo file(fileName);
-  if (!file.isFile() ||            //
-      !file.isReadable() ||        //
-      file.suffix().contains('~')) // temporary file
+  for (const std::string& nameFilter : vtkMRMLFileIOHandler::GetMatchingNameFilters(
+         fileName.toUtf8().constData(), toStdStringVector(this->extensions()), /*requireReadableFile=*/true, longestExtensionMatchPtr))
   {
-    return matchingNameFilters;
+    matchingNameFilters << QString::fromStdString(nameFilter);
   }
-  for (const QString& nameFilter : this->extensions())
-  {
-    for (QString extension : ctk::nameFilterToExtensions(nameFilter))
-    {
-      // QRegularExpression::wildcardToRegularExpression could be used from Qt 5.12, but its behavior
-      // slightly changes across Qt5 versions, so stick to QRegExp for Qt5 to keep things simple.
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-      QRegularExpression regExp = QRegularExpression::fromWildcard(extension, Qt::CaseInsensitive);
-      Q_ASSERT(regExp.isValid());
-      if (regExp.match(file.fileName()).hasMatch())
-#else
-      QRegExp regExp(extension, Qt::CaseInsensitive, QRegExp::Wildcard);
-      Q_ASSERT(regExp.isValid());
-      if (regExp.exactMatch(file.absoluteFilePath()))
-#endif
-      {
-        extension.remove('*'); // wildcard does not count, that's not a specific match
-        int matchedExtensionLength = extension.size();
-        if (longestExtensionMatchPtr && (*longestExtensionMatchPtr) < matchedExtensionLength)
-        {
-          (*longestExtensionMatchPtr) = matchedExtensionLength;
-        }
-        matchingNameFilters << nameFilter;
-      }
-    }
-  }
-  matchingNameFilters.removeDuplicates();
   return matchingNameFilters;
 }
 
@@ -125,9 +140,19 @@ QStringList qSlicerFileReader::supportedNameFilters(const QString& fileName, int
 bool qSlicerFileReader::load(const IOProperties& properties)
 {
   Q_D(qSlicerFileReader);
-  Q_UNUSED(properties);
   d->LoadedNodes.clear();
-  return false;
+  vtkMRMLFileReader* reader = this->fileReader();
+  if (!reader)
+  {
+    return false;
+  }
+  reader->SetScene(this->mrmlScene());
+  vtkNew<vtkMRMLIOProperties> vtkProperties;
+  qSlicerIO::toVTKProperties(properties, vtkProperties);
+  reader->ClearLoadedNodeIDs();
+  bool success = reader->Load(vtkProperties);
+  d->LoadedNodes = toQStringList(reader->GetLoadedNodeIDs());
+  return success;
 }
 
 //----------------------------------------------------------------------------
@@ -135,20 +160,56 @@ void qSlicerFileReader::setLoadedNodes(const QStringList& nodes)
 {
   Q_D(qSlicerFileReader);
   d->LoadedNodes = nodes;
+  vtkMRMLFileReader* reader = this->fileReader();
+  if (reader)
+  {
+    reader->SetLoadedNodeIDs(toStdStringVector(nodes));
+  }
 }
 
 //----------------------------------------------------------------------------
 QStringList qSlicerFileReader::loadedNodes() const
 {
   Q_D(const qSlicerFileReader);
+  vtkMRMLFileReader* reader = this->fileReader();
+  if (reader)
+  {
+    return toQStringList(reader->GetLoadedNodeIDs());
+  }
   return d->LoadedNodes;
 }
 
 //----------------------------------------------------------------------------
 bool qSlicerFileReader::examineFileInfoList(QFileInfoList& fileInfoList, QFileInfo& archetypeFileInfo, qSlicerIO::IOProperties& ioProperties) const
 {
-  Q_UNUSED(fileInfoList);
-  Q_UNUSED(archetypeFileInfo);
-  Q_UNUSED(ioProperties);
-  return (false);
+  vtkMRMLFileReader* reader = this->fileReader();
+  if (!reader)
+  {
+    return false;
+  }
+  vtkNew<vtkStringArray> fileList;
+  for (const QFileInfo& fileInfo : fileInfoList)
+  {
+    fileList->InsertNextValue(fileInfo.absoluteFilePath().toStdString());
+  }
+  vtkNew<vtkMRMLIOProperties> vtkProperties;
+  qSlicerIO::toVTKProperties(ioProperties, vtkProperties);
+  std::string archetypeFile = reader->ExamineFileList(fileList, vtkProperties);
+  if (archetypeFile.empty())
+  {
+    return false;
+  }
+  archetypeFileInfo = QFileInfo(QString::fromStdString(archetypeFile));
+  // Remove files from the list that the reader removed
+  QStringList remainingFiles = toQStringList(fileList);
+  QMutableListIterator<QFileInfo> fileInfoIterator(fileInfoList);
+  while (fileInfoIterator.hasNext())
+  {
+    if (!remainingFiles.contains(fileInfoIterator.next().absoluteFilePath()))
+    {
+      fileInfoIterator.remove();
+    }
+  }
+  ioProperties = qSlicerIO::fromVTKProperties(vtkProperties);
+  return true;
 }

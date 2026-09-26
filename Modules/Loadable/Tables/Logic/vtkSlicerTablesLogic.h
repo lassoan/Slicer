@@ -60,6 +60,9 @@ public:
   static int GetLayoutWithTable(int currentLayout);
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerTablesLogic();
   ~vtkSlicerTablesLogic() override;
 

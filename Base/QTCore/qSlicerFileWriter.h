@@ -26,13 +26,27 @@
 class qSlicerFileWriterPrivate;
 
 class vtkObject;
+class vtkMRMLFileWriter;
 
+/// Qt interface of a file writer.
+///
+/// \deprecated File writers are implemented in VTK-based classes (vtkMRMLFileWriter subclasses).
+/// This class is kept for backward compatibility and to provide Qt options widget for the writer (see options()).
+/// If a VTK-based writer is set (see fileWriter()) then all methods are delegated to it.
+///
+/// If a subclass overrides methods (for example, load() or write()) then the IO manager detects it
+/// (from its C++ type) and calls the overridden methods through an adapter, instead of calling
+/// the VTK-based writer directly.
 class Q_SLICER_BASE_QTCORE_EXPORT qSlicerFileWriter : public qSlicerIO
 {
   Q_OBJECT
 public:
   qSlicerFileWriter(QObject* parent = nullptr);
   ~qSlicerFileWriter() override;
+
+  /// VTK-based writer that performs all the tasks of this class.
+  /// Returns nullptr if this is a legacy Qt-based writer that implements writing itself.
+  vtkMRMLFileWriter* fileWriter() const;
 
   /// Return true if the object is handled by the writer.
   /// This method is kept for backward compatibility, writers should override
@@ -50,7 +64,7 @@ public:
   /// Return a list of the supported extensions for a particular object.
   /// Please read QFileDialog::nameFilters for the allowed formats
   /// Example: "Image (*.jpg *.png *.tiff)", "Model (*.vtk)"
-  virtual QStringList extensions(vtkObject* object) const = 0;
+  virtual QStringList extensions(vtkObject* object) const;
 
   /// Write the node identified by nodeID into the fileName file.
   /// Returns true on success

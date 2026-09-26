@@ -12,6 +12,7 @@
 
 // MRMLLogic includes
 class vtkMRMLApplicationLogic;
+class vtkMRMLFileIOManager;
 
 // MRML includes
 #include <vtkObserverManager.h>
@@ -21,6 +22,9 @@ class vtkMRMLScene;
 // VTK includes
 #include <vtkCommand.h>
 #include <vtkObject.h>
+
+// STD includes
+#include <string>
 class vtkIntArray;
 class vtkFloatArray;
 
@@ -140,6 +144,22 @@ public:
   virtual vtkMRMLApplicationLogic* GetMRMLApplicationLogic() const;
   virtual void SetMRMLApplicationLogic(vtkMRMLApplicationLogic* logic);
 
+  /// Register file readers and writers of the logic (see RegisterFileIOHandlers()) in the file IO manager.
+  /// It is called by vtkMRMLApplicationLogic::SetModuleLogic(), so that only the logic of the module
+  /// registers readers and writers (and not additional instances of the same logic class).
+  /// Readers and writers are unregistered when the logic is deleted or unregistered from the application logic.
+  void RegisterFileIOHandlersInManager(vtkMRMLFileIOManager* fileIOManager);
+
+  /// Unregister file readers and writers that were registered by RegisterFileIOHandlersInManager().
+  void UnregisterFileIOHandlers();
+
+  /// File IO manager where the readers and writers of this logic are registered (nullptr if not registered).
+  vtkMRMLFileIOManager* GetRegisteredFileIOManager() const;
+
+  /// Owner of the file readers and writers registered by this logic (see vtkMRMLFileIOHandler::GetOwner()).
+  /// It is unique for each logic instance.
+  std::string GetFileIOHandlersOwner();
+
   /// Return a reference to the current MRML scene
   vtkMRMLScene* GetMRMLScene() const;
 
@@ -161,6 +181,13 @@ public:
 protected:
   vtkMRMLAbstractLogic();
   ~vtkMRMLAbstractLogic() override;
+
+  /// Register file readers and writers of the logic in the file IO manager.
+  /// Called when the logic is set as a module logic in the application logic
+  /// (see RegisterFileIOHandlersInManager()). The default implementation does nothing.
+  /// Registered readers and writers must not keep a reference to the logic
+  /// (use a weak pointer), because the file IO manager may be deleted after the logic.
+  virtual void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager);
 
   /// Receives all the events fired by the scene.
   /// By default, it calls OnMRMLScene*Event based on the event passed.

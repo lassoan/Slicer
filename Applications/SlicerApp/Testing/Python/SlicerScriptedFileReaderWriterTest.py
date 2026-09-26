@@ -14,7 +14,7 @@ class SlicerScriptedFileReaderWriterTest(ScriptedLoadableModule):
         parent.dependencies = []
         parent.contributors = ["Andras Lasso (PerkLab, Queen's)"]
         parent.helpText = """
-    This module is used to test qSlicerScriptedFileReader and qSlicerScriptedFileWriter classes.
+    This module is used to test vtkSlicerScriptedFileReader and vtkSlicerScriptedFileWriter classes.
     """
         parent.acknowledgementText = """
     This file was originally developed by Andras Lasso, PerkLab.
@@ -58,6 +58,9 @@ class SlicerScriptedFileReaderWriterTestFileReader:
         # Default confidence is 0.5 + 0.01 * fileExtensionLength = 0.53,
         # we return a higher value if we recognize this file
         return 0.8 if fileLooksValid else 0.3
+
+    def getOptionsDescription(self, description):
+        description.AddBoolOption("myOption", "My option", "Option for testing", True)
 
     def load(self, properties):
         try:
@@ -205,3 +208,54 @@ class SlicerScriptedFileReaderWriterTestTest(ScriptedLoadableModuleTest):
         self.assertIsNotNone(loadedNode)
         self.assertTrue(loadedNode.IsA("vtkMRMLTextNode"))
         self.assertEqual(loadedNode.GetText(), self.textInNode)
+
+        self.delayDisplay("Testing reader options")
+        reader = slicer.app.applicationLogic().GetFileIOManager().GetReaderByDescription("My file type")
+        self.assertIsNotNone(reader)
+        self.assertEqual(reader.GetClassName(), "vtkSlicerScriptedFileReader")
+        properties = slicer.vtkMRMLIOProperties()
+        properties.SetStringProperty("fileName", self.validFilename)
+        optionValues = slicer.vtkMRMLIOProperties()
+        reader.GetOptionValues(properties, optionValues)
+        self.assertTrue(optionValues.HasProperty("myOption"))
+        self.assertTrue(optionValues.GetBoolProperty("myOption"))
+
+        self.delayDisplay("Testing that additional logic instances do not register readers")
+        fileIOManager = slicer.app.applicationLogic().GetFileIOManager()
+        numberOfReaders = fileIOManager.GetNumberOfReaders()
+        numberOfWriters = fileIOManager.GetNumberOfWriters()
+        additionalTablesLogic = slicer.vtkSlicerTablesLogic()
+        additionalTablesLogic.SetMRMLApplicationLogic(slicer.app.applicationLogic())
+        self.assertEqual(fileIOManager.GetNumberOfReaders(), numberOfReaders)
+        self.assertEqual(fileIOManager.GetNumberOfWriters(), numberOfWriters)
+        del additionalTablesLogic
+        self.assertIsNotNone(fileIOManager.GetReaderByClassName("vtkSlicerTablesReader"))
+
+    def test_OptionsWidgetOwnership(self):
+        import qt
+
+        self.delayDisplay("Testing ownership of options widgets")
+        ioManager = slicer.app.ioManager()
+
+        # Widget without parent is owned by Python: it is deleted when it is no longer referenced
+        destroyed = []
+        optionsWidget = ioManager.fileOptionsWidget("Volume")
+        self.assertIsNotNone(optionsWidget)
+        optionsWidget.connect("destroyed()", lambda: destroyed.append("noParent"))
+        del optionsWidget
+        slicer.app.processEvents()
+        self.assertEqual(destroyed, ["noParent"])
+
+        # Widget with parent is owned by the parent
+        destroyed.clear()
+        parentWidget = qt.QWidget()
+        optionsWidget = ioManager.fileOptionsWidget("Volume", parentWidget)
+        self.assertIsNotNone(optionsWidget)
+        self.assertEqual(optionsWidget.parent(), parentWidget)
+        optionsWidget.connect("destroyed()", lambda: destroyed.append("withParent"))
+        del optionsWidget
+        slicer.app.processEvents()
+        self.assertEqual(destroyed, [])
+        del parentWidget
+        slicer.app.processEvents()
+        self.assertEqual(destroyed, ["withParent"])

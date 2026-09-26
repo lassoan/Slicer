@@ -55,6 +55,14 @@ endif()
 set(MRMLLogic_SRCS
   vtkMRMLAbstractLogic.cxx
   vtkMRMLApplicationLogic.cxx
+  vtkMRMLFileIOHandler.cxx
+  vtkMRMLFileIOManager.cxx
+  vtkMRMLFileReader.cxx
+  vtkMRMLFileWriter.cxx
+  vtkMRMLIOOptionsDescription.cxx
+  vtkMRMLIOProperties.cxx
+  vtkMRMLNodeWriter.cxx
+  vtkMRMLSceneBundleReader.cxx
   vtkMRMLColorLogic.cxx
   vtkMRMLDisplayableHierarchyLogic.cxx
   vtkMRMLRemoteIOLogic.cxx

@@ -83,6 +83,9 @@ public:
   static vtkMRMLColorLegendDisplayNode* GetColorLegendDisplayNode(vtkMRMLDisplayNode* displayNode);
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerColorLogic();
   ~vtkSlicerColorLogic() override;
   vtkSlicerColorLogic(const vtkSlicerColorLogic&);

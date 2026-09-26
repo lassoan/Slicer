@@ -9,6 +9,9 @@
 
 /// Slicer logic includes
 #include "vtkSlicerModelsLogic.h"
+#include "vtkSlicerModelsReader.h"
+#include <vtkMRMLFileIOManager.h>
+#include <vtkNew.h>
 #include "vtkMRMLSliceLogic.h"
 
 /// MRML includes
@@ -514,4 +517,13 @@ void vtkSlicerModelsLogic::SetAllModelsVisibility(int flag)
     }
   }
   this->GetMRMLScene()->EndState(vtkMRMLScene::BatchProcessState);
+}
+
+//----------------------------------------------------------------------------
+void vtkSlicerModelsLogic::RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager)
+{
+  vtkNew<vtkSlicerModelsReader> modelsReader;
+  modelsReader->SetModelsLogic(this);
+  fileIOManager->RegisterReader(modelsReader);
+  fileIOManager->RegisterNodeWriter("Models", "ModelFile", { "vtkMRMLModelNode" }, true);
 }

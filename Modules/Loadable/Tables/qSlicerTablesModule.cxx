@@ -20,17 +20,26 @@
 
 ==============================================================================*/
 
+// Qt includes
+#include <QCoreApplication>
+#include <QInputDialog>
+#include <QLineEdit>
+
 // Slice includes
 #include <qSlicerCoreApplication.h>
-#include <qSlicerCoreIOManager.h>
-#include <qSlicerNodeWriter.h>
 
 // Tables Logic includes
 #include <vtkSlicerTablesLogic.h>
+#include <vtkSlicerTablesReader.h>
+#include <vtkSlicerApplicationLogic.h>
+#include <vtkMRMLFileIOManager.h>
+
+// VTK includes
+#include <vtkCallbackCommand.h>
+#include <vtkNew.h>
 
 // Tables includes
 #include "qSlicerTablesModule.h"
-#include "qSlicerTablesReader.h"
 #include "qSlicerTablesModuleWidget.h"
 // SubjectHierarchy Plugins includes
 #include "qSlicerSubjectHierarchyPluginHandler.h"
@@ -109,11 +118,32 @@ QStringList qSlicerTablesModule::dependencies() const
 void qSlicerTablesModule::setup()
 {
   this->Superclass::setup();
-  vtkSlicerTablesLogic* TablesLogic = vtkSlicerTablesLogic::SafeDownCast(this->logic());
 
-  qSlicerCoreIOManager* ioManager = qSlicerCoreApplication::application()->coreIOManager();
-  ioManager->registerIO(new qSlicerTablesReader(TablesLogic, this));
-  ioManager->registerIO(new qSlicerNodeWriter("Table", QString("TableFile"), QStringList() << "vtkMRMLTableNode", false, this));
+  // Readers and writers are registered by the module logic
+  vtkSlicerTablesReader* tablesReader =
+    vtkSlicerTablesReader::SafeDownCast(this->appLogic() ? this->appLogic()->GetFileIOManager()->GetReaderByClassName("vtkSlicerTablesReader") : nullptr);
+  // Ask the user for the password if a database cannot be opened without a password
+  vtkNew<vtkCallbackCommand> passwordRequestCallback;
+  passwordRequestCallback->SetCallback(
+    [](vtkObject*, unsigned long, void*, void* callData)
+    {
+      std::string* password = reinterpret_cast<std::string*>(callData);
+      bool ok = false;
+      QString text = QInputDialog::getText(nullptr,
+                                           QCoreApplication::translate("qSlicerTablesReader", "QInputDialog::getText()"),
+                                           QCoreApplication::translate("qSlicerTablesReader", "Database Password:"),
+                                           QLineEdit::Normal,
+                                           "",
+                                           &ok);
+      if (ok && !text.isEmpty() && password)
+      {
+        *password = text.toStdString();
+      }
+    });
+  if (tablesReader)
+  {
+    tablesReader->AddObserver(vtkSlicerTablesReader::PasswordRequestedEvent, passwordRequestCallback);
+  }
   // Register Subject Hierarchy core plugins
   qSlicerSubjectHierarchyPluginHandler::instance()->registerPlugin(new qSlicerSubjectHierarchyTablesPlugin());
 }

@@ -374,61 +374,135 @@ It is recommended to have your extension be `.<something>.json` where the `<some
 
 The recommended way to read a file into a MRML node is through the storage node. The reader, on the other hand, exists to interface with the loading facilities of 3D Slicer (drag and drop, as well as the button to load data into the scene). As such, the reader uses the storage node in its implementation.
 
+Readers are VTK classes, which are registered in the file IO manager of the application logic (`vtkMRMLApplicationLogic::GetFileIOManager()`). This allows loading files the same way in all applications, including those that do not use Qt.
 
 Files:
 
 ```
 |-- <Extension>
        |-- <Module>
-              |-- qSlicer<MyCustomType>Reader.h
-              |-- qSlicer<MyCustomType>Reader.cxx
+              |-- Logic
+                     |-- vtkSlicer<MyCustomType>Reader.h
+                     |-- vtkSlicer<MyCustomType>Reader.cxx
 ```
 
 Key Points:
 
-* Naming convention for class: `qSlicer<MyCustomType>Reader`
-* Inherits from [`qSlicerFileReader`](https://apidocs.slicer.org/main/classqSlicerFileReader.html).
-* In the class definition, the following macros should be used:
-  * `Q_OBJECT`
-  * `Q_DECLARE_PRIVATE`
-  * `Q_DISABLE_COPY`
-* Constructing a new node:
-  * Create constructor `qSlicer<MyCustomType>Reader(QObject* parent = nullptr)`.
-    * This constructor, even if it is not explicitly used, allows this file to be wrapped in Python.
-* Override [`QString description() const`](https://apidocs.slicer.org/main/classqSlicerIO.html#af44106dbf852df0e6cc836b377630f5e) to provide a short description on the types of files read.
-* Override [`IOFileType fileType() const`](https://apidocs.slicer.org/main/classqSlicerIO.html#aac38b570ec5c0692caefa7d87657e58b) to give a string to associate with the types of files read.
-  * This string can be used in conjunction with the python method [`slicer.util.loadNodeFromFile`](https://slicer.readthedocs.io/en/latest/developer_guide/slicer.html#slicer.util.loadNodeFromFile)
-* Override [`QStringList extensions() const`](https://apidocs.slicer.org/main/classqSlicerFileReader.html#afb3187915977b2253d86634cc465b23d) to provide the extensions that can be read.
-  * Should be the same as the storage node because the reader uses the storage node.
-* Override [`bool load(const IOProperties& properties)`](https://apidocs.slicer.org/main/classqSlicerFileReader.html#ac9acb878cd8adcc426e9a7a9edac15df). This is the function that actually loads the node from the file into the scene.
+* Naming convention for class: `vtkSlicer<MyCustomType>Reader`
+* Inherits from [`vtkMRMLFileReader`](https://apidocs.slicer.org/main/classvtkMRMLFileReader.html).
+* In the constructor, set the file type (`SetFileType`), a short description of the types of files read (`SetDescription`), and the name filters of the files that can be read (`SetNameFilters`, for example `"My custom type (*.mct)"`).
+  * The file type string can be used in conjunction with the python method [`slicer.util.loadNodeFromFile`](https://slicer.readthedocs.io/en/latest/developer_guide/slicer.html#slicer.util.loadNodeFromFile)
+  * The name filters should be the same as the storage node because the reader uses the storage node.
+* Override `double CanLoadFileConfidence(const char* filePath)` if the file extension is not enough to decide if the file can be read (for example, if the file content needs to be inspected).
+* Override `bool Load(vtkMRMLIOProperties* properties)`. This is the function that actually loads the node from the file (`fileName` property) into the scene (`GetScene()`). Loaded nodes must be reported by calling `AddLoadedNodeID()`. Warnings and errors that should be displayed to the user can be added to `GetUserMessages()`.
+* Override `void GetOptionsDescription(vtkMRMLIOOptionsDescription* description)` if the reader has options that the user can set (see [reader and writer options](#reader-and-writer-options)).
+* Register the reader in the file IO manager of the application logic by overriding `RegisterFileIOHandlers()` in the module logic. This method is called when the logic is set as the module logic in the application logic (`vtkMRMLApplicationLogic::SetModuleLogic()`, which is done automatically when the module is loaded), and readers and writers registered in it are automatically unregistered when the module logic is deleted. Other instances of the same logic class do not register readers and writers. The reader must only keep a weak reference to the module logic.
 
-:::{important}
+```cpp
+void vtkSlicer<MyCustomType>Logic::RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager)
+{
+  vtkNew<vtkSlicer<MyCustomType>Reader> reader;
+  reader->Set<MyCustomType>Logic(this);
+  fileIOManager->RegisterReader(reader);
+}
+```
 
-The reader is not a VTK object, like the previous objects discussed. It is actually a QObject, so we follow Qt guidelines. One such guideline is the [D-Pointer pattern](https://wiki.qt.io/D-Pointer), which is recommended for use.
+:::{note}
+
+Readers that are implemented as subclasses of `qSlicerFileReader` that override `load()` and other methods are still supported, but they are deprecated. The Qt-based IO manager (`qSlicerCoreIOManager`) only forwards all calls to the VTK-based file IO manager.
 
 :::
 
+#### Readers and writers implemented in Python
+
+A scripted module can provide a reader and a writer by defining `<ModuleName>FileReader` and `<ModuleName>FileWriter` classes in the module's Python file. They are registered automatically in the file IO manager when the module is set up, using [`vtkSlicerScriptedFileReader`](https://apidocs.slicer.org/main/classvtkSlicerScriptedFileReader.html) and [`vtkSlicerScriptedFileWriter`](https://apidocs.slicer.org/main/classvtkSlicerScriptedFileWriter.html), which call the methods of the Python class.
+
+```python
+class MyModuleFileReader:
+
+    def __init__(self, parent):
+        self.parent = parent
+
+    def description(self):
+        return "My custom type"
+
+    def fileType(self):
+        return "MyCustomTypeFile"
+
+    def extensions(self):
+        return ["My custom type (*.mct)"]
+
+    def canLoadFileConfidence(self, filePath):
+        # Optional. Return a value between 0.0 and 1.0.
+        # If not implemented then the confidence is determined from the file extension.
+        # Optionally, canLoadFile(filePath) can be implemented instead, which returns True or False.
+        return 0.55 if self.parent.supportedNameFilters(filePath) else 0.0
+
+    def getOptionsDescription(self, description):
+        # Optional. Describe the options that the user can set (see "Reader and writer options").
+        description.AddBoolOption("show", "Show", "Show the loaded node in views", True)
+
+    def load(self, properties):
+        # properties is a dict, containing "fileName" and the options
+        node = ...  # load the file
+        if not node:
+            self.parent.userMessages().AddMessage(vtk.vtkCommand.ErrorEvent, f"Failed to load {properties['fileName']}")
+            return False
+        self.parent.loadedNodes = [node.GetID()]
+        return True
+```
+
+The writer class is similar: it implements `description()`, `fileType()`, `extensions(obj)` (name filters that can be used for writing the object), `canWriteObject(obj)` (or `canWriteObjectConfidence(obj)`), optionally `getOptionsDescription(description)`, and `write(properties)` (where `properties` contains `nodeID` and `fileName`). IDs of written nodes are reported by setting `self.parent.writtenNodes`.
+
 #### The writer
 
-The writer is the companion to the reader, so, similar to the reader, it does not implement the actual writing of files, but rather it uses the storage node. Its existence is necessary to use 3D Slicer’s built in saving facilities, such as the save button.
+The writer is the companion to the reader, so, similar to the reader, it does not implement the actual writing of files, but rather it uses the storage node. Its existence is necessary to use 3D Slicer's built in saving facilities, such as the save button.
 
 Files:
 
 ```
 |-- <Extension>
        |-- <Module>
-              |-- qSlicer<MyCustomType>Writer.h
-              |-- qSlicer<MyCustomType>Writer.cxx
+              |-- Logic
+                     |-- vtkSlicer<MyCustomType>Writer.h
+                     |-- vtkSlicer<MyCustomType>Writer.cxx
 ```
 
 Key points:
 
-* Naming convention for class: `qSlicer<MyCustomType>Writer`
-* Inherits from [`qSlicerNodeWriter`](https://apidocs.slicer.org/main/classqSlicerNodeWriter.html).
-* See the [reader](#the-reader) for information on defining and constructing Qt style classes.
-* Override [`QStringList extensions(vtkObject* object) const`](https://apidocs.slicer.org/main/classqSlicerNodeWriter.html#aa2d7322c22d3d5fa7b9ef2843948b31a) to provide file extensions that can be written to.
-  * File extensions may be different, but don’t have to be, for different data nodes that in the same hierarchy (e.g. Markups Curve and Plane could reasonably require different file extensions, but they don’t).
-* Override [`bool write(const qSlicerIO::IOProperties& properties)`](https://apidocs.slicer.org/main/classqSlicerNodeWriter.html#aa7e3af9bf485b46735131e6363223ad8) to do the actual writing (by way of a storage node, of course).
+* Naming convention for class: `vtkSlicer<MyCustomType>Writer`
+* Inherits from [`vtkMRMLNodeWriter`](https://apidocs.slicer.org/main/classvtkMRMLNodeWriter.html), which writes nodes using their storage node. In many cases no subclass is needed, it is enough to register a `vtkMRMLNodeWriter` by calling `fileIOManager->RegisterNodeWriter("MyCustomType", "MyCustomTypeFile", { "vtkMRML<MyCustomType>Node" })` in `RegisterFileIOHandlers()`.
+* Override `void GetNameFiltersForObject(vtkObject* object, vtkStringArray* nameFilters)` to provide file formats that can be written to.
+  * File extensions may be different, but don't have to be, for different data nodes that in the same hierarchy (e.g. Markups Curve and Plane could reasonably require different file extensions, but they don't).
+* Override `bool Write(vtkMRMLIOProperties* properties)` to do the actual writing (by way of a storage node, of course).
+* Override `void GetOptionsDescription(vtkMRMLIOOptionsDescription* description)` to add options (`vtkMRMLNodeWriter` already describes compression options).
+* See the [reader](#the-reader) for information on registering the writer.
+
+#### Reader and writer options
+
+Readers and writers describe the options that the user can set (such as loading a volume as a labelmap) in `GetOptionsDescription()`. User interfaces display widgets for the options based on this description: in the desktop application, `qSlicerGenericIOOptionsWidget` creates the widgets in the Add data and Save data dialogs. The description is also available as JSON (`GetOptionsDescriptionJSON()`), which can be used by other user interfaces (for example, web applications), and the default values of options can be retrieved without a user interface (`GetOptionValues()`).
+
+Each option sets one property of the reader or writer. Supported option types: boolean (checkbox), integer, floating-point number, string, list of strings, enumeration (one of a list of choices), and MRML node (node selector). Default values may depend on the file name (`description->GetFileName()`), the node that is written (`nodeID` property), and on the values of other options (`description->GetOptionValue()`), as the description is requested again whenever the user changes an option.
+
+Labels and tool tips must be translated using `vtkMRMLTr()` with string literals, so that the text can be extracted for translation:
+
+```cpp
+void vtkSlicer<MyCustomType>Reader::GetOptionsDescription(vtkMRMLIOOptionsDescription* description)
+{
+  description->AddBoolOption("labelmap",
+    vtkMRMLTr("vtkSlicer<MyCustomType>Reader", "LabelMap"),
+    vtkMRMLTr("vtkSlicer<MyCustomType>Reader", "Load the volume as a labelmap."),
+    description->GetFileName().find("-label") != std::string::npos);
+  description->AddNodeOption("colorNodeID",
+    vtkMRMLTr("vtkSlicer<MyCustomType>Reader", "Color:"),
+    vtkMRMLTr("vtkSlicer<MyCustomType>Reader", "Color table node used to display the volume."),
+    description->GetBoolOptionValue("labelmap") ? "vtkMRMLColorTableNodeFileGenericColors.txt" : "vtkMRMLColorTableNodeGrey",
+    { "vtkMRMLColorTableNode" }, /*noneEnabled=*/false);
+  description->SetOptionWidget("colorNodeID", "colorTable");
+}
+```
+
+Applications can override default values of options (for example, based on user settings) by setting values in `GetOptionDefaults()` of the reader or writer.
 
 #### The subject hierarchy plugin
 

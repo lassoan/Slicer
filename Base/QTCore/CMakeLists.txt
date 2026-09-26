@@ -100,8 +100,6 @@ set(KIT_SRCS
   qSlicerPersistentCookieJar.h
   qSlicerRelativePathMapper.cxx
   qSlicerRelativePathMapper.h
-  qSlicerSceneBundleReader.cxx
-  qSlicerSceneBundleReader.h
   qSlicerUtils.cxx
   qSlicerUtils.h
   )
@@ -124,10 +122,6 @@ endif()
 
 if(Slicer_USE_PYTHONQT)
   list(APPEND KIT_SRCS
-    qSlicerScriptedFileReader.cxx
-    qSlicerScriptedFileReader.h
-    qSlicerScriptedFileWriter.cxx
-    qSlicerScriptedFileWriter.h
     qSlicerScriptedUtils.cxx
     qSlicerScriptedUtils_p.h
     )

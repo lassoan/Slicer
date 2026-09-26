@@ -203,6 +203,9 @@ public:
   std::vector<std::string> GetViewNodeClasses();
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerSceneViewsModuleLogic();
 
   ~vtkSlicerSceneViewsModuleLogic() override;

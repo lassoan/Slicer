@@ -21,13 +21,22 @@
 #ifndef __qSlicerNodeWriter_h
 #define __qSlicerNodeWriter_h
 
-// QtCore includes
+// QtGUI includes
 #include "qSlicerBaseQTGUIExport.h"
 #include "qSlicerFileWriter.h"
-class qSlicerNodeWriterPrivate;
+#include "qSlicerNodeWriterOptionsWidget.h"
+
+// Slicer includes
+#include <vtkMRMLNodeWriter.h>
+
+// VTK includes
+#include <vtkNew.h>
+
 class vtkMRMLNode;
 
 /// Utility class that is ready to use for most of the nodes.
+///
+/// \deprecated All tasks are delegated to vtkMRMLNodeWriter.
 class Q_SLICER_BASE_QTGUI_EXPORT qSlicerNodeWriter : public qSlicerFileWriter
 {
   Q_OBJECT
@@ -36,45 +45,65 @@ class Q_SLICER_BASE_QTGUI_EXPORT qSlicerNodeWriter : public qSlicerFileWriter
 
 public:
   typedef qSlicerFileWriter Superclass;
-  qSlicerNodeWriter(const QString& description, const qSlicerIO::IOFileType& fileType, const QStringList& nodeTags, bool useCompression, QObject* parent);
+  qSlicerNodeWriter(const QString& description,
+                    const qSlicerIO::IOFileType& fileType,
+                    const QStringList& nodeClassNames,
+                    bool supportUseCompression,
+                    QObject* parent)
+    : Superclass(parent)
+  {
+    vtkNew<vtkMRMLNodeWriter> writer;
+    writer->SetDescription(description.toUtf8().constData());
+    writer->SetFileType(fileType.toUtf8().constData());
+    writer->SetSupportUseCompression(supportUseCompression);
+    this->setIOHandler(writer);
+    this->setNodeClassNames(nodeClassNames);
+  }
 
-  ~qSlicerNodeWriter() override;
+  /// VTK-based writer that performs all tasks
+  vtkMRMLNodeWriter* nodeWriter() const { return vtkMRMLNodeWriter::SafeDownCast(this->ioHandler()); }
 
-  void setSupportUseCompression(bool useCompression);
-  bool supportUseCompression() const;
+  void setSupportUseCompression(bool support) { this->nodeWriter()->SetSupportUseCompression(support); }
+  bool supportUseCompression() const { return this->nodeWriter()->GetSupportUseCompression(); }
 
-  QString description() const override;
-  IOFileType fileType() const override;
+  virtual vtkMRMLNode* getNodeByID(const char* id) const { return this->nodeWriter()->GetNodeByID(id); }
 
-  /// Return true if this class can write the input object.
-  bool canWriteObject(vtkObject* object) const override;
+  /// Options widget (for writers that call this method from their options() implementation).
+  qSlicerIOOptions* options() const override
+  {
+    qSlicerNodeWriterOptionsWidget* options = new qSlicerNodeWriterOptionsWidget;
+    options->setShowUseCompression(this->supportUseCompression());
+    return options;
+  }
 
-  /// Return a list of the supported extensions for a particular object.
-  /// Please read QFileDialog::nameFilters for the allowed formats
-  /// Example: "Image (*.jpg *.png *.tiff)", "Model (*.vtk)"
-  QStringList extensions(vtkObject* object) const override;
-
-  /// Write the node referenced by "nodeID" into the "fileName" file.
-  /// Optionally, "useCompression" can be specified.
-  /// Return true on success, false otherwise.
-  /// Create a storage node if the storable node doesn't have any.
-  bool write(const qSlicerIO::IOProperties& properties) override;
-
-  virtual vtkMRMLNode* getNodeByID(const char* id) const;
-
-  /// Return a qSlicerNodeWriterOptionsWidget
-  qSlicerIOOptions* options() const override;
+  /// Constructor for subclasses. A default vtkMRMLNodeWriter is created,
+  /// which may be replaced by a vtkMRMLNodeWriter subclass by calling setIOHandler.
+  explicit qSlicerNodeWriter(QObject* parent)
+    : Superclass(parent)
+  {
+    vtkNew<vtkMRMLNodeWriter> writer;
+    this->setIOHandler(writer);
+  }
 
 protected:
-  void setNodeClassNames(const QStringList& nodeClassNames);
-  QStringList nodeClassNames() const;
-
-protected:
-  QScopedPointer<qSlicerNodeWriterPrivate> d_ptr;
-
-private:
-  Q_DECLARE_PRIVATE(qSlicerNodeWriter);
-  Q_DISABLE_COPY(qSlicerNodeWriter);
+  void setNodeClassNames(const QStringList& nodeClassNames)
+  {
+    std::vector<std::string> classNames;
+    for (const QString& className : nodeClassNames)
+    {
+      classNames.push_back(className.toStdString());
+    }
+    this->nodeWriter()->SetNodeClassNames(classNames);
+  }
+  QStringList nodeClassNames() const
+  {
+    QStringList classNames;
+    for (const std::string& className : this->nodeWriter()->GetNodeClassNames())
+    {
+      classNames << QString::fromStdString(className);
+    }
+    return classNames;
+  }
 };
 
 #endif

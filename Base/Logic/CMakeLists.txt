@@ -114,6 +114,9 @@ set(SlicerBaseLogic_SRCS
 
 if(Slicer_USE_PYTHONQT)
   list(APPEND SlicerBaseLogic_SRCS
+    vtkSlicerScriptedFileIOParent.cxx
+    vtkSlicerScriptedFileReader.cxx
+    vtkSlicerScriptedFileWriter.cxx
     vtkSlicerScriptedLoadableModuleLogic.cxx
     )
 endif()

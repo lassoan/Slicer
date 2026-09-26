@@ -1,5 +1,7 @@
 // SlicerLogic includes
 #include "vtkSlicerSceneViewsModuleLogic.h"
+#include <vtkMRMLFileIOManager.h>
+#include <vtkNew.h>
 
 // Sequences logic includes
 #include <vtkSlicerSequencesLogic.h>
@@ -1356,4 +1358,10 @@ std::vector<std::string> vtkSlicerSceneViewsModuleLogic::GetViewNodeClasses()
   std::vector<std::string> nodeTypes;
   this->GetViewNodeClasses(nodeTypes);
   return nodeTypes;
+}
+
+//----------------------------------------------------------------------------
+void vtkSlicerSceneViewsModuleLogic::RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager)
+{
+  fileIOManager->RegisterNodeWriter("SceneViews", "SceneViewFile", { "vtkMRMLSceneViewNode" }, true);
 }

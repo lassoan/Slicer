@@ -24,6 +24,7 @@
 // MRMLLogic includes
 #include "vtkMRMLApplicationLogic.h"
 #include "vtkMRMLColorLogic.h"
+#include "vtkMRMLFileIOManager.h"
 #include "vtkMRMLMessageCollection.h"
 #include "vtkMRMLSliceLogic.h"
 #include "vtkMRMLSliceLinkLogic.h"
@@ -94,6 +95,7 @@ public:
   vtkSmartPointer<vtkMRMLSliceLinkLogic> SliceLinkLogic;
   vtkSmartPointer<vtkMRMLViewLinkLogic> ViewLinkLogic;
   vtkSmartPointer<vtkMRMLColorLogic> ColorLogic;
+  vtkSmartPointer<vtkMRMLFileIOManager> FileIOManager;
   std::string TemporaryPath;
   std::map<std::string, vtkWeakPointer<vtkMRMLAbstractLogic>> ModuleLogicMap;
   std::map<int, std::string> FontFileNames;
@@ -111,6 +113,7 @@ vtkMRMLApplicationLogic::vtkInternal::vtkInternal(vtkMRMLApplicationLogic* exter
   this->SliceLinkLogic = vtkSmartPointer<vtkMRMLSliceLinkLogic>::New();
   this->ViewLinkLogic = vtkSmartPointer<vtkMRMLViewLinkLogic>::New();
   this->ColorLogic = vtkSmartPointer<vtkMRMLColorLogic>::New();
+  this->FileIOManager = vtkSmartPointer<vtkMRMLFileIOManager>::New();
 }
 
 //----------------------------------------------------------------------------
@@ -166,11 +169,14 @@ vtkMRMLApplicationLogic::vtkMRMLApplicationLogic()
   this->Internal->SliceLinkLogic->SetMRMLApplicationLogic(this);
   this->Internal->ViewLinkLogic->SetMRMLApplicationLogic(this);
   this->Internal->ColorLogic->SetMRMLApplicationLogic(this);
+  this->Internal->FileIOManager->SetApplicationLogic(this);
 }
 
 //----------------------------------------------------------------------------
 vtkMRMLApplicationLogic::~vtkMRMLApplicationLogic()
 {
+  this->Internal->FileIOManager->SetScene(nullptr);
+  this->Internal->FileIOManager->SetApplicationLogic(nullptr);
   delete this->Internal;
 }
 
@@ -203,6 +209,12 @@ void vtkMRMLApplicationLogic::SetColorLogic(vtkMRMLColorLogic* colorLogic)
 vtkMRMLColorLogic* vtkMRMLApplicationLogic::GetColorLogic() const
 {
   return this->Internal->ColorLogic;
+}
+
+//----------------------------------------------------------------------------
+vtkMRMLFileIOManager* vtkMRMLApplicationLogic::GetFileIOManager() const
+{
+  return this->Internal->FileIOManager;
 }
 
 //----------------------------------------------------------------------------
@@ -409,6 +421,7 @@ void vtkMRMLApplicationLogic::SetMRMLSceneInternal(vtkMRMLScene* newScene)
 
   this->Internal->SliceLinkLogic->SetMRMLScene(newScene);
   this->Internal->ViewLinkLogic->SetMRMLScene(newScene);
+  this->Internal->FileIOManager->SetScene(newScene);
 }
 
 //----------------------------------------------------------------------------
@@ -464,6 +477,12 @@ void vtkMRMLApplicationLogic::PropagateLabelVolumeSelection(int fit)
 void vtkMRMLApplicationLogic::PropagateVolumeSelection(int layer, int fit)
 {
   this->Internal->PropagateVolumeSelection(layer, fit);
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLApplicationLogic::RequestResetThreeDViews()
+{
+  this->InvokeEvent(ResetThreeDViewsRequestEvent);
 }
 
 //----------------------------------------------------------------------------
@@ -824,9 +843,19 @@ void vtkMRMLApplicationLogic::SetModuleLogic(const char* moduleName, vtkMRMLAbst
     vtkErrorMacro("AddModuleLogic: invalid module name.");
     return;
   }
+  auto previousLogicIt = this->Internal->ModuleLogicMap.find(moduleName);
+  vtkMRMLAbstractLogic* previousLogic = (previousLogicIt != this->Internal->ModuleLogicMap.end()) ? previousLogicIt->second.GetPointer() : nullptr;
+  if (previousLogic && previousLogic != moduleLogic)
+  {
+    // Remove readers and writers of the logic that is no longer the module logic
+    previousLogic->UnregisterFileIOHandlers();
+  }
   if (moduleLogic)
   {
     this->Internal->ModuleLogicMap[moduleName] = moduleLogic;
+    // Register readers and writers of the module logic. Readers and writers are only registered by
+    // module logics (not by other instances of the same logic class) to avoid duplicate registrations.
+    moduleLogic->RegisterFileIOHandlersInManager(this->GetFileIOManager());
   }
   else
   {

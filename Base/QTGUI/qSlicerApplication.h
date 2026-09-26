@@ -255,6 +255,9 @@ signals:
 
 protected slots:
 
+  /// Reset field of view in all 3D views (requested by vtkMRMLApplicationLogic::ResetThreeDViewsRequestEvent)
+  void onResetThreeDViewsRequested();
+
   /// Request editing of a MRML node
   void editNode(vtkObject*, void*, unsigned long) override;
 

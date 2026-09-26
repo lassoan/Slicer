@@ -27,19 +27,23 @@
 
 #include "vtkMRMLScene.h"
 
+// VTK includes
+#include <vtkCallbackCommand.h>
+#include <vtkNew.h>
+
 // Slicer includes
-#include "qSlicerIOManager.h"
-#include "qSlicerNodeWriter.h"
 
 // Sequence Logic includes
 #include <vtkSlicerSequencesLogic.h>
+#include <vtkSlicerSequencesReader.h>
+#include <vtkSlicerApplicationLogic.h>
+#include <vtkMRMLFileIOManager.h>
 
 // Sequence includes
 #include "vtkMRMLSequenceBrowserNode.h"
 #include "qMRMLSequenceBrowserToolBar.h"
 #include "qSlicerSequencesModule.h"
 #include "qSlicerSequencesModuleWidget.h"
-#include "qSlicerSequencesReader.h"
 
 static const double UPDATE_VIRTUAL_OUTPUT_NODES_PERIOD_SEC = 0.020; // refresh output with a maximum of 50FPS
 
@@ -194,12 +198,17 @@ void qSlicerSequencesModule::setup()
   Q_D(qSlicerSequencesModule);
   this->Superclass::setup();
   d->addToolBar();
-  // Register IOs
-  qSlicerIOManager* ioManager = qSlicerApplication::application()->ioManager();
-  vtkSlicerSequencesLogic* sequencesLogic = vtkSlicerSequencesLogic::SafeDownCast(this->logic());
-  ioManager->registerIO(new qSlicerNodeWriter("Sequences", QString("SequenceFile"), QStringList() << "vtkMRMLSequenceNode", true, this));
-  ioManager->registerIO(new qSlicerSequencesReader(sequencesLogic, this));
-  ioManager->registerIO(new qSlicerNodeWriter("Sequences", QString("VolumeSequenceFile"), QStringList() << "vtkMRMLSequenceNode", true, this));
+  // Readers and writers are registered by the module logic
+  vtkSlicerSequencesReader* sequencesReader =
+    vtkSlicerSequencesReader::SafeDownCast(this->appLogic() ? this->appLogic()->GetFileIOManager()->GetReaderByClassName("vtkSlicerSequencesReader") : nullptr);
+  // Show the sequence browser toolbar when a sequence is loaded
+  vtkNew<vtkCallbackCommand> showSequenceBrowserCallback;
+  showSequenceBrowserCallback->SetCallback([](vtkObject*, unsigned long, void*, void* callData)
+                                           { qSlicerSequencesModule::showSequenceBrowser(reinterpret_cast<vtkMRMLSequenceBrowserNode*>(callData)); });
+  if (sequencesReader)
+  {
+    sequencesReader->AddObserver(vtkSlicerSequencesReader::ShowSequenceBrowserRequestedEvent, showSequenceBrowserCallback);
+  }
 }
 
 //-----------------------------------------------------------------------------

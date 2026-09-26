@@ -45,6 +45,9 @@ public:
   vtkBooleanMacro(SceneChanged, bool);
 
 protected:
+  /// Register file readers and writers of the module.
+  void RegisterFileIOHandlers(vtkMRMLFileIOManager* fileIOManager) override;
+
   vtkSlicerDataModuleLogic();
   ~vtkSlicerDataModuleLogic() override;
 
