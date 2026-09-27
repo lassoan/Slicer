@@ -156,6 +156,19 @@ xcode-select --install
 
 Path the build folder is too long. For example building Slicer in `/User/somebody/projects/something/dev/slicer/slicer-qt5-rel` may fail with malformed mach-o error, while it succeeds in `/opt/s` folder. To resolve this error, move the build folder to a location with shorter full path and restart the build from scratch (the build tree is not relocatable).
 
+### ld: framework 'AGL' not found
+
+When building with Qt 6 against the macOS 26 (Tahoe) SDK, linking fails at the first target that links Qt, for example `CTKAppLauncher`:
+
+```console
+ld: framework 'AGL' not found
+c++: error: linker command failed with exit code 1
+```
+
+Apple removed `AGL.framework` from the macOS 26 SDK, but the `FindWrapOpenGL.cmake` module shipped with Qt 6.8.3 still links against it. The problem is not reported during configuration, because `find_library()` locates the stub at `/System/Library/Frameworks/AGL.framework` on the running system, while the linker resolves `-framework` against the SDK, where it is absent.
+
+Using a newer Qt resolves this: Qt 6.9.3 no longer references AGL in `FindWrapOpenGL.cmake` and builds correctly against the macOS 26 SDK. Qt versions between 6.8.3 and 6.9.3 have not been tested.
+
 ### Packaging errors
 
 #### Fixing @rpath errors during packaging
