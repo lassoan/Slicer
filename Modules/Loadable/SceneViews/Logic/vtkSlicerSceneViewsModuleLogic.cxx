@@ -197,11 +197,26 @@ vtkMRMLSequenceBrowserNode* vtkSlicerSceneViewsModuleLogic::ConvertSceneViewNode
   wasDisabledModifiedEvents[sequenceBrowser] = sequenceBrowser->GetDisableModifiedEvent();
   sequenceBrowser->DisableModifiedEventOn();
 
+  // Convert the same kinds of nodes that are saved in a new scene view (display and view nodes),
+  // so that camera position, slice view field of view, layout, etc. are restored, too.
+  std::vector<std::string> savedNodeClasses;
+  this->GetDisplayNodeClasses(savedNodeClasses);
+  this->GetViewNodeClasses(savedNodeClasses);
+
   std::vector<vtkMRMLNode*> proxyNodes;
   std::map<vtkMRMLNode*, vtkMRMLNode*> proxyNodeToSnapshotMap;
   for (vtkMRMLNode* snapshotNode : snapshotNodes)
   {
-    if (!snapshotNode->IsA("vtkMRMLDisplayNode"))
+    bool saved = false;
+    for (const std::string& savedNodeClass : savedNodeClasses)
+    {
+      if (snapshotNode->IsA(savedNodeClass.c_str()))
+      {
+        saved = true;
+        break;
+      }
+    }
+    if (!saved)
     {
       continue;
     }
