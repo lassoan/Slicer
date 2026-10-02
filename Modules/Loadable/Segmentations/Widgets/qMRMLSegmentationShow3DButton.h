@@ -56,6 +56,7 @@ protected slots:
   void onEnableSurfaceNetsToggled(bool surfaceNetsEnabled);
   void onEnableSurfaceNetsSmoothingToggled(bool surfaceNetsSmoothingEnabled);
   void onSurfaceSmoothingFactorChanged(double newSmoothingFactor);
+  void onRepresentationActionTriggered(QAction* action);
   void updateWidgetFromMRML();
 
 protected:

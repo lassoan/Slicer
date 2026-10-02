@@ -25,6 +25,9 @@
 #include <vtkCellPicker.h>
 #include <vtkSmartPointer.h>
 
+// VTK includes
+#include <vtkCommand.h>
+
 // STD includes
 #include <map>
 
@@ -71,6 +74,26 @@ public:
 
   using vtkCellPicker::Pick;
 
+  /// Mappers that render without geometry that the picker can intersect with the pick ray (for example surfaces that
+  /// are ray cast on the GPU) can be picked by observing this event. Call data is a RayIntersection, with the ray in the
+  /// model coordinates of the prop (from P1 to P2, between parametric coordinates T1 and T2); the observer sets
+  /// Intersected and, if it is true, the parametric coordinate (T), position and normal of the first intersection.
+  enum
+  {
+    IntersectRayEvent = vtkCommand::UserEvent + 7810
+  };
+  struct RayIntersection
+  {
+    double P1[3];
+    double P2[3];
+    double T1;
+    double T2;
+    bool Intersected{ false };
+    double T{ 0.0 };
+    double Position[3]{ 0.0, 0.0, 0.0 };
+    double Normal[3]{ 0.0, 0.0, 1.0 };
+  };
+
   /// Refresh the cell locators for the renderer's large surfaces, then pick as
   /// vtkCellPicker does.
   int Pick(double selectionX, double selectionY, double selectionZ, vtkRenderer* renderer) override;
@@ -83,6 +106,10 @@ protected:
   /// surface currently shown in the renderer (building or rebuilding it only
   /// when the surface changes) and drop locators for surfaces no longer shown.
   void UpdateLocators(vtkRenderer* renderer);
+
+  /// Intersect the pick ray with an actor. If the mapper observes IntersectRayEvent then the mapper computes
+  /// the intersection, otherwise its cells are intersected as in vtkCellPicker.
+  double IntersectActorWithLine(const double p1[3], const double p2[3], double t1, double t2, double tol, vtkProp3D* prop, vtkMapper* mapper) override;
 
   /// Pick the cell that the ray hits.
   ///

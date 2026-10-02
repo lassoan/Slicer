@@ -130,6 +130,38 @@ int vtkMRMLAccuratePicker::Pick(double selectionX, double selectionY, double sel
 }
 
 //----------------------------------------------------------------------------
+double vtkMRMLAccuratePicker::IntersectActorWithLine(const double p1[3], const double p2[3], double t1, double t2, double tol, vtkProp3D* prop, vtkMapper* m)
+{
+  vtkMapper* mapper = m;
+  if (!mapper || !mapper->HasObserver(IntersectRayEvent))
+  {
+    return this->Superclass::IntersectActorWithLine(p1, p2, t1, t2, tol, prop, mapper);
+  }
+  RayIntersection intersection;
+  std::copy_n(p1, 3, intersection.P1);
+  std::copy_n(p2, 3, intersection.P2);
+  intersection.T1 = t1;
+  intersection.T2 = t2;
+  mapper->InvokeEvent(IntersectRayEvent, &intersection);
+  if (!intersection.Intersected || intersection.T < t1 || intersection.T > t2)
+  {
+    return VTK_DOUBLE_MAX;
+  }
+  if (intersection.T < this->GlobalTMin)
+  {
+    // Same outputs as for cells, except there is no cell
+    this->Mapper = mapper;
+    this->DataSet = nullptr;
+    this->CellId = -1;
+    this->SubId = -1;
+    this->PointId = -1;
+    std::copy_n(intersection.Position, 3, this->MapperPosition);
+    std::copy_n(intersection.Normal, 3, this->MapperNormal);
+  }
+  return intersection.T;
+}
+
+//----------------------------------------------------------------------------
 namespace
 {
 /// Output of vtkCellPicker::IntersectDataSetWithLine(), so that searches with
