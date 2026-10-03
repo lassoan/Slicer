@@ -103,6 +103,12 @@ public:
   vtkSetClampMacro(OutlineWidth, double, 0.5, 100.0);
   vtkGetMacro(OutlineWidth, double);
 
+  /// Rays are cast for every n-th pixel across and down (1: every pixel), and the image is scaled up to the viewport,
+  /// as with ImageSampleDistance of vtkGPUVolumeRayCastMapper. Larger values make rendering faster at the expense of
+  /// detail, for example while the camera is moving.
+  vtkSetClampMacro(ImageSampleDistance, double, 1.0, 8.0);
+  vtkGetMacro(ImageSampleDistance, double);
+
   /// Number of times the signed distance field has been computed (for testing).
   vtkGetMacro(NumberOfDistanceFieldComputations, int);
 
@@ -128,6 +134,7 @@ protected:
   int FillInputPortInformation(int port, vtkInformation* info) override;
 
   double SmoothingFactor{ 0.5 };
+  double ImageSampleDistance{ 1.0 };
   bool CapClippedSurface{ true };
   double CapOpacity{ 1.0 };
   bool KeepWhereAnyClippingPlaneKeeps{ false };
