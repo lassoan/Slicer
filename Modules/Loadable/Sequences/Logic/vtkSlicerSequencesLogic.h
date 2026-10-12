@@ -115,7 +115,12 @@ protected:
   void UpdateFromMRMLScene() override;
   void OnMRMLSceneNodeAdded(vtkMRMLNode* node) override;
   void OnMRMLSceneNodeRemoved(vtkMRMLNode* node) override;
+  void OnMRMLSceneEndImport() override;
+  void OnMRMLSceneEndRestore() override;
   void ProcessMRMLNodesEvents(vtkObject* caller, unsigned long event, void* callData) override;
+
+  /// Update proxy nodes of all sequence browser nodes in the scene
+  void UpdateProxyNodesOfAllBrowserNodes();
 
   bool IsDataConnectorNode(vtkMRMLNode*);
 

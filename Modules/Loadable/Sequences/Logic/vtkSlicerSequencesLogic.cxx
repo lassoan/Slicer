@@ -81,7 +81,39 @@ void vtkSlicerSequencesLogic::SetMRMLSceneInternal(vtkMRMLScene* newScene)
   events->InsertNextValue(vtkMRMLScene::NodeAddedEvent);
   events->InsertNextValue(vtkMRMLScene::NodeRemovedEvent);
   events->InsertNextValue(vtkMRMLScene::EndBatchProcessEvent);
+  events->InsertNextValue(vtkMRMLScene::EndImportEvent);
+  events->InsertNextValue(vtkMRMLScene::EndRestoreEvent);
   this->SetAndObserveMRMLSceneEventsInternal(newScene, events.GetPointer());
+}
+
+//---------------------------------------------------------------------------
+void vtkSlicerSequencesLogic::OnMRMLSceneEndImport()
+{
+  // Proxy nodes are not updated while the scene is imported (see ProcessMRMLNodesEvents), update them now
+  this->UpdateProxyNodesOfAllBrowserNodes();
+}
+
+//---------------------------------------------------------------------------
+void vtkSlicerSequencesLogic::OnMRMLSceneEndRestore()
+{
+  // Proxy nodes are not updated while the scene is restored (see ProcessMRMLNodesEvents), update them now
+  this->UpdateProxyNodesOfAllBrowserNodes();
+}
+
+//---------------------------------------------------------------------------
+void vtkSlicerSequencesLogic::UpdateProxyNodesOfAllBrowserNodes()
+{
+  vtkMRMLScene* scene = this->GetMRMLScene();
+  if (!scene)
+  {
+    return;
+  }
+  std::vector<vtkMRMLNode*> browserNodes;
+  scene->GetNodesByClass("vtkMRMLSequenceBrowserNode", browserNodes);
+  for (vtkMRMLNode* node : browserNodes)
+  {
+    this->UpdateProxyNodesFromSequences(vtkMRMLSequenceBrowserNode::SafeDownCast(node));
+  }
 }
 
 //-----------------------------------------------------------------------------
@@ -775,7 +807,16 @@ void vtkSlicerSequencesLogic::ProcessMRMLNodesEvents(vtkObject* caller, unsigned
   }
   if (event == vtkCommand::ModifiedEvent)
   {
-    // Browser node modified (e.g., switched to next frame), update proxy nodes
+    // Browser node modified (e.g., switched to next frame), update proxy nodes.
+    // During import or restore, the browser node may be modified many times (for example, each time a referenced
+    // node ID changes). Updating all proxy nodes each time would be very slow (when there are many synchronized
+    // sequences), therefore proxy nodes are updated once, when import or restore is completed.
+    if (this->GetMRMLScene() &&                 //
+        (this->GetMRMLScene()->IsImporting() || //
+         this->GetMRMLScene()->IsRestoring()))
+    {
+      return;
+    }
     this->UpdateProxyNodesFromSequences(browserNode);
   }
   else if (event == vtkMRMLSequenceBrowserNode::ProxyNodeModifiedEvent)
