@@ -224,6 +224,27 @@ endif()
 mark_as_superbuild(Slicer_FILE_ASSOCIATION_EXTENSIONS:STRING)
 message(STATUS "Configuring ${Slicer_MAIN_PROJECT_APPLICATION_NAME} file association extensions [${Slicer_FILE_ASSOCIATION_EXTENSIONS}]")
 
+# Check the list here, where the option is defined, so that a bad value is reported
+# when the project is configured, on every platform. The Windows installer writes a
+# registry key named after each extension and removes it on uninstall, so an entry that
+# is not a plain extension could make the uninstaller touch an unrelated key.
+set(_file_association_extensions_lowercase)
+foreach(_ext IN LISTS Slicer_FILE_ASSOCIATION_EXTENSIONS)
+  if(NOT _ext MATCHES "^\\.[A-Za-z0-9][A-Za-z0-9_+-]*$")
+    message(FATAL_ERROR "Slicer_FILE_ASSOCIATION_EXTENSIONS [${Slicer_FILE_ASSOCIATION_EXTENSIONS}] contains \"${_ext}\", "
+      "which is not a file extension. Each entry must be a period followed by letters, digits, '_', '+' or '-', "
+      "for example .mrml")
+  endif()
+  # File extensions are not case sensitive on Windows
+  string(TOLOWER "${_ext}" _ext_lowercase)
+  if(_ext_lowercase IN_LIST _file_association_extensions_lowercase)
+    message(FATAL_ERROR "Slicer_FILE_ASSOCIATION_EXTENSIONS [${Slicer_FILE_ASSOCIATION_EXTENSIONS}] contains \"${_ext}\" "
+      "more than once (extensions are compared case-insensitively)")
+  endif()
+  list(APPEND _file_association_extensions_lowercase "${_ext_lowercase}")
+endforeach()
+unset(_file_association_extensions_lowercase)
+
 #-----------------------------------------------------------------------------
 # Set Slicer_STORE_SETTINGS_IN_APPLICATION_HOME_DIR
 #-----------------------------------------------------------------------------
