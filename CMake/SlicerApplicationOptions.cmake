@@ -137,20 +137,20 @@ endif()
 # Set libraries to leave untouched during macOS bundle fixup and re-signing
 #-----------------------------------------------------------------------------
 if(APPLE)
-  if(NOT DEFINED Slicer_CPACK_BUNDLE_FIXUP_PROTECTED_LIBRARIES)
-    string(CONCAT _protected_libraries_description
-      "Regex patterns (matched against Mach-O basename) of macOS bundle "
-      "libraries to leave untouched during bundle fixup and re-signing "
+  if(NOT DEFINED Slicer_CPACK_BUNDLE_FIXUP_IGNORE_LIBRARY_REGEXES)
+    string(CONCAT _ignore_library_regexes_description
+      "Regular expressions (matched against the Mach-O file name) of macOS bundle "
+      "libraries to leave untouched during bundle fixup and re-signing, "
       "e.g. vendor libraries shipped with their own valid signature. Their "
       "dependencies are not resolved or embedded, and their load commands are "
-      "not rewritten. Patterns use an unanchored search against the basename; "
-      "use [.] rather than \\. for literal dots. Protected libraries must already "
+      "not rewritten. Patterns use an unanchored search against the file name; "
+      "use [.] rather than \\. for literal dots. Ignored libraries must already "
       "be correctly signed, including nested Mach-O code, when signing/notarizing.")
-    set(Slicer_CPACK_BUNDLE_FIXUP_PROTECTED_LIBRARIES ""
-      CACHE STRING "${_protected_libraries_description}")
-    mark_as_advanced(Slicer_CPACK_BUNDLE_FIXUP_PROTECTED_LIBRARIES)
+    set(Slicer_CPACK_BUNDLE_FIXUP_IGNORE_LIBRARY_REGEXES ""
+      CACHE STRING "${_ignore_library_regexes_description}")
+    mark_as_advanced(Slicer_CPACK_BUNDLE_FIXUP_IGNORE_LIBRARY_REGEXES)
   endif()
-  mark_as_superbuild(Slicer_CPACK_BUNDLE_FIXUP_PROTECTED_LIBRARIES:STRING)
+  mark_as_superbuild(Slicer_CPACK_BUNDLE_FIXUP_IGNORE_LIBRARY_REGEXES:STRING)
 endif()
 
 #-----------------------------------------------------------------------------
