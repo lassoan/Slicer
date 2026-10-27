@@ -204,6 +204,115 @@ ExternalProject_Execute(${proj} \"build\" make \${jflag} build_libs)
     ExternalProject_Message(${proj} "OPENSSL_SSL_LIBRARY:${OPENSSL_SSL_LIBRARY}")
 
   #------------------------------------------------------------------------------
+  elseif(WIN32 AND Slicer_ARCHITECTURE STREQUAL "arm64")
+
+    # There is no pre-compiled OpenSSL package for Windows ARM64, therefore
+    # OpenSSL is built from source using nmake and the Visual Studio toolchain.
+    # OpenSSL 3.x is required: OpenSSL 1.1.1 built for VC-WIN64-ARM crashes
+    # during TLS handshake.
+    set(_default_version "3.5.9")
+    set(OPENSSL_DOWNLOAD_VERSION "${_default_version}" CACHE STRING "Version of OpenSSL source package to download")
+    set_property(CACHE OPENSSL_DOWNLOAD_VERSION PROPERTY STRINGS "3.5.9")
+
+    set(OpenSSL_3.5.9_URL https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz)
+    set(OpenSSL_3.5.9_SHA256 603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a)
+
+    if(NOT DEFINED OpenSSL_${OPENSSL_DOWNLOAD_VERSION}_URL)
+      message(FATAL_ERROR "There is no source version of OpenSSL ${OPENSSL_DOWNLOAD_VERSION} available.
+You could either:
+ (1) disable SSL support configuring with option Slicer_USE_PYTHONQT_WITH_OPENSSL:BOOL=OFF
+ or
+ (2) configure Slicer providing your own version of OpenSSL.
+     The options to specify are OPENSSL_INCLUDE_DIR, LIB_EAY_RELEASE and SSL_EAY_RELEASE.")
+    endif()
+
+    # OpenSSL configure script requires a native Windows Perl (MSYS Perl
+    # distributed with Git for Windows is not supported). If no Perl is
+    # specified then a portable Strawberry Perl is downloaded.
+    set(OpenSSL_PERL_EXECUTABLE "" CACHE FILEPATH "Native Windows Perl executable used for configuring OpenSSL (Strawberry Perl is downloaded if not set)")
+    mark_as_advanced(OpenSSL_PERL_EXECUTABLE)
+    set(_perl_dependencies)
+    if(OpenSSL_PERL_EXECUTABLE)
+      set(_perl_executable ${OpenSSL_PERL_EXECUTABLE})
+    else()
+      set(_perl_dir ${CMAKE_BINARY_DIR}/${proj}-perl)
+      ExternalProject_Add(${proj}-perl
+        URL https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54231_64bit/strawberry-perl-5.42.3.1-64bit-portable.zip
+        URL_HASH SHA256=6a081a811781c30aca51dbc036afd93092af91e3297901f02c17043795a10690
+        DOWNLOAD_DIR ${CMAKE_BINARY_DIR}
+        SOURCE_DIR ${_perl_dir}
+        CONFIGURE_COMMAND ""
+        BUILD_COMMAND ""
+        INSTALL_COMMAND ""
+        )
+      set(_perl_executable ${_perl_dir}/perl/bin/perl.exe)
+      set(_perl_dependencies ${proj}-perl)
+    endif()
+
+    # nmake and the compiler are not available in the environment of Visual
+    # Studio custom build steps, therefore commands are run after calling vcvarsall.
+    set(_cmd_wrapper)
+    if(CMAKE_GENERATOR MATCHES "Visual Studio")
+      if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64)$")
+        set(_vcvarsall_arch "arm64")
+      else()
+        set(_vcvarsall_arch "x64_arm64")
+      endif()
+      set(_vcvarsall_vcvars_ver)
+      if(DEFINED CMAKE_VS_PLATFORM_TOOLSET_VERSION)
+        set(_vcvarsall_vcvars_ver "-vcvars_ver=${CMAKE_VS_PLATFORM_TOOLSET_VERSION}")
+      endif()
+      set(_cmd_wrapper ${CMAKE_BINARY_DIR}/${proj}_vcvars_wrapper.bat)
+      file(WRITE ${_cmd_wrapper}
+"@call \"${CMAKE_GENERATOR_INSTANCE}/VC/Auxiliary/Build/vcvarsall.bat\" ${_vcvarsall_arch} ${_vcvarsall_vcvars_ver} >nul
+@set VS_UNICODE_OUTPUT=
+@%*
+")
+    endif()
+
+    set(EP_SOURCE_DIR ${CMAKE_BINARY_DIR}/${proj})
+    set(EP_INSTALL_DIR ${CMAKE_BINARY_DIR}/${proj}-install)
+
+    ExternalProject_Add(${proj}
+      ${${proj}_EP_ARGS}
+      URL ${OpenSSL_${OPENSSL_DOWNLOAD_VERSION}_URL}
+      URL_HASH SHA256=${OpenSSL_${OPENSSL_DOWNLOAD_VERSION}_SHA256}
+      DOWNLOAD_DIR ${CMAKE_BINARY_DIR}
+      SOURCE_DIR ${EP_SOURCE_DIR}
+      INSTALL_DIR ${EP_INSTALL_DIR}
+      BUILD_IN_SOURCE 1
+      CONFIGURE_COMMAND ${_cmd_wrapper} ${_perl_executable} Configure VC-WIN64-ARM shared no-tests
+        --prefix=${EP_INSTALL_DIR} --openssldir=${EP_INSTALL_DIR}/ssl
+      BUILD_COMMAND ${_cmd_wrapper} nmake build_libs
+      INSTALL_COMMAND ${_cmd_wrapper} nmake install_dev install_runtime_libs
+      DEPENDS
+        ${${proj}_DEPENDENCIES}
+        ${_perl_dependencies}
+      )
+
+    # Python "_ssl" extension expects "applink.c", which OpenSSL only installs
+    # for targets using OPENSSL_USE_APPLINK (not the case for VC-WIN64-ARM).
+    ExternalProject_Add_Step(${proj} install_applink
+      COMMAND ${CMAKE_COMMAND} -E copy ${EP_SOURCE_DIR}/ms/applink.c ${EP_INSTALL_DIR}/include/openssl/applink.c
+      DEPENDEES install
+      )
+
+    set(OpenSSL_DIR ${EP_INSTALL_DIR})
+    set(OPENSSL_INCLUDE_DIR "${OpenSSL_DIR}/include")
+    set(OPENSSL_LIBRARY_DIR "${OpenSSL_DIR}/lib")
+    set(OPENSSL_EXPORT_LIBRARY_DIR "${OpenSSL_DIR}/bin")
+
+    # OpenSSL exposes a C interface, so the same release-mode libraries can be
+    # used in all build configurations.
+    set(LIB_EAY_DEBUG "${OPENSSL_LIBRARY_DIR}/libcrypto.lib")
+    set(LIB_EAY_RELEASE "${OPENSSL_LIBRARY_DIR}/libcrypto.lib")
+    set(SSL_EAY_DEBUG "${OPENSSL_LIBRARY_DIR}/libssl.lib")
+    set(SSL_EAY_RELEASE "${OPENSSL_LIBRARY_DIR}/libssl.lib")
+
+    ExternalProject_Message(${proj} "LIB_EAY_RELEASE:${LIB_EAY_RELEASE}")
+    ExternalProject_Message(${proj} "SSL_EAY_RELEASE:${SSL_EAY_RELEASE}")
+
+  #------------------------------------------------------------------------------
   elseif(WIN32)
 
     # Starting with Qt 5.12.4, official Qt binaries are built against OpenSSL 1.1.1
