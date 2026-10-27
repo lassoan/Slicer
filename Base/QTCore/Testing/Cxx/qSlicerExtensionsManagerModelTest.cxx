@@ -2148,7 +2148,6 @@ void qSlicerExtensionsManagerModelTester::testSetSlicerVersion_data()
 int qSlicerExtensionsManagerModelTest(int argc, char* argv[])
 {
   qSlicerCoreApplication app(argc, argv);
-  QTEST_DISABLE_KEYPAD_NAVIGATION
   qSlicerExtensionsManagerModelTester tc;
   return QTest::qExec(&tc, argc, argv);
 }

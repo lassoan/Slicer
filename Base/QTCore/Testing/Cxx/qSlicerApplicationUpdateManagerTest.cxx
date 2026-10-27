@@ -203,7 +203,6 @@ void qSlicerApplicationUpdateManagerTester::testUpdateCheck_data()
 int qSlicerApplicationUpdateManagerTest(int argc, char* argv[])
 {
   qSlicerCoreApplication app(argc, argv);
-  QTEST_DISABLE_KEYPAD_NAVIGATION
   qSlicerApplicationUpdateManagerTester tc;
   return QTest::qExec(&tc, argc, argv);
 }
