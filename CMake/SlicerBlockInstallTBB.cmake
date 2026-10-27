@@ -12,12 +12,15 @@ if(NOT EXISTS "${TBB_LIB_DIR}")
 endif()
 
 if(WIN32)
-  install(
-    FILES
-      ${TBB_BIN_DIR}/tbb12.dll
-      ${TBB_BIN_DIR}/tbbmalloc.dll
-      ${TBB_BIN_DIR}/tbbmalloc_proxy.dll
-    DESTINATION bin COMPONENT Runtime)
+  set(_tbb_files
+    ${TBB_BIN_DIR}/tbb12.dll
+    ${TBB_BIN_DIR}/tbbmalloc.dll
+    )
+  # tbbmalloc_proxy is not built for Windows ARM64
+  if(NOT Slicer_ARCHITECTURE STREQUAL "arm64")
+    list(APPEND _tbb_files ${TBB_BIN_DIR}/tbbmalloc_proxy.dll)
+  endif()
+  install(FILES ${_tbb_files} DESTINATION bin COMPONENT Runtime)
 elseif(APPLE)
   message(FATAL_ERROR "This CMake module does NOT support macOS")
 elseif(UNIX)
