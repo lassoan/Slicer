@@ -24,18 +24,20 @@ if(Slicer_USE_CTKAPPLAUNCHER)
   if(NOT DEFINED CTKAppLauncher_DIR)
 
     SlicerMacroGetOperatingSystemArchitectureBitness(VAR_PREFIX CTKAPPLAUNCHER)
-    set(launcher_version "0.1.34")
-    if("${CTKAPPLAUNCHER_OS}" STREQUAL "win")
-      # CTKAppLauncher is only released as an i386 Windows binary, so use it unconditionally.
-      set(CTKAPPLAUNCHER_ARCHITECTURE "i386")
-      set(sha256 "8b91093a18476749b5687dc433909d61916a9983e832be3fb0a43d494b208924")
-    elseif("${CTKAPPLAUNCHER_OS}" STREQUAL "linux")
-      set(sha256 "e39f82151be485e2e097a254077c4f3b7c962765c0e1564cbc09360355f87b76")
-    elseif("${CTKAPPLAUNCHER_OS}" STREQUAL "macosx")
-      # CTKAppLauncher is only released as an amd64 macOS binary (it runs fine
-      # on arm64 Macs through Rosetta 2), so use it unconditionally.
-      set(CTKAPPLAUNCHER_ARCHITECTURE "amd64")
-      set(sha256 "9d2f08fd68071562b17a2bfc18b6510a2a19596c593bf19deda1a9f1d3038ad0")
+    # Qt 6 based launcher released from https://github.com/lassoan/AppLauncher,
+    # available for amd64 and arm64 on all platforms (commontk/AppLauncher only
+    # releases i386 Windows and amd64 Linux and macOS binaries).
+    set(launcher_version "0.1.35")
+    set(launcher_github_repo "lassoan/AppLauncher")
+    set(sha256_win-amd64 "8cf16af2123f3d0a40954071ffb8632f1ee546eec8d1d5b6f915ca98b1e1dcd1")
+    set(sha256_win-arm64 "c2bb06afaee7d828c4ab4af613e39c635929bb945f4144a69e829d9f8dd854f5")
+    set(sha256_linux-amd64 "c5607c7d274351259cd29ca08c15dbf53766340c95f4eb1b66c864e8eb7cb4e7")
+    set(sha256_linux-arm64 "9785d3db3754e5dce2186877b75b9f9b9211fa6d42c8219482a4c4f72d61d5bc")
+    set(sha256_macosx-amd64 "3d20f4d0ed9c3c70e16cc8c202a7bf645cbe2f73ef8e08b042ef3f6861a72cf9")
+    set(sha256_macosx-arm64 "3f308399a3e8cd2e1a920c91acdbe563f43bdbde114614c4b7093c4bf46b3a55")
+    set(sha256 "${sha256_${CTKAPPLAUNCHER_OS}-${CTKAPPLAUNCHER_ARCHITECTURE}}")
+    if(NOT sha256)
+      message(FATAL_ERROR "CTKAppLauncher ${launcher_version} is not available for ${CTKAPPLAUNCHER_OS}-${CTKAPPLAUNCHER_ARCHITECTURE}")
     endif()
 
     set(EP_BINARY_DIR ${CMAKE_BINARY_DIR}/${proj})
@@ -43,7 +45,7 @@ if(Slicer_USE_CTKAPPLAUNCHER)
     set(CTKAppLauncherFileName CTKAppLauncher-${launcher_version}-${CTKAPPLAUNCHER_OS}-${CTKAPPLAUNCHER_ARCHITECTURE}.tar.gz)
     ExternalProject_Add(${proj}
       ${${proj}_EP_ARGS}
-      URL https://github.com/commontk/AppLauncher/releases/download/v${launcher_version}/${CTKAppLauncherFileName}
+      URL https://github.com/${launcher_github_repo}/releases/download/v${launcher_version}/${CTKAppLauncherFileName}
       URL_HASH SHA256=${sha256}
       DOWNLOAD_DIR ${CMAKE_BINARY_DIR}
       SOURCE_DIR ${EP_BINARY_DIR}
@@ -57,7 +59,7 @@ if(Slicer_USE_CTKAPPLAUNCHER)
 
     ExternalProject_GenerateProjectDescription_Step(${proj}
       VERSION ${launcher_version}
-      LICENSE_FILES "https://raw.githubusercontent.com/commontk/AppLauncher/v${launcher_version}/LICENSE_Apache_20"
+      LICENSE_FILES "https://raw.githubusercontent.com/${launcher_github_repo}/v${launcher_version}/LICENSE_Apache_20"
       )
 
     set(CTKAppLauncher_DIR ${EP_BINARY_DIR})
