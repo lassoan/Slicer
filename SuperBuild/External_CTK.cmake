@@ -72,13 +72,13 @@ if(NOT DEFINED CTK_DIR AND NOT Slicer_USE_SYSTEM_${proj})
 
   ExternalProject_SetIfNotDefined(
     Slicer_${proj}_GIT_REPOSITORY
-    "${EP_GIT_PROTOCOL}://github.com/commontk/CTK.git"
+    "${EP_GIT_PROTOCOL}://github.com/lassoan/CTK.git"
     QUIET
     )
 
   ExternalProject_SetIfNotDefined(
     Slicer_${proj}_GIT_TAG
-    "6d47c6339162b9593fef9dbfd9d974373b299b86"
+    "windows_on_arm" # Qt 6.12 fixes for CTK and PythonQt on top of 6d47c633
     QUIET
     )
 
