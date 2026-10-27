@@ -32,13 +32,13 @@ if((NOT DEFINED LibFFI_INCLUDE_DIR
 
   ExternalProject_SetIfNotDefined(
     Slicer_${proj}_GIT_REPOSITORY
-    "${EP_GIT_PROTOCOL}://github.com/python-cmake-buildsystem/libffi.git"
+    "${EP_GIT_PROTOCOL}://github.com/lassoan/libffi.git"
     QUIET
     )
 
   ExternalProject_SetIfNotDefined(
     Slicer_${proj}_GIT_TAG
-    "90704ad36f27b65b78573172127e7bea4ccd82bb" # libffi-cmake-buildsystem-v3.5.2-2025-12-26-2263d60
+    "windows_on_arm" # Windows ARM64 static library fix on top of libffi-cmake-buildsystem-v3.5.2-2025-12-26-2263d60
     QUIET
     )
 

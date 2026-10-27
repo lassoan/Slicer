@@ -138,7 +138,14 @@ if(Slicer_USE_PYTHONQT)
     list(APPEND Slicer_DEPENDENCIES
       python-extension-manager-requirements
       )
-    if(Slicer_USE_PYTHONQT_WITH_OPENSSL OR Slicer_USE_SYSTEM_python)
+    if(WIN32 AND Slicer_ARCHITECTURE STREQUAL "arm64" AND NOT Slicer_USE_SYSTEM_python)
+      # python-PyGithub requires "cryptography", which does not provide
+      # pre-built packages for Windows ARM64 (building it requires Rust).
+      message(STATUS "--------------------------------------------------")
+      message(STATUS "Python package 'cryptography' is not available for Windows ARM64; "
+                    "github integration will not be available.")
+      message(STATUS "--------------------------------------------------")
+    elseif(Slicer_USE_PYTHONQT_WITH_OPENSSL OR Slicer_USE_SYSTEM_python)
       # python-PyGithub requires SSL support in Python
       list(APPEND Slicer_DEPENDENCIES
         python-extension-manager-ssl-requirements

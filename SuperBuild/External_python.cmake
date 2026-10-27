@@ -139,13 +139,13 @@ if((NOT DEFINED PYTHON_INCLUDE_DIR
 
   ExternalProject_SetIfNotDefined(
     Slicer_${proj}_GIT_REPOSITORY
-    "${EP_GIT_PROTOCOL}://github.com/python-cmake-buildsystem/python-cmake-buildsystem.git"
+    "${EP_GIT_PROTOCOL}://github.com/lassoan/python-cmake-buildsystem.git"
     QUIET
     )
 
   ExternalProject_SetIfNotDefined(
     Slicer_${proj}_GIT_TAG
-    "5d8959631a7b647cf79cca62fabe1c1024b56247"
+    "windows_on_arm" # Windows ARM64 _decimal fix on top of 5d8959631a
     QUIET
     )
 

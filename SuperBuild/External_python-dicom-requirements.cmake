@@ -76,17 +76,6 @@ if(NOT Slicer_USE_SYSTEM_${proj})
   # [dicomweb-client]
   dicomweb-client==0.61.0 --hash=sha256:dc3385f5dbbeb167c521d04a70eac8bf219c4302c14574af05b5bc577a7e22c5
   # [/dicomweb-client]
-  # [dcmqi]
-  # Hashes correspond to the following packages:
-  #  - dcmqi-0.4.0-py3-none-macosx_13_0_arm64.whl
-  #  - dcmqi-0.4.0-py3-none-macosx_13_0_x86_64.whl
-  #  - dcmqi-0.4.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
-  #  - dcmqi-0.4.0-py3-none-win_amd64.whl
-  dcmqi==0.4.0 --hash=sha256:2138fc78e79c28449348572eb7ff0483f98f6a71c821814ca3cf28e3357ad848 \
-               --hash=sha256:60f6a9e4d4828c5399e932f44b500e4619becbe27dd4e4574cc94a802cbdcd00 \
-               --hash=sha256:1721bf1308fa416b00d3f9895c99b2376524a9982a408f15cf281ceef159df5b \
-               --hash=sha256:c3cc2c32f196e96017e08b27550c4b05ac84fde411ef743f882eb8e00ab5709a
-  # [/dcmqi]
   # [highdicom]
   # Pure-Python package for creating/reading complex DICOM objects (SR, SEG, PM, etc.)
   # Hashes correspond to the following packages:
@@ -118,6 +107,33 @@ if(NOT Slicer_USE_SYSTEM_${proj})
   # [/typing-extensions]
   ]===])
 
+  # dcmqi is installed separately, as it requires specific install options on some platforms
+  set(dcmqi_requirements_file ${CMAKE_BINARY_DIR}/${proj}-dcmqi-requirements.txt)
+  file(WRITE ${dcmqi_requirements_file} [===[
+  # [dcmqi]
+  # Hashes correspond to the following packages:
+  #  - dcmqi-0.4.0-py3-none-macosx_13_0_arm64.whl
+  #  - dcmqi-0.4.0-py3-none-macosx_13_0_x86_64.whl
+  #  - dcmqi-0.4.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+  #  - dcmqi-0.4.0-py3-none-win_amd64.whl
+  dcmqi==0.4.0 --hash=sha256:2138fc78e79c28449348572eb7ff0483f98f6a71c821814ca3cf28e3357ad848 \
+               --hash=sha256:60f6a9e4d4828c5399e932f44b500e4619becbe27dd4e4574cc94a802cbdcd00 \
+               --hash=sha256:1721bf1308fa416b00d3f9895c99b2376524a9982a408f15cf281ceef159df5b \
+               --hash=sha256:c3cc2c32f196e96017e08b27550c4b05ac84fde411ef743f882eb8e00ab5709a
+  # [/dcmqi]
+  ]===])
+
+  set(_dcmqi_install_args)
+  if(WIN32 AND Slicer_ARCHITECTURE STREQUAL "arm64")
+    # dcmqi package only contains executables (no Python extension) and it is
+    # not available for Windows ARM64. Install the x64 package, as x64 executables
+    # run on Windows ARM64 using emulation.
+    set(_dcmqi_install_args
+      --platform win_amd64 --only-binary=:all: --no-deps --upgrade
+      --target ${python_DIR}/${PYTHON_SITE_PACKAGES_SUBDIR}
+      )
+  endif()
+
   ExternalProject_Add(${proj}
     ${${proj}_EP_ARGS}
     DOWNLOAD_COMMAND ""
@@ -126,6 +142,7 @@ if(NOT Slicer_USE_SYSTEM_${proj})
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
     INSTALL_COMMAND ${PYTHON_EXECUTABLE} -m pip install --require-hashes -r ${requirements_file}
+      COMMAND ${PYTHON_EXECUTABLE} -m pip install --require-hashes ${_dcmqi_install_args} -r ${dcmqi_requirements_file}
     LOG_INSTALL 1
     DEPENDS
       ${${proj}_DEPENDENCIES}
