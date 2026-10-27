@@ -17,12 +17,14 @@ Slicer relies on a number of large third-party libraries (such VTK, ITK, DCMTK),
 - Visual Studio:
   - Download [free Community edition](https://aka.ms/vs/17/release/vs_community.exe) (recommended) or a [commercial edition](https://learn.microsoft.com/en-us/visualstudio/releases/2022/release-history#evergreen-bootstrappers) of Visual Studio 2022. Visual Studio 2026 with v143 toolset and latest CMake 4.x is usable for building Slicer core and some of its extensions, but it is not an officially supported build configuration yet.
   - Enable `Desktop development with C++` and in installation details
-  - Enable the `MSVC v145 - VS2026 C++ x64...` (Visual Studio 2026 v145 toolset with 64-bit support) component - in some distributions, this option is not enabled by default.
-  - Enable the `MSVC v143 - VS2022 C++ x64...` (Visual Studio 2022 v143 toolset with 64-bit support) component - in some distributions, this option is not enabled by default.
-  - Enable the latest Windows10 SDK component - without this CMake might not find a compiler during configuration step.
+  - Enable the `MSVC v145 - VS2026 C++ x64...` (Visual Studio 2026 v145 toolset with 64-bit support) component - in some distributions, this option is not enabled by default. (not needed for ARM64 builds)
+  - Enable the `MSVC v143 - VS2022 C++ x64...` (Visual Studio 2022 v143 toolset with 64-bit support) component - in some distributions, this option is not enabled by default. (not needed for ARM64 builds)
+  - For ARM64 builds: Visual Studio 2026 is required. Enable the MSVC v145 ARM64 build tools component (`MSVC Build Tools for ARM64/ARM64EC`).
+  - Enable the latest Windows SDK component - without this CMake might not find a compiler during configuration step.
 - [Qt](https://www.qt.io/download-open-source): Download the Qt universal installer and then set up either Qt5 or Qt6 as described below.
   - Qt5 (current stable, officially supported version): Install Qt 5.15.2. In the Select Components tab of the universal installer, click Categories, select Archive, and click Filter to fetch older versions of Qt. Qt version 5.15.2 and its components can be selected by expanding the `Qt` category. Components required: `MSVC2019 64-bit`, `Qt WebEngine`. Installing `Sources` and `Qt Debug Information Files` are recommended for debugging (they allow stepping into Qt files with the debugger in debug-mode builds).
   - Qt6 (experimental): Download the Qt universal installer and run the tool. On the "Customize" page of the Qt Maintenance Tool, expand the "Qt" tree. Then expand the tree matching the latest version of Qt 6 (minimum tested version is Qt-6.9.3, recommended version is the latest supported open-source version). Select `MSVC 2022 64-bit`. Selecting `Sources` and `Qt Debug Information Files` are recommended for debugging (they allow stepping into Qt files with the debugger in debug-mode builds). Expand the "Additional Libraries" tree and select `Qt 5 Compatibility module`, `Qt Multimedia`, `Qt Positioning`, `Qt Shader Tools`, `Qt State Machines`, `Qt WebChannel`. Collapse the "Qt" tree. Expand the "Extensions" tree, then expand "Qt WebEngine" and finally expand the corresponding tree matching the chosen Qt version (e.g. 6.9.3). Select `MSVC 2022 x64`.
+  - Qt6 for ARM64 builds (experimental): Qt5 is not available for Windows ARM64, therefore Qt6 must be used (minimum tested version is Qt-6.12.0). Download the Windows ARM64 version of the [Qt online installer](https://www.qt.io/development/download-qt-installer-oss) and select the same components as for Qt6 above, but for the ARM64 architecture: in the "Qt" tree select `MSVC 2022 ARM64`; in "Additional Libraries" select `Qt 5 Compatibility module`, `Qt Multimedia`, `Qt Positioning`, `Qt Shader Tools`, `Qt State Machines`, `Qt WebChannel`; in "Extensions" / "Qt WebEngine" select `MSVC 2022 ARM64`.
   - Note: These are all free, open-source components with LGPL license which allow free usage for any purpose, for any individuals or companies.
 - [NSIS](https://nsis.sourceforge.io/Download) (optional): Needed if packaging Slicer. Make sure you install the language packs.
 
@@ -86,6 +88,27 @@ cd C:\D
 "C:\Program Files\CMake\bin\cmake.exe" --build C:\D\SD --config Debug
 ```
 
+Release mode, ARM64 (on a Windows on Arm computer, such as Snapdragon X based laptops):
+
+```bat
+cd C:\D
+
+"C:\Program Files\CMake\bin\cmake.exe" ^
+  -G "Visual Studio 18 2026" -A ARM64 ^
+  -DQt6_DIR:PATH=C:/Qt/6.12.0/msvc2022_arm64/lib/cmake/Qt6 ^
+  -S C:\D\S -B C:\D\SR
+
+"C:\Program Files\CMake\bin\cmake.exe" --build C:\D\SR --config Release
+```
+
+Notes for ARM64 builds:
+- Use a native ARM64 CMake (the `windows-arm64` installer from cmake.org, or the CMake bundled with Visual Studio 2026 at `C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe`).
+- There is no pre-compiled OpenSSL package for Windows ARM64, therefore OpenSSL (version 3.5) is built from source during the build. OpenSSL's configure script requires a native Windows Perl: a portable [Strawberry Perl](https://strawberryperl.com/) is downloaded automatically into the build tree. To use an already installed native Perl instead, set `OpenSSL_PERL_EXECUTABLE` (for example `-DOpenSSL_PERL_EXECUTABLE:FILEPATH=C:/Strawberry/perl/bin/perl.exe`). The Perl that comes with Git for Windows cannot be used.
+- Some Python packages do not provide pre-built packages for Windows ARM64:
+  - SimpleITK is built from source during the build, which adds a few hours to the build time.
+  - dcmqi (used for DICOM segmentation and structured report import/export) only provides x64 executables, which run using emulation. They require the x64 Visual C++ redistributable.
+  - GitHub integration (PyGithub, used by the Extension Wizard for publishing extensions) is not available, because it requires the cryptography package, which would require installing Rust to build.
+
 ### Using graphical user interface (alternative solution)
 
 - Run `CMake (cmake-gui)` from the Windows Start menu
@@ -93,7 +116,7 @@ cd C:\D
 - Set `Where to build the binaries` to `<Slicer_BUILD>` location. Do not configure yet!
 - Add `Qt5_DIR` variable pointing to Qt5 folder: click Add entry button, set `Name` to `Qt5_DIR`, set `Type` to `PATH`, and set `Value` to the Qt5 folder, such as `C:\Qt\5.15.2\msvc2019_64\lib\cmake\Qt5`.
 - Click `Configure`
-- Select your compiler: `Visual Studio 17 2022`, and click `Finish`
+- Select your compiler: `Visual Studio 17 2022`, and click `Finish`. For ARM64 builds, select `Visual Studio 18 2026`, set the platform for generator to `ARM64`, and add a `Qt6_DIR` variable instead of `Qt5_DIR` in the previous step (such as `C:\Qt\6.12.0\msvc2022_arm64\lib\cmake\Qt6`).
 - Click `Generate` and wait for project generation to finish (may take a few minutes)
 - Click `Open Project`
 - If building in release mode:
