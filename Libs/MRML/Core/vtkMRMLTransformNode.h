@@ -19,6 +19,7 @@
 
 class vtkCollection;
 class vtkAbstractTransform;
+class vtkMRMLModelNode;
 class vtkGeneralTransform;
 class vtkMatrix4x4;
 class vtkTransform;
@@ -237,6 +238,10 @@ public:
   /// Reimplemented from vtkMRMLTransformableNode
   void ApplyTransform(vtkAbstractTransform* transform) override;
 
+  /// Reimplemented from vtkMRMLTransformableNode, so that model-based transforms of the parent transform nodes keep
+  /// their displacement models (ApplyTransform gets only the transform, without the references of the nodes).
+  bool HardenTransform() override;
+
   /// Split a composite transform to its components. The components are inserted to the scene between this transform and its parent.
   /// A composite transform can be created by hardening different types of transforms on each other.
   /// Return non-zero on success.
@@ -302,6 +307,33 @@ public:
 
   /// alternative method to propagate events generated in Transform nodes
   void ProcessMRMLEvents(vtkObject* /*caller*/, unsigned long /*event*/, void* /*callData*/) override;
+
+  /// \name Model-based transforms
+  /// A model-based transform is computed from displacements at the points of the mesh of a displacement model, which it
+  /// follows: vtkScatteredBSplineTransform (smooth fit) or vtkMeshDisplacementTransform (exact). The transform of the node
+  /// can be a model-based transform, or a composite transform that has model-based components (for example after a
+  /// model-based transform is hardened on it).
+  /// Each model-based transform has a source key (InputPointSetSourceKey, a random string that is set when its model is
+  /// set), and the node references its model with the role "displacementModel/" followed by the key. The key is copied
+  /// and saved with the transform, so copies (in sequences, scene views, hardened and split transforms) and transforms
+  /// read from file are computed from the same model, using the references of the node that holds the transform. A copy
+  /// that is stored in a sequence or scene view needs only the key: the node that it is restored into has the reference.
+  /// References whose key is not used by the current transform are kept, as the node may get a transform that uses
+  /// them again. Hardening and splitting copy the references of the transform nodes that the transforms come from.
+  ///@{
+
+  /// Set the transform to parent (or from parent) and the model whose mesh points hold its displacements.
+  void SetAndObserveModelBasedTransformToParent(vtkAbstractTransform* transform, vtkMRMLModelNode* displacementModelNode);
+  void SetAndObserveModelBasedTransformFromParent(vtkAbstractTransform* transform, vtkMRMLModelNode* displacementModelNode);
+
+  /// The model whose mesh points hold the displacements of a model-based transform of this node: the transform to or
+  /// from parent, a component of it, or the inverse of either.
+  /// Without a model, the model-based transform is the identity.
+  vtkMRMLModelNode* GetDisplacementModelNode(vtkAbstractTransform* transform);
+  void SetAndObserveDisplacementModelNodeID(vtkAbstractTransform* transform, const char* modelNodeID);
+  void SetAndObserveDisplacementModelNode(vtkAbstractTransform* transform, vtkMRMLModelNode* modelNode);
+
+  ///@}
 
   ///
   /// Creates a shallow copy of an input composite transform (that can contain a complex hierarchy of transforms)
@@ -376,6 +408,28 @@ protected:
   ///
   /// Sets and observes a transform and deletes the inverse (so that the inverse will be computed automatically)
   virtual void SetAndObserveTransform(vtkAbstractTransform** originalTransformPtr, vtkAbstractTransform** inverseTransformPtr, vtkAbstractTransform* transform);
+
+  /// Returns true if the transform is computed from displacements at the points of a mesh.
+  static bool IsModelBasedTransform(vtkAbstractTransform* transform);
+
+  /// Get the model-based components of the stored transform (the transform to parent, or from parent if the transform to
+  /// parent is computed from it).
+  void GetModelBasedTransformComponents(vtkCollection* components);
+
+  /// The model-based component of the stored transform that is the transform or its inverse; nullptr if there is none.
+  vtkAbstractTransform* FindModelBasedTransformComponent(vtkAbstractTransform* transform);
+
+  /// Add the displacement model references of the model-based components that this node does not reference yet, from
+  /// another transform node that the components come from (hardened or split).
+  void CopyDisplacementModelReferences(vtkMRMLTransformNode* sourceNode);
+
+  /// Set the input of each model-based component to the mesh of its displacement model, or to none (identity) if the
+  /// mesh lacks the displacement array. Components whose model is not referenced are left as they are.
+  void UpdateModelBasedTransformInput();
+
+  void OnNodeReferenceAdded(vtkMRMLNodeReference* reference) override;
+  void OnNodeReferenceModified(vtkMRMLNodeReference* reference) override;
+  void OnNodeReferenceRemoved(vtkMRMLNodeReference* reference) override;
 
   ///
   /// These transforms store the transforms that were set externally.
