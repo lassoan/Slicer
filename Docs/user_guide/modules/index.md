@@ -13,6 +13,7 @@ segmentations.md
 segmenteditor.md
 slicerwelcome.md
 transforms.md
+vectorfields.md
 viewcontrollers.md
 volumerendering.md
 volumes.md
