@@ -744,6 +744,16 @@
       <item>
        <widget class="qMRMLTransformDisplayNodeWidget" name="TransformDisplayNodeWidget"/>
       </item>
+      <item>
+       <widget class="QPushButton" name="ShowInVectorFieldsModuleButton">
+        <property name="toolTip">
+         <string>Show the displacement field of the transform as glyphs, a grid or contours, in the Vector Fields module</string>
+        </property>
+        <property name="text">
+         <string>Show displacement field in Vector Fields module</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

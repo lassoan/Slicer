@@ -2,6 +2,7 @@ set(KIT ${PROJECT_NAME})
 
 #-----------------------------------------------------------------------------
 set(KIT_TEST_SRCS
+  vtkSlicerVectorFieldsLogicLegacySceneTest1.cxx
   vtkSlicerVectorFieldsLogicTest1.cxx
   )
 
@@ -16,4 +17,5 @@ slicerMacroConfigureModuleCxxTestDriver(
   )
 
 #-----------------------------------------------------------------------------
+simple_test(vtkSlicerVectorFieldsLogicLegacySceneTest1)
 simple_test(vtkSlicerVectorFieldsLogicTest1)
