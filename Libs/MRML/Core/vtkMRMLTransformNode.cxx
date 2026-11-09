@@ -1014,43 +1014,22 @@ void vtkMRMLTransformNode::ApplyTransform(vtkAbstractTransform* transform)
     return;
   }
 
-  // We need the current transform to be a vtkGeneralTransform, which can store all the transform components.
-  // We arbitrarily pick the ToParent transform to store the new composited transform.
-
-  // If the current transform is already a suitable general transform then we will simply concatenate
-  // the hardened transforms to it.
-  vtkSmartPointer<vtkGeneralTransform> transformToParentGeneral = vtkGeneralTransform::SafeDownCast(oldTransformToParent);
-
-  if (transformToParentGeneral.GetPointer() != nullptr)
-  {
-    // The old transform is already a general transform. We can reuse it, but only if it is not computed from its inverse.
-    // If the transform is computed from its inverse then calling Update() on it would overwrite its content from the
-    // non-inverted transform (removing all the transform components that we add here).
-    transformToParentGeneral->Update();
-    if (transformToParentGeneral->GetInverseFlag())
-    {
-      // Computed from inverse, not usable
-      transformToParentGeneral = nullptr;
-    }
-  }
-
-  if (transformToParentGeneral.GetPointer() == nullptr)
-  {
-    // The old transform is not a general transform that we can use as the new transform.
-    // Create a new general transform.
-    transformToParentGeneral = vtkSmartPointer<vtkGeneralTransform>::New();
-    if (oldTransformToParent != nullptr)
-    {
-      transformToParentGeneral->Concatenate(oldTransformToParent);
-    }
-  }
-
-  // Add components
+  // Store the composited transform in a new general transform, as the ToParent transform.
+  // Components are not added to the current transform, even if it is a general transform, because its multiplication
+  // mode (pre/post) would have to be changed. If the transform is computed from its inverse then calling Update() on it
+  // would overwrite its content from the non-inverted transform (removing all the transform components that we add here).
+  // Flattened transform lists are in the order the components are applied to a point: the current transform first,
+  // then the applied transform.
+  vtkNew<vtkGeneralTransform> transformToParentGeneral;
   transformToParentGeneral->PostMultiply();
-  for (int transformComponentIndex = transformCopyList->GetNumberOfItems() - 1; transformComponentIndex >= 0; transformComponentIndex--)
+  vtkNew<vtkCollection> oldTransformList;
+  FlattenGeneralTransform(oldTransformList, oldTransformToParent);
+  for (vtkCollection* transformList : { oldTransformList.GetPointer(), transformCopyList.GetPointer() })
   {
-    vtkAbstractTransform* transformComponent = vtkAbstractTransform::SafeDownCast(transformCopyList->GetItemAsObject(transformComponentIndex));
-    transformToParentGeneral->Concatenate(transformComponent);
+    for (int transformComponentIndex = 0; transformComponentIndex < transformList->GetNumberOfItems(); transformComponentIndex++)
+    {
+      transformToParentGeneral->Concatenate(vtkAbstractTransform::SafeDownCast(transformList->GetItemAsObject(transformComponentIndex)));
+    }
   }
 
   // Save the new transform
