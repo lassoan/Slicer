@@ -62,6 +62,14 @@ vtk_module_find_package(
   PRIVATE_IF_SHARED
 )
 
+# The transform file formats are used through ITK's transform IO factory: an ITK without some of
+# them can still be used (ITK built for WebAssembly has no HDF5).
+slicer_available_itk_components(optional_itk_components
+  ITKIOTransformHDF5
+  ITKIOTransformInsightLegacy
+  ITKIOTransformMatlab
+)
+
 vtk_module_find_package(
   PACKAGE ITK
   COMPONENTS
@@ -70,11 +78,9 @@ vtk_module_find_package(
     ITKIONRRD
     ITKIOSpatialObjects
     ITKIOTransformBase
-    ITKIOTransformHDF5
-    ITKIOTransformInsightLegacy
-    ITKIOTransformMatlab
     ITKMesh
     ITKTransform
+    ${optional_itk_components}
 )
 
 include(${ITK_USE_FILE})

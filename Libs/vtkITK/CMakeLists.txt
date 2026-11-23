@@ -24,6 +24,10 @@ if(VTKITK_BUILD_DICOM_SUPPORT)
   endif()
 endif()
 
+# The image bridge filters of ITKVtkGlue are header-only: an ITK built without the ITKVtkGlue module
+# (as for WebAssembly) can be used when their headers are on the include path.
+slicer_available_itk_components(vtkglue_itk_component ITKVtkGlue)
+
 vtk_module_find_package(
   PACKAGE ITK
   COMPONENTS
@@ -47,9 +51,9 @@ vtk_module_find_package(
     ITKRegionGrowing
     ITKThresholding
     ITKVTK
-    ITKVtkGlue
     MorphologicalContourInterpolation
     ${optional_itk_components}
+    ${vtkglue_itk_component}
 )
 include(${ITK_USE_FILE})
 

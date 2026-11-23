@@ -214,3 +214,27 @@ function(_slicer_add_compatibility_module module stem)
     DESTINATION "${Slicer_INSTALL_ROOT}${stem}"
   )
 endfunction()
+
+#[==[.rst:
+.. cmake:command:: slicer_available_itk_components
+
+  Set `<output_var>` to those of the given ITK modules that the ITK being built against has.
+
+  For components that a library can do without, such as the IO modules that only register
+  file formats in ITK's factories: an ITK built without some of them (for example for
+  WebAssembly, without the modules that need HDF5) can still be used.
+
+  .. code-block:: cmake
+
+  slicer_available_itk_components(<output_var> <components...>)
+#]==]
+function(slicer_available_itk_components output_var)
+  find_package(ITK QUIET NO_MODULE)
+  set(available)
+  foreach(component IN LISTS ARGN)
+    if(component IN_LIST ITK_MODULES_ENABLED)
+      list(APPEND available "${component}")
+    endif()
+  endforeach()
+  set(${output_var} ${available} PARENT_SCOPE)
+endfunction()
