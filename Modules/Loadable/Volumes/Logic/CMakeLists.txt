@@ -18,3 +18,13 @@ vtk_module_add_module(Slicer::VolumesModuleLogic
 )
 
 vtk_module_link(Slicer::VolumesModuleLogic PRIVATE RapidJSON)
+
+#-----------------------------------------------------------------------------
+# Files the logic reads, installed with it (also where only the logic is built)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/../Resources/VolumeDisplayPresets.json
+  ${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_SHARE_DIR}/Volumes/VolumeDisplayPresets.json
+  COPYONLY)
+install(
+  FILES ${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_SHARE_DIR}/Volumes/VolumeDisplayPresets.json
+  DESTINATION ${Slicer_INSTALL_QTLOADABLEMODULES_SHARE_DIR}/Volumes COMPONENT Runtime)

@@ -61,15 +61,6 @@ slicerMacroBuildLoadableModule(
   )
 
 #-----------------------------------------------------------------------------
-configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/Resources/VolumeDisplayPresets.json
-  ${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_SHARE_DIR}/${MODULE_NAME}/VolumeDisplayPresets.json
-  COPYONLY)
-install(
-  FILES ${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_SHARE_DIR}/${MODULE_NAME}/VolumeDisplayPresets.json
-  DESTINATION ${Slicer_INSTALL_QTLOADABLEMODULES_SHARE_DIR}/${MODULE_NAME} COMPONENT Runtime)
-
-#-----------------------------------------------------------------------------
 if(BUILD_TESTING)
   add_subdirectory(Testing)
 endif()

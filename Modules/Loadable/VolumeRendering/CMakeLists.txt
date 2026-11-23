@@ -60,17 +60,6 @@ slicerMacroBuildLoadableModule(
   WITH_GENERIC_TESTS
   )
 
-configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/Resources/presets.xml
-  ${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_SHARE_DIR}/${MODULE_NAME}/presets.xml
-  COPYONLY
-)
-
-install(
-  FILES ${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_SHARE_DIR}/${MODULE_NAME}/presets.xml
-  DESTINATION ${Slicer_INSTALL_QTLOADABLEMODULES_SHARE_DIR}/${MODULE_NAME} COMPONENT Runtime
-)
-
 #-----------------------------------------------------------------------------
 if(BUILD_TESTING)
   add_subdirectory(Testing)

@@ -21,3 +21,16 @@ vtk_module_set_property(Slicer::VolumeRenderingModuleLogic PROPERTY FOLDER VALUE
 if(BUILD_TESTING)
   add_subdirectory(Testing)
 endif()
+
+#-----------------------------------------------------------------------------
+# Files the logic reads, installed with it (also where only the logic is built)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/../Resources/presets.xml
+  ${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_SHARE_DIR}/VolumeRendering/presets.xml
+  COPYONLY
+)
+
+install(
+  FILES ${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_SHARE_DIR}/VolumeRendering/presets.xml
+  DESTINATION ${Slicer_INSTALL_QTLOADABLEMODULES_SHARE_DIR}/VolumeRendering COMPONENT Runtime
+)
