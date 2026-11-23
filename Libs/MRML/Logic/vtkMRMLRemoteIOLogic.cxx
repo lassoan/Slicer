@@ -22,8 +22,11 @@
 #include <vtkCollection.h>
 #include <vtkObjectFactory.h>
 
-// RemoteIO includes
+// RemoteIO includes (an application may be built without the library, as SlicerWeb is: its scenes
+// then have no handler of remote URIs)
+#if VTK_MODULE_ENABLE_Slicer_RemoteIO
 #include <vtkHTTPHandler.h>
+#endif
 
 #include "vtkMRMLRemoteIOLogic.h"
 
@@ -89,12 +92,14 @@ void vtkMRMLRemoteIOLogic::AddDataIOToScene()
 
 #if !defined(REMOTEIO_DEBUG)
   // register all existing uri handlers (add to collection)
+#if VTK_MODULE_ENABLE_Slicer_RemoteIO
   vtkHTTPHandler* httpHandler = vtkHTTPHandler::New();
   httpHandler->SetPrefix("http://");
   httpHandler->SetName("HTTPHandler");
   httpHandler->SetCaCertificatesPath(this->GetCaCertificatesPath());
   this->GetMRMLScene()->AddURIHandler(httpHandler);
   httpHandler->Delete();
+#endif
 
   // add something to hold user tags
   vtkTagTable* userTagTable = vtkTagTable::New();

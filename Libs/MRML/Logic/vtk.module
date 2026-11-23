@@ -6,6 +6,7 @@ DEPENDS
   Slicer::MRMLCore
   VTK::ImagingGeneral
   Slicer::Teem
+OPTIONAL_DEPENDS
   Slicer::RemoteIO
 DESCRIPTION
   "vtkMRMLLogic"

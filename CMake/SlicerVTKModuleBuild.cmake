@@ -8,6 +8,9 @@
     with the built modules, which is not possible when cross-compiling. Default: `ON`, unless
     cross-compiling.
 
+  A module is left out as any VTK module is: with its `VTK_MODULE_ENABLE_<module>` cache variable set
+  to `NO` before this is called (`VTK_MODULE_ENABLE_Slicer_TemplateKeyModuleLogic`).
+
   .. code-block:: cmake
 
   slicer_vtk_module_build(
