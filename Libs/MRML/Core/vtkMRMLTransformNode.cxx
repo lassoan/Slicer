@@ -13,12 +13,10 @@ Version:   $Revision: 1.14 $
 =========================================================================auto=*/
 
 #include "vtkMRMLTransformNode.h"
+#include "vtkMRMLTransformPlugin.h"
+#include "vtkMRMLTransformPluginFactory.h"
 
 // MRML includes
-#include "vtkMRMLBSplineTransformNode.h"
-#include "vtkMRMLGridTransformNode.h"
-#include "vtkMRMLLinearTransformNode.h"
-
 #include "vtkMRMLLinearTransformSequenceStorageNode.h"
 #include "vtkMRMLScene.h"
 #include "vtkMRMLTransformStorageNode.h"
@@ -44,6 +42,8 @@ Version:   $Revision: 1.14 $
 // STD includes
 #include <sstream>
 #include <stack>
+#include <string>
+#include <vector>
 
 //----------------------------------------------------------------------------
 vtkMRMLNodeNewMacro(vtkMRMLTransformNode);
@@ -198,6 +198,18 @@ int vtkMRMLTransformNode::DeepCopyTransform(vtkAbstractTransform* dst, vtkAbstra
     return 0;
   }
 
+  // The plugins of the transform type copy the transform if vtkAbstractTransform::DeepCopy() does not make a true
+  // deep copy of it
+  std::vector<vtkMRMLTransformPlugin*> plugins;
+  vtkMRMLTransformPluginFactory::GetInstance()->GetPlugins(src, plugins);
+  for (vtkMRMLTransformPlugin* plugin : plugins)
+  {
+    if (plugin->CanHandleTransform(dst) > 0.0 && plugin->DeepCopyTransform(dst, src))
+    {
+      return 1;
+    }
+  }
+
   if (src->IsA("vtkGeneralTransform"))
   {
     // DeepCopy of GeneralTransforms copies concatenated transforms by reference
@@ -223,64 +235,6 @@ int vtkMRMLTransformNode::DeepCopyTransform(vtkAbstractTransform* dst, vtkAbstra
       DeepCopyTransform(concatenatedTransformCopy, concatenatedTransform);
       dstGeneral->Concatenate(concatenatedTransformCopy);
       concatenatedTransformCopy->Delete();
-    }
-  }
-  else if (src->IsA("vtkBSplineTransform")) // this handles vtkOrientedBSplineTransform as well
-  {
-    // Fix up the DeepCopy for vtkBSplineTransform (it performs only a ShallowCopy on the coefficient grid)
-    dst->DeepCopy(src);
-    if (vtkBSplineTransform::SafeDownCast(dst) == nullptr)
-    {
-      vtkGenericWarningMacro("vtkMRMLTransformNode::DeepCopyTransform failed: destination transform has to be vtkBSplineTransform");
-      return 0;
-    }
-    vtkImageData* srcCoefficients = vtkBSplineTransform::SafeDownCast(src)->GetCoefficientData();
-    if (srcCoefficients)
-    {
-      vtkNew<vtkImageData> dstCoefficients;
-      dstCoefficients->DeepCopy(srcCoefficients);
-      vtkBSplineTransform::SafeDownCast(dst)->SetCoefficientData(dstCoefficients.GetPointer());
-    }
-  }
-  else if (src->IsA("vtkGridTransform")) // this handles vtkOrientedGridTransform as well
-  {
-    // Fix up the DeepCopy for vtkGridTransform (it performs only a ShallowCopy on the displacement grid)
-    dst->DeepCopy(src);
-    if (vtkGridTransform::SafeDownCast(dst) == nullptr)
-    {
-      vtkGenericWarningMacro("vtkMRMLTransformNode::DeepCopyTransform failed: destination transform has to be vtkGridTransform");
-      return 0;
-    }
-    vtkImageData* srcDisplacementGrid = vtkGridTransform::SafeDownCast(src)->GetDisplacementGrid();
-    if (srcDisplacementGrid)
-    {
-      vtkNew<vtkImageData> dstDisplacementGrid;
-      dstDisplacementGrid->DeepCopy(srcDisplacementGrid);
-      vtkGridTransform::SafeDownCast(dst)->SetDisplacementGridData(dstDisplacementGrid.GetPointer());
-    }
-  }
-  else if (src->IsA("vtkThinPlateSplineTransform"))
-  {
-    // Fix up the DeepCopy for vtkThinPlateSplineTransform (it performs only a ShallowCopy on the landmark points)
-    dst->DeepCopy(src);
-    if (vtkThinPlateSplineTransform::SafeDownCast(dst) == nullptr)
-    {
-      vtkGenericWarningMacro("vtkMRMLTransformNode::DeepCopyTransform failed: destination transform has to be vtkThinPlateSplineTransform");
-      return 0;
-    }
-    vtkPoints* srcSourceLandmarks = vtkThinPlateSplineTransform::SafeDownCast(src)->GetSourceLandmarks();
-    if (srcSourceLandmarks)
-    {
-      vtkNew<vtkPoints> dstSourceLandmarks;
-      dstSourceLandmarks->DeepCopy(srcSourceLandmarks);
-      vtkThinPlateSplineTransform::SafeDownCast(dst)->SetSourceLandmarks(dstSourceLandmarks.GetPointer());
-    }
-    vtkPoints* srcTargetLandmarks = vtkThinPlateSplineTransform::SafeDownCast(src)->GetTargetLandmarks();
-    if (srcTargetLandmarks)
-    {
-      vtkNew<vtkPoints> dstTargetLandmarks;
-      dstTargetLandmarks->DeepCopy(srcTargetLandmarks);
-      vtkThinPlateSplineTransform::SafeDownCast(dst)->SetTargetLandmarks(dstTargetLandmarks.GetPointer());
     }
   }
   else
@@ -736,27 +690,9 @@ int vtkMRMLTransformNode::Split()
     // Create a new transform node if for all transforms (parent transforms) but the last (the transform that is being split)
     if (transformComponentIndex > 0)
     {
-      // Create a new transform node with the most suitable type.
-      // The generic vtkMRMLTransformNode could handle everything but at a couple of places
-      // specific transform node classes are still used. When vtkMRMLLinearTransformNode, vtkMRMLBSplineTransformNode, and
-      // vtkMRMLGridTransformNode classes will be removed then we can simply create a vtkMRMLTransformNode regardless the VTK transform type.
-      if (transformComponent->IsA("vtkLinearTransform"))
-      {
-        transformComponentNode = vtkSmartPointer<vtkMRMLLinearTransformNode>::New();
-      }
-      else if (transformComponent->IsA("vtkBSplineTransform"))
-      {
-        transformComponentNode = vtkSmartPointer<vtkMRMLBSplineTransformNode>::New();
-      }
-      else if (transformComponent->IsA("vtkGridTransform"))
-      {
-        transformComponentNode = vtkSmartPointer<vtkMRMLGridTransformNode>::New();
-      }
-      else
-      {
-        // vtkThinPlateSplineTransform and general transform
-        transformComponentNode = vtkSmartPointer<vtkMRMLTransformNode>::New();
-      }
+      // vtkMRMLTransformNode can hold any transform (vtkMRMLLinearTransformNode, vtkMRMLBSplineTransformNode and
+      // vtkMRMLGridTransformNode are only kept for backward compatibility)
+      transformComponentNode = vtkSmartPointer<vtkMRMLTransformNode>::New();
       std::string baseName = std::string(this->GetName()) + "_Component";
       std::string uniqueName = this->GetScene()->GenerateUniqueName(baseName.c_str());
       transformComponentNode->SetName(uniqueName.c_str());
@@ -1340,119 +1276,21 @@ const char* vtkMRMLTransformNode::GetTransformInfo(vtkAbstractTransform* inputTr
       transform->Update();
     }
 
-    vtkHomogeneousTransform* linearTransform = vtkHomogeneousTransform::SafeDownCast(transform);
-    vtkBSplineTransform* bsplineTransform = vtkBSplineTransform::SafeDownCast(transform);
-    vtkGridTransform* gridTransform = vtkGridTransform::SafeDownCast(transform);
-    vtkThinPlateSplineTransform* tpsTransform = vtkThinPlateSplineTransform::SafeDownCast(transform);
-    if (linearTransform != nullptr)
+    // The plugins of the transform type describe the transform
+    std::string transformInfo;
+    std::vector<vtkMRMLTransformPlugin*> plugins;
+    vtkMRMLTransformPluginFactory::GetInstance()->GetPlugins(transform, plugins);
+    for (vtkMRMLTransformPlugin* plugin : plugins)
     {
-      ss << " Linear";
-      vtkMatrix4x4* m = linearTransform->GetMatrix();
-      ss << std::endl << "    " << m->GetElement(0, 0) << "  " << m->GetElement(0, 1) << "  " << m->GetElement(0, 2) << "  " << m->GetElement(0, 3);
-      ss << std::endl << "    " << m->GetElement(1, 0) << "  " << m->GetElement(1, 1) << "  " << m->GetElement(1, 2) << "  " << m->GetElement(1, 3);
-      ss << std::endl << "    " << m->GetElement(2, 0) << "  " << m->GetElement(2, 1) << "  " << m->GetElement(2, 2) << "  " << m->GetElement(2, 3);
-      ss << std::endl << "    " << m->GetElement(3, 0) << "  " << m->GetElement(3, 1) << "  " << m->GetElement(3, 2) << "  " << m->GetElement(3, 3);
-    }
-    else if (bsplineTransform != nullptr)
-    {
-      ss << " B-spline:";
-      bsplineTransform->Update(); // compute if inverse
-      vtkImageData* coefficients = bsplineTransform->GetCoefficientData();
-      if (coefficients != nullptr)
+      transformInfo = plugin->GetTransformInfo(transform);
+      if (!transformInfo.empty())
       {
-        int* extent = coefficients->GetExtent();
-        int gridSize[3] = { extent[1] - extent[0] + 1, extent[3] - extent[2] + 1, extent[5] - extent[4] + 1 };
-        ss << std::endl << "  Grid size: " << gridSize[0] << " " << gridSize[1] << " " << gridSize[2];
-        double* gridOrigin = coefficients->GetOrigin();
-        ss << std::endl << "  Grid origin: " << gridOrigin[0] << " " << gridOrigin[1] << " " << gridOrigin[2];
-        double* gridSpacing = coefficients->GetSpacing();
-        ss << std::endl << "  Grid spacing: " << gridSpacing[0] << " " << gridSpacing[1] << " " << gridSpacing[2];
-        vtkOrientedBSplineTransform* orientedBsplineTransform = vtkOrientedBSplineTransform::SafeDownCast(transform);
-        if (orientedBsplineTransform != nullptr)
-        {
-          vtkMatrix4x4* gridOrientation = orientedBsplineTransform->GetGridDirectionMatrix();
-          if (gridOrientation != nullptr)
-          {
-            ss << std::endl << "  Grid orientation:";
-            for (int i = 0; i < 3; i++)
-            {
-              ss << std::endl << "    " << gridOrientation->GetElement(i, 0) << "  " << gridOrientation->GetElement(i, 1) << "  " << gridOrientation->GetElement(i, 2);
-            }
-          }
-          vtkMatrix4x4* bulkTransform = orientedBsplineTransform->GetBulkTransformMatrix();
-          if (bulkTransform != nullptr)
-          {
-            ss << std::endl << "  Additive bulk transform:";
-            for (int i = 0; i < 4; i++)
-            {
-              ss << std::endl
-                 << "    " << bulkTransform->GetElement(i, 0) << "  " << bulkTransform->GetElement(i, 1) << "  " << bulkTransform->GetElement(i, 2) << "  "
-                 << bulkTransform->GetElement(i, 3);
-            }
-          }
-        }
-      }
-      if (bsplineTransform->GetInverseFlag())
-      {
-        ss << std::endl << "  Computed from its inverse.";
+        break;
       }
     }
-    else if (gridTransform != nullptr)
+    if (!transformInfo.empty())
     {
-      ss << " Displacement field:";
-      gridTransform->Update(); // compute if inverse
-      vtkImageData* displacementField = gridTransform->GetDisplacementGrid();
-      if (displacementField != nullptr)
-      {
-        int* extent = displacementField->GetExtent();
-        ss << std::endl << "  Grid size: " << (extent[1] - extent[0] + 1) << " " << (extent[3] - extent[2] + 1) << " " << (extent[5] - extent[4] + 1);
-        double* origin = displacementField->GetOrigin();
-        ss << std::endl << "  Grid origin: " << origin[0] << " " << origin[1] << " " << origin[2];
-        double* spacing = displacementField->GetSpacing();
-        ss << std::endl << "  Grid spacing: " << spacing[0] << " " << spacing[1] << " " << spacing[2];
-        vtkOrientedGridTransform* orientedGridTransform = vtkOrientedGridTransform::SafeDownCast(transform);
-        if (orientedGridTransform != nullptr)
-        {
-          vtkMatrix4x4* gridOrientation = orientedGridTransform->GetGridDirectionMatrix();
-          if (gridOrientation != nullptr)
-          {
-            ss << std::endl << "  Grid orientation:";
-            for (int i = 0; i < 3; i++)
-            {
-              ss << std::endl << "    " << gridOrientation->GetElement(i, 0) << "  " << gridOrientation->GetElement(i, 1) << "  " << gridOrientation->GetElement(i, 2);
-            }
-          }
-        }
-      }
-      else
-      {
-        ss << std::endl << "  Displacement field is invalid.";
-      }
-      if (gridTransform->GetInverseFlag())
-      {
-        ss << std::endl << "  Computed from its inverse.";
-      }
-    }
-    else if (tpsTransform != nullptr)
-    {
-      ss << " Thin plate spline:";
-      tpsTransform->Update(); // compute if inverse
-      int numberOfSourceLandmarks = 0;
-      if (tpsTransform->GetSourceLandmarks() != nullptr)
-      {
-        numberOfSourceLandmarks = tpsTransform->GetSourceLandmarks()->GetNumberOfPoints();
-      }
-      int numberOfTargetLandmarks = 0;
-      if (tpsTransform->GetTargetLandmarks() != nullptr)
-      {
-        numberOfTargetLandmarks = tpsTransform->GetTargetLandmarks()->GetNumberOfPoints();
-      }
-      ss << std::endl << "  Number of source landmarks: " << numberOfSourceLandmarks;
-      ss << std::endl << "  Number of target landmarks: " << numberOfTargetLandmarks;
-      if (tpsTransform->GetInverseFlag())
-      {
-        ss << std::endl << "  Computed from its inverse.";
-      }
+      ss << " " << transformInfo;
     }
     else
     {

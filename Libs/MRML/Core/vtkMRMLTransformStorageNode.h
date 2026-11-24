@@ -135,9 +135,6 @@ protected:
   /// displacement vectors are converted to LPS coordinate system.
   virtual int WriteToImageFile(vtkMRMLNode* refNode);
 
-  /// Flag to prevent repeated registration of ITK transforms
-  static bool RegisterInverseTransformTypesCompleted;
-
 protected:
   int PreferITKv3CompatibleTransforms;
 };

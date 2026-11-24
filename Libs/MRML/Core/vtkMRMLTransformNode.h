@@ -17,6 +17,10 @@
 
 #include "vtkMRMLDisplayableNode.h"
 
+// STD includes
+#include <string>
+#include <vector>
+
 class vtkCollection;
 class vtkAbstractTransform;
 class vtkGeneralTransform;

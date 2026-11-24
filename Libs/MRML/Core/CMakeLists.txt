@@ -282,6 +282,12 @@ set(MRMLCore_SRCS
   vtkMRMLTransformSequenceStorageNode.cxx
   vtkMRMLTransformSequenceStorageNode.h
   vtkMRMLTransformStorageNode.cxx
+  vtkMRMLTransformPlugin.cxx
+  vtkMRMLTransformPluginFactory.cxx
+  vtkMRMLBSplineTransformPlugin.cxx
+  vtkMRMLGridTransformPlugin.cxx
+  vtkMRMLLinearTransformPlugin.cxx
+  vtkMRMLThinPlateSplineTransformPlugin.cxx
   vtkMRMLTransformableNode.cxx
   vtkMRMLTranslator.h
   vtkMRMLUnitNode.cxx

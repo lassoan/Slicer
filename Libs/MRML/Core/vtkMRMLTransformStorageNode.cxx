@@ -26,17 +26,180 @@ Version:   $Revision: 1.2 $
 #include <vtkObjectFactory.h>
 #include <vtkSmartPointer.h>
 #include <vtkStringArray.h>
+#include <vtkTransform.h>
 #include <vtkVersion.h>
 #include "vtksys/SystemTools.hxx"
 
 #include "vtkITKArchetypeImageSeriesReader.h"
 #include "vtkITKImageWriter.h"
-#include "vtkITKTransformConverter.h"
+#include "vtkMRMLBSplineTransformPlugin.h"
+#include "vtkMRMLGridTransformPlugin.h"
+#include "vtkMRMLTransformNode.h"
+#include "vtkMRMLTransformPlugin.h"
+#include "vtkMRMLTransformPluginFactory.h"
+
+// ITK includes
+#include <itkCompositeTransform.h>
+#include <itkCompositeTransformIOHelper.h>
+#include <itkImageFileReader.h>
+#include <itkImageFileWriter.h>
+#include <itkTransformFileReader.h>
+#include <itkTransformFileWriter.h>
+
+//----------------------------------------------------------------------------
+/// Conversion between VTK transforms and the ITK transforms that store them in transform files.
+/// The conversion of each transform type is done by its plugin (see vtkMRMLTransformPlugin): those of the transform
+/// classes that MRML provides and those that modules register. These functions ask the plugins, and take composite
+/// transforms apart.
+namespace
+{
+typedef itk::TransformFileWriter TransformWriterType;
+typedef vtkMRMLGridTransformPlugin::GridImageType GridImageDoubleType;
+
+//----------------------------------------------------------------------------
+template <typename T>
+vtkAbstractTransform* CreateVTKTransformFromITK(vtkObject* loggerObject, typename itk::TransformBaseTemplate<T>::Pointer transformItk, double center_LocalRAS[3])
+{
+  // Perform these sanity checks early
+  if (!transformItk)
+  {
+    vtkErrorWithObjectMacro(loggerObject, "CreateVTKTransformFromITK failed: nullptr provided");
+    return nullptr;
+  }
+  const unsigned itkDim = transformItk->GetOutputSpaceDimension();
+  if (itkDim != transformItk->GetInputSpaceDimension())
+  {
+    vtkErrorWithObjectMacro(loggerObject,
+                            "We do not support transforms with different number of input and output dimensions, " << "input dimension = " << transformItk->GetInputSpaceDimension()
+                                                                                                                  << ", output dimension = " << itkDim << ")");
+    return nullptr;
+  }
+  if (itkDim < 2 || itkDim > 3) // do we need to support 4D transforms?
+  {
+    vtkErrorWithObjectMacro(loggerObject, "Unsupported transform dimension: " << itkDim);
+    return nullptr;
+  }
+
+  std::string itkTransformClassName = transformItk->GetNameOfClass();
+
+  // Composite Transform
+  if (itkTransformClassName == "CompositeTransform")
+  {
+    // Composition is handled by the caller (vtkMRMLTransformStorageNode)
+    return nullptr;
+  }
+
+  // The plugins of the transform types: those that modules registered, then those of the transform types that
+  // MRML provides (linear, grid, B-spline and thin-plate spline)
+  std::vector<vtkMRMLTransformPlugin*> plugins;
+  vtkMRMLTransformPluginFactory::GetInstance()->GetPluginsForITKTransformClass(itkTransformClassName, plugins);
+  for (vtkMRMLTransformPlugin* plugin : plugins)
+  {
+    vtkAbstractTransform* transformVtk = plugin->CreateVTKTransformFromITK(loggerObject, transformItk.GetPointer(), center_LocalRAS);
+    if (transformVtk)
+    {
+      return transformVtk;
+    }
+  }
+
+  return nullptr;
+}
+
+//----------------------------------------------------------------------------
+itk::Object::Pointer CreateITKTransformFromVTK(vtkObject* loggerObject,
+                                               vtkAbstractTransform* transformVtk,
+                                               itk::Object::Pointer& secondaryTransformItk,
+                                               int preferITKv3CompatibleTransforms,
+                                               bool initialize,
+                                               double center_LocalRAS[3])
+{
+  typedef itk::CompositeTransform<double> CompositeTransformType;
+
+  if (transformVtk == nullptr)
+  {
+    vtkErrorWithObjectMacro(loggerObject, "CreateITKTransformFromVTK failed: invalid VTK transform");
+    return nullptr;
+  }
+  vtkNew<vtkCollection> transformList;
+  vtkMRMLTransformNode::FlattenGeneralTransform(transformList.GetPointer(), transformVtk);
+  if (transformList->GetNumberOfItems() == 0)
+  {
+    // no transformation means identity transform
+    vtkNew<vtkTransform> identity;
+    transformList->AddItem(identity.GetPointer());
+  }
+
+  itk::Object::Pointer primaryTransformItk;
+  if (transformList->GetNumberOfItems() == 1)
+  {
+    // Simple, non-composite transform (one item in the input transform)
+    vtkObject* singleTransformVtk = transformList->GetItemAsObject(0);
+    vtkAbstractTransform* singleAbstractTransformVtk = vtkAbstractTransform::SafeDownCast(singleTransformVtk);
+    if (singleAbstractTransformVtk == nullptr)
+    {
+      vtkErrorWithObjectMacro(loggerObject, "CreateITKTransformFromVTK failed: invalid input transform");
+      return nullptr;
+    }
+    // The plugins of the transform type: those that modules registered, then those of the transform types that
+    // MRML provides (linear, B-spline, grid and thin-plate spline)
+    std::vector<vtkMRMLTransformPlugin*> plugins;
+    vtkMRMLTransformPluginFactory::GetInstance()->GetPlugins(singleAbstractTransformVtk, plugins);
+    for (vtkMRMLTransformPlugin* plugin : plugins)
+    {
+      primaryTransformItk =
+        plugin->CreateITKTransformFromVTK(loggerObject, singleAbstractTransformVtk, secondaryTransformItk, preferITKv3CompatibleTransforms, initialize, center_LocalRAS);
+      if (primaryTransformItk.IsNotNull())
+      {
+        return primaryTransformItk;
+      }
+    }
+    vtkErrorWithObjectMacro(loggerObject, "CreateITKTransformFromVTK failed: conversion of transform type " << singleTransformVtk->GetClassName() << " is not supported");
+    return nullptr;
+  }
+  else
+  {
+    // Composite transform (more than one items in the input transform)
+    // Create an ITK composite transform from the VTK general transform
+    CompositeTransformType::Pointer compositeTransformItk = CompositeTransformType::New();
+    primaryTransformItk = compositeTransformItk;
+    // We need to iterate through the list in reverse order, as ITK CompositeTransform can only append transform on one side
+    for (int transformIndex = transformList->GetNumberOfItems() - 1; transformIndex >= 0; --transformIndex)
+    {
+      vtkAbstractTransform* singleTransformVtk = vtkAbstractTransform::SafeDownCast(transformList->GetItemAsObject(transformIndex));
+      itk::Object::Pointer secondaryTransformItkTmp;
+      // We use ITKv4 format (PreferITKv3Transform format is set to false), because
+      // legacy ITKv3 code does not know how to interpret composite transforms,
+      // and also ITKv3 bspline transform with bulk component cannot be saved in a composite transform
+      itk::Object::Pointer singleTransformItk = CreateITKTransformFromVTK(loggerObject, singleTransformVtk, secondaryTransformItkTmp, false, true, nullptr);
+      if (secondaryTransformItkTmp.IsNotNull())
+      {
+        vtkErrorWithObjectMacro(loggerObject,
+                                "CreateITKTransformFromVTK failed:"
+                                " composite transforms cannot contain legacy transforms (that contains secondary transforms)."
+                                " Do not harden transforms on legacy ITK transforms to avoid this error.");
+        return nullptr;
+      }
+
+      if (singleTransformItk.IsNull() //
+          || std::string(singleTransformItk->GetNameOfClass()).find("Transform") == std::string::npos)
+      {
+        vtkErrorWithObjectMacro(loggerObject,
+                                "CreateITKTransformFromVTK failed:"
+                                " invalid element found while trying to create a composite transform");
+        return nullptr;
+      }
+      CompositeTransformType::TransformType::Pointer singleTransformItkTypeChecked = static_cast<CompositeTransformType::TransformType*>(singleTransformItk.GetPointer());
+      compositeTransformItk->AddTransform(singleTransformItkTypeChecked.GetPointer());
+    }
+    return primaryTransformItk;
+  }
+  return nullptr;
+}
+
+} // namespace
 
 //----------------------------------------------------------------------------
 vtkMRMLNodeNewMacro(vtkMRMLTransformStorageNode);
-
-bool vtkMRMLTransformStorageNode::RegisterInverseTransformTypesCompleted = false;
 
 //----------------------------------------------------------------------------
 vtkMRMLTransformStorageNode::vtkMRMLTransformStorageNode()
@@ -46,14 +209,9 @@ vtkMRMLTransformStorageNode::vtkMRMLTransformStorageNode()
   this->PreferITKv3CompatibleTransforms = 0;
   this->DefaultWriteFileExtension = "h5";
 
-  // Ensure custom ITK inverse transform classes are registered.
-  // Register them only once to improve performance when many transform nodes
-  // are instantiated.
-  if (!vtkMRMLTransformStorageNode::RegisterInverseTransformTypesCompleted)
-  {
-    vtkITKTransformConverter::RegisterInverseTransformTypes();
-    vtkMRMLTransformStorageNode::RegisterInverseTransformTypesCompleted = true;
-  }
+  // Create the transform plugins, which register the ITK transform classes (such as the inverse transforms) that
+  // ITK does not register by default
+  vtkMRMLTransformPluginFactory::GetInstance();
 }
 
 //----------------------------------------------------------------------------
@@ -206,7 +364,7 @@ int vtkMRMLTransformStorageNode::ReadFromITKv3BSplineTransformFile(vtkMRMLNode* 
   }
 
   vtkNew<vtkOrientedBSplineTransform> bsplineVtk;
-  if (!vtkITKTransformConverter::SetVTKBSplineFromITKv3Generic<double>(this, bsplineVtk.GetPointer(), transform, transform2))
+  if (!vtkMRMLBSplineTransformPlugin::SetVTKBSplineFromITKv3(this, bsplineVtk.GetPointer(), transform, transform2))
   {
     // Log only at debug level because trial-and-error method is used for finding out what node can be retrieved
     // from a transform file
@@ -330,7 +488,7 @@ int vtkMRMLTransformStorageNode::ReadFromImageFile(vtkMRMLNode* refNode)
   }
 
   vtkNew<vtkOrientedGridTransform> gridTransform_Ras;
-  vtkITKTransformConverter::SetVTKOrientedGridTransformFromITKImage<double>(this, gridTransform_Ras.GetPointer(), gridImage_Lps);
+  vtkMRMLGridTransformPlugin::SetVTKOrientedGridTransformFromITKImage(this, gridTransform_Ras.GetPointer(), gridImage_Lps);
 
   // Backward compatibility
   if (tn->GetReadAsTransformToParent())
@@ -419,7 +577,7 @@ vtkAbstractTransform* ReadFromTransformFile(vtkObject* loggerObject, const std::
   if (firstTransformType.find("CompositeTransform") == std::string::npos)
   {
     // just a single transform
-    transformVtk = vtkSmartPointer<vtkAbstractTransform>::Take(vtkITKTransformConverter::CreateVTKTransformFromITK<T>(loggerObject, firstTransform, center_RAS));
+    transformVtk = vtkSmartPointer<vtkAbstractTransform>::Take(CreateVTKTransformFromITK<T>(loggerObject, firstTransform, center_RAS));
   }
   else
   {
@@ -449,7 +607,7 @@ vtkAbstractTransform* ReadFromTransformFile(vtkObject* loggerObject, const std::
     {
       // there is only one single transform, so we create a specific VTK transform type instead of a general transform
       typename TransformType::Pointer transformComponentItk = const_cast<TransformType*>(transformList.front().GetPointer());
-      transformVtk = vtkSmartPointer<vtkAbstractTransform>::Take(vtkITKTransformConverter::CreateVTKTransformFromITK<T>(loggerObject, transformComponentItk, center_RAS));
+      transformVtk = vtkSmartPointer<vtkAbstractTransform>::Take(CreateVTKTransformFromITK<T>(loggerObject, transformComponentItk, center_RAS));
     }
     else
     {
@@ -459,12 +617,24 @@ vtkAbstractTransform* ReadFromTransformFile(vtkObject* loggerObject, const std::
       for (typename ConstTransformListType::const_iterator it = transformList.begin(); it != end; ++it)
       {
         typename TransformType::Pointer transformComponentItk = const_cast<TransformType*>(it->GetPointer());
-        vtkAbstractTransform* transformComponent = vtkITKTransformConverter::CreateVTKTransformFromITK<T>(loggerObject, transformComponentItk, center_RAS);
-        if (transformComponent != nullptr)
+        vtkAbstractTransform* transformComponent = CreateVTKTransformFromITK<T>(loggerObject, transformComponentItk, center_RAS);
+        if (transformComponent == nullptr)
         {
-          generalTransform->Concatenate(transformComponent);
-          transformComponent->Delete();
+          if (std::string(transformComponentItk->GetNameOfClass()) == "CompositeTransform")
+          {
+            // The list contains the components of a nested composite transform, too
+            continue;
+          }
+          // The transform would be wrong without any of its components
+          vtkErrorToMessageCollectionWithObjectMacro(loggerObject,
+                                                     userMessages,
+                                                     "vtkMRMLTransformStorageNode::ReadFromTransformFile",
+                                                     "Transform type " << transformComponentItk->GetNameOfClass()
+                                                                       << " in a composite transform is not supported. In file: " << fullName);
+          return nullptr;
         }
+        generalTransform->Concatenate(transformComponent);
+        transformComponent->Delete();
       }
       transformVtk = generalTransform.GetPointer();
     }
@@ -583,8 +753,7 @@ int vtkMRMLTransformStorageNode::WriteToTransformFile(vtkMRMLNode* refNode)
   itk::Object::Pointer secondaryTransformItk; // only used for ITKv3 compatibility
   // ITK transform is created without initialization, because initialization may take a long time for certain transform types
   // which would slow down saving. Initialization is only needed for computing transformations, not necessary for file writing.
-  itk::Object::Pointer transformItk =
-    vtkITKTransformConverter::CreateITKTransformFromVTK(this, transformVtk, secondaryTransformItk, this->PreferITKv3CompatibleTransforms, false, center_RAS);
+  itk::Object::Pointer transformItk = CreateITKTransformFromVTK(this, transformVtk, secondaryTransformItk, this->PreferITKv3CompatibleTransforms, false, center_RAS);
   if (transformItk.IsNull())
   {
     vtkErrorMacro("WriteTransform failed: cannot convert VTK transform to ITK transform");
@@ -717,7 +886,7 @@ int vtkMRMLTransformStorageNode::WriteToImageFile(vtkMRMLNode* refNode)
   }
 
   GridImageDoubleType::Pointer gridImage_Lps;
-  vtkITKTransformConverter::SetITKImageFromVTKOrientedGridTransform(this, gridImage_Lps, gridTransform_Ras);
+  vtkMRMLGridTransformPlugin::SetITKImageFromVTKOrientedGridTransform(this, gridImage_Lps, gridTransform_Ras);
 
   // If this image is saved as a NIFTI then setting intent code to 1006 (NIFTI_INTENT_DISPVECT)
   // will save the image as a displacement vector image.

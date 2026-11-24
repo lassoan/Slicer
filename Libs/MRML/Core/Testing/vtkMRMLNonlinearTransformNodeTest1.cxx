@@ -32,6 +32,8 @@
 
 // STD includes
 #include <iostream>
+#include <string>
+#include <vector>
 
 int TestBSplineTransform(const char* filename);
 int TestGridTransform(const char* filename);
@@ -334,6 +336,20 @@ int TestBSplineLinearCompositeTransformCopySplit(const char* filename)
 
   // Split transform
   CHECK_BOOL(compositeBsplineTransformNode->Split(), true);
+
+  // Each component gets a generic transform node (not a linear or B-spline transform node)
+  int numberOfComponentNodes = 0;
+  std::vector<vtkMRMLNode*> transformNodes;
+  scene->GetNodesByClass("vtkMRMLTransformNode", transformNodes);
+  for (vtkMRMLNode* node : transformNodes)
+  {
+    if (std::string(node->GetName()).find("_Component") != std::string::npos)
+    {
+      numberOfComponentNodes++;
+      CHECK_STRING(node->GetClassName(), "vtkMRMLTransformNode");
+    }
+  }
+  CHECK_BOOL(numberOfComponentNodes > 0, true);
 
   // Test if transform to world is the same after splitting
   vtkNew<vtkGeneralTransform> transformToWorldAfterSplit;
