@@ -3,5 +3,7 @@
 	<file>Icons/GlyphIcon.png</file>
 	<file>Icons/GridIcon.png</file>
 	<file>Icons/ContourIcon.png</file>
+	<file>Icons/RotateFirst.png</file>
+	<file>Icons/TranslateFirst.png</file>
   </qresource>
 </RCC>

@@ -49,10 +49,6 @@ public:
 
 public slots:
 
-  /// Set the transform to identity. Only for linear transforms.
-  /// The sliders are reset to the position 0.
-  void identity();
-
   /// Invert the transform.
   void invert();
 
@@ -68,16 +64,12 @@ protected slots:
   /// Updates current item selection to reflect changes in item (such as display node creation)
   void onSubjectHierarchyItemModified(vtkObject* caller, void* callData);
 
-  void onTranslateFirstButtonPressed(bool checked);
   void onNodeSelected(vtkMRMLNode* node);
   void onMRMLTransformNodeModified(vtkObject* caller);
 
-  void copyTransform();
-  void pasteTransform();
-
-  void updateCenterOfTransformationWidgets();
-  void onCenterOfTransformationChanged();
-  void resetCenterOfTransformation();
+  /// Create the options widgets that are registered in qMRMLTransformOptionsWidgetsFactory
+  /// (of linear transforms, and of the transform types that other modules provide)
+  void onUpdateTransformOptionsWidgets();
 
   void transformSelectedNodes();
   void untransformSelectedNodes();
@@ -88,11 +80,6 @@ protected slots:
 
   void updateConvertButtonState();
   void convert();
-
-protected:
-  ///
-  /// Convenient method to return the coordinate system currently selected
-  int coordinateReference() const;
 
 protected:
   QScopedPointer<qSlicerTransformsModuleWidgetPrivate> d_ptr;

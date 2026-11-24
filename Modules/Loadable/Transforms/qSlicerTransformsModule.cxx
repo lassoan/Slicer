@@ -26,8 +26,13 @@
 #include "vtkMRMLThreeDViewDisplayableManagerFactory.h"
 
 // Transforms includes
+#include "qMRMLLinearTransformOptionsWidget.h"
+#include "qMRMLTransformOptionsWidgetsFactory.h"
 #include "qSlicerTransformsModule.h"
 #include "qSlicerTransformsModuleWidget.h"
+
+// Qt includes
+#include <QPointer>
 
 // VTK includes
 #include "vtkSmartPointer.h"
@@ -44,6 +49,8 @@ VTK_MODULE_INIT(vtkSlicerTransformsModuleMRMLDisplayableManager)
 class qSlicerTransformsModulePrivate
 {
 public:
+  /// Options widget of linear transforms that the module registered. It is owned by the options widgets factory.
+  QPointer<qMRMLTransformAbstractOptionsWidget> LinearTransformOptionsWidget;
 };
 
 //-----------------------------------------------------------------------------
@@ -54,7 +61,15 @@ qSlicerTransformsModule::qSlicerTransformsModule(QObject* _parentObject)
 }
 
 //-----------------------------------------------------------------------------
-qSlicerTransformsModule::~qSlicerTransformsModule() = default;
+qSlicerTransformsModule::~qSlicerTransformsModule()
+{
+  Q_D(qSlicerTransformsModule);
+  // The registered widget holds VTK objects, so it must not be left for the cleanup of the factory at exit
+  if (d->LinearTransformOptionsWidget)
+  {
+    qMRMLTransformOptionsWidgetsFactory::instance()->unregisterOptionsWidget(d->LinearTransformOptionsWidget.data());
+  }
+}
 
 //-----------------------------------------------------------------------------
 QIcon qSlicerTransformsModule::icon() const
@@ -118,6 +133,7 @@ QStringList qSlicerTransformsModule::contributors() const
 //-----------------------------------------------------------------------------
 void qSlicerTransformsModule::setup()
 {
+  Q_D(qSlicerTransformsModule);
   qSlicerApplication* app = qSlicerApplication::application();
   if (!app)
   {
@@ -132,6 +148,13 @@ void qSlicerTransformsModule::setup()
 
   // Register Subject Hierarchy core plugins
   qSlicerSubjectHierarchyPluginHandler::instance()->registerPlugin(new qSlicerSubjectHierarchyTransformsPlugin());
+
+  // Register the options widget of linear transforms (matrix and sliders of the Edit section).
+  // Options widgets are shown in the order of registration, and modules that register options widgets
+  // depend on this module, so this one is at the top of the section.
+  // The factory takes ownership of the widget (it deletes it if it cannot register it).
+  d->LinearTransformOptionsWidget = new qMRMLLinearTransformOptionsWidget();
+  qMRMLTransformOptionsWidgetsFactory::instance()->registerOptionsWidget(d->LinearTransformOptionsWidget.data());
 }
 
 //-----------------------------------------------------------------------------

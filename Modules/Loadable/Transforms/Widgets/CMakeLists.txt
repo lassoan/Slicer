@@ -10,6 +10,12 @@ set(${KIT}_INCLUDE_DIRECTORIES
   )
 
 set(${KIT}_SRCS
+  qMRMLLinearTransformOptionsWidget.cxx
+  qMRMLLinearTransformOptionsWidget.h
+  qMRMLTransformAbstractOptionsWidget.cxx
+  qMRMLTransformAbstractOptionsWidget.h
+  qMRMLTransformOptionsWidgetsFactory.cxx
+  qMRMLTransformOptionsWidgetsFactory.h
   qMRMLTransformDisplayNodeWidget.cxx
   qMRMLTransformDisplayNodeWidget.h
   qMRMLTransformInfoWidget.cxx
@@ -17,6 +23,7 @@ set(${KIT}_SRCS
   )
 
 set(${KIT}_UI_SRCS
+  Resources/UI/qMRMLLinearTransformOptionsWidget.ui
   Resources/UI/qMRMLTransformDisplayNodeWidget.ui
   Resources/UI/qMRMLTransformInfoWidget.ui
   )
